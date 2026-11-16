@@ -1,0 +1,394 @@
+/**
+ * The centre panel: toolbar, tree, tab strip and source view.
+ *
+ * The panel adopts the Session on screen (and its workspace root) on every
+ * render, so switching conversations while the panel is open re-roots the tree
+ * instead of showing the previous project.
+ */
+
+/** Read the Session currently on screen from the right-Sidebar controller. */
+function ideUseMountedSession(sidebarRight) {
+  const subscribe = useCallback((listener) => {
+    const mounted = sidebarRight?.mounted
+    if (mounted === undefined || typeof mounted.subscribe !== 'function') return () => {}
+    return mounted.subscribe(listener)
+  }, [sidebarRight])
+  const getSnapshot = useCallback(() => {
+    const mounted = sidebarRight?.mounted
+    if (mounted === undefined || typeof mounted.getSnapshot !== 'function') return undefined
+    return mounted.getSnapshot()
+  }, [sidebarRight])
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+/** The sidebar navigation icon for this panel (owner props: `size`, `active`). */
+function IdePanelIcon({ size, active }) {
+  const box = typeof size === 'number' && size > 0 ? size : 16
+  return h('span', {
+    style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: active === false ? 0.78 : 1 },
+  }, h(IdeTreeIcon, { size: box }))
+}
+
+/** One toolbar button. */
+function IdeToolButton({ title, on, onClick, children, disabled }) {
+  return h('button', {
+    type: 'button',
+    className: `iw-btn${on === true ? ' on' : ''}`,
+    title,
+    'aria-label': title,
+    onClick,
+    disabled: disabled === true,
+    style: disabled === true ? { opacity: 0.4, cursor: 'default' } : undefined,
+  }, children)
+}
+
+/** The entry in the conversation header: opens the code workspace. */
+function IdeHeaderEntry({ store, translate, openPanel }) {
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
+  const active = state.rootPath !== ''
+  return h('button', {
+    type: 'button',
+    className: `iw-header-entry${active ? ' active' : ''}`,
+    title: `${tr('title')}  ⌘2`,
+    onClick: () => {
+      if (typeof openPanel === 'function') openPanel()
+    },
+  }, [
+    h(IdeFileIcon, { key: 'ic', lang: '', size: 14 }),
+    h('span', { key: 't', className: 'iw-header-entry-label' }, tr('title')),
+  ])
+}
+
+/** The project chip, which opens a workspace switcher. */
+function IdeProjectMenu({ store, state, projects, tr, onSelectProject }) {
+  const [open, setOpen] = useState(false)
+  const current = state.rootPath === '' ? tr('title') : ideBasename(state.rootPath)
+
+  // Same dismissal contract as the usage popup: a pointer down anywhere outside.
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = (event) => {
+      const element = event.target
+      if (element instanceof Element && element.closest('.iw-project') !== null) return
+      setOpen(false)
+    }
+    globalThis.addEventListener('pointerdown', onDown, true)
+    return () => globalThis.removeEventListener('pointerdown', onDown, true)
+  }, [open])
+
+  const rows = [{ path: '', title: tr('followSession'), detail: '' }, ...projects.map((project) => ({
+    path: project.path,
+    title: project.title,
+    detail: project.path,
+  }))]
+
+  return h('div', { className: 'iw-project' }, [
+    h('button', {
+      key: 'btn',
+      type: 'button',
+      className: 'iw-project-btn',
+      title: tr('projectSwitch'),
+      onClick: () => setOpen(!open),
+    }, [
+      h(IdeFileIcon, { key: 'ic', lang: '', size: 15 }),
+      h('span', { key: 'nm', className: 'iw-project-name' }, current),
+      h('span', { key: 'c', className: 'iw-project-caret' }, '\u25be'),
+    ]),
+    open
+      ? h('div', { key: 'menu', className: 'iw-project-menu' }, rows.map((row) => h('button', {
+        key: row.path === '' ? '#follow' : row.path,
+        type: 'button',
+        className: row.path === state.preferredRoot ? 'iw-project-row active' : 'iw-project-row',
+        title: row.detail === '' ? row.title : row.detail,
+        onClick: () => {
+          setOpen(false)
+          if (typeof onSelectProject === 'function') onSelectProject(row.path)
+          else store.setPreferredRoot(row.path)
+        },
+      }, [
+        h('span', { key: 't', className: 'iw-project-row-title' }, row.title),
+        row.detail === '' ? null : h('span', { key: 'p', className: 'iw-project-row-path' }, row.detail.replace(/^\/Users\/[^/]+/, '~')),
+      ])))
+      : null,
+  ])
+}
+
+/** The toolbar. */
+function IdeToolbar({ store, state, tr, projects, onSelectProject, onToggleSidebar }) {
+  return h('div', { className: 'iw-toolbar' }, [
+    h(IdeProjectMenu, { key: 'project', store, state, projects, tr, onSelectProject }),
+    h('div', { key: 'history', className: 'iw-history' }, [
+      h(IdeToolButton, {
+        key: 'back',
+        title: tr('navBack'),
+        disabled: (state.historyBack ?? []).length === 0,
+        onClick: () => store.goBack(),
+      }, h(IdeArrowLeftIcon, { size: 15 })),
+      h(IdeToolButton, {
+        key: 'forward',
+        title: tr('navForward'),
+        disabled: (state.historyForward ?? []).length === 0,
+        onClick: () => store.goForward(),
+      }, h(IdeArrowRightIcon, { size: 15 })),
+    ]),
+    h('div', { key: 'gap', className: 'iw-spacer' }),
+    h(IdeToolButton, {
+      key: 'tree',
+      title: state.treeVisible ? tr('hideFiles') : tr('showFiles'),
+      on: state.treeVisible,
+      onClick: () => store.setTreeVisible(!state.treeVisible),
+    }, h(IdeTreeIcon, { size: 15 })),
+    h(IdeToolButton, {
+      key: 'live',
+      title: state.watching ? tr('liveOn') : tr('liveOff'),
+      on: state.watching,
+      onClick: () => store.setWatching(!state.watching),
+    }, [h(IdeLiveDot, { key: 'd', on: state.watching }), h('span', { key: 'l' }, tr('live'))]),
+    h(IdeToolButton, {
+      key: 'refresh',
+      title: tr('refreshTree'),
+      onClick: () => store.refreshAll(),
+    }, h(IdeRefreshIcon, { size: 15 })),
+    h(IdeToolButton, {
+      key: 'jump',
+      title: state.jumpEnabled === true ? tr('jumpOn') : tr('jumpOff'),
+      on: state.jumpEnabled === true,
+      onClick: () => store.setJumpEnabled(!state.jumpEnabled),
+    }, h(IdeLinkIcon, { size: 15 })),
+    h(IdeToolButton, {
+      key: 'shell',
+      title: tr('toggleNav'),
+      onClick: onToggleSidebar,
+    }, h(IdeSidebarIcon, { size: 15 })),
+  ])
+}
+
+/** The empty state shown while no file is open. */
+function IdeEmptyEditor({ tr }) {
+  return h('div', { className: 'iw-empty' }, [
+    h('div', { key: 't', className: 'iw-empty-title' }, tr('title')),
+    h('div', { key: 'h' }, tr('openTabHint')),
+  ])
+}
+
+/** The centre panel entry. */
+/** How many times the panel body has rendered; a probe can read it. */
+let idePanelRenders = 0
+
+function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions }) {
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const actions = paletteActions ?? []
+
+  // IDEA's gesture: two Shift presses in quick succession open Search Everywhere.
+  useEffect(() => {
+    const DOUBLE_SHIFT_MS = 400
+    let lastShift = 0
+    const onKey = (event) => {
+      if (event.key !== 'Shift' || event.repeat === true) return
+      const now = Date.now()
+      if (lastShift !== 0 && now - lastShift <= DOUBLE_SHIFT_MS) {
+        lastShift = 0
+        store.setPaletteOpen(true)
+        return
+      }
+      lastShift = now
+    }
+    globalThis.addEventListener('keyup', onKey)
+    return () => globalThis.removeEventListener('keyup', onKey)
+  }, [store])
+  idePanelRenders += 1
+  const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
+  const tab = state.tabs.find((entry) => entry.path === state.activePath)
+
+  // Second resolver: the panel asks the same two snapshots the tracker uses, so
+  // a tracker that missed its pass cannot leave the panel blank. Both writers
+  // compute the same values from the same sources, so they cannot disagree.
+  const selectSessions = typeof useSessions === 'function' ? useSessions : () => undefined
+  const selectWorkspaces = typeof useWorkspaces === 'function' ? useWorkspaces : () => undefined
+  const sessions = selectSessions((snapshot) => snapshot)
+  const workspaces = selectWorkspaces((snapshot) => snapshot)
+  const resolved = ideResolveTarget(undefined, sessions, workspaces)
+
+  // Every workspace the shell knows about, plus the Session-derived root, which
+  // may not belong to a registered workspace yet.
+  const projects = []
+  const seenPaths = new Set()
+  for (const item of Array.isArray(workspaces?.items) ? workspaces.items : []) {
+    const path = typeof item?.path === 'string' ? item.path.replace(/\/+$/, '') : ''
+    if (path === '' || seenPaths.has(path)) continue
+    seenPaths.add(path)
+    projects.push({ path, title: typeof item?.title === 'string' && item.title !== '' ? item.title : ideBasename(path) })
+  }
+  const resolvedRoot = typeof resolved.root === 'string' ? resolved.root.replace(/\/+$/, '') : ''
+  if (resolvedRoot !== '' && !seenPaths.has(resolvedRoot)) {
+    projects.unshift({ path: resolvedRoot, title: ideBasename(resolvedRoot) })
+  }
+
+  const workspaceItems = Array.isArray(workspaces?.items) ? workspaces.items : []
+  const sessionOfProject = (path) => {
+    if (path === '') return undefined
+    const item = workspaceItems.find((entry) => typeof entry?.path === 'string'
+      && entry.path.replace(/\/+$/, '') === path)
+    const ids = Array.isArray(item?.sessionIds) ? item.sessionIds : []
+    return typeof ids[0] === 'string' ? ids[0] : undefined
+  }
+
+  useEffect(() => {
+    // A project the user picked wins over the Session's own root; clearing the
+    // choice is what hands control back to the Session.
+    const preferred = store.getState().preferredRoot
+    if (preferred !== '') {
+      // The file Remote enforces the Session's workspace scope, so a switched
+      // project must also adopt a Session that belongs to it — otherwise every
+      // listing is refused as `workspace-file/outside-workspace`.
+      const sessionId = sessionOfProject(preferred)
+      if (typeof sessionId === 'string') store.rememberSession(sessionId)
+      store.setRoot(preferred)
+      return
+    }
+    if (typeof resolved.sessionId === 'string') store.rememberSession(resolved.sessionId)
+    if (resolvedRoot !== '') store.setRoot(resolvedRoot)
+  }, [resolved.sessionId, resolvedRoot, state.preferredRoot, store, workspaces])
+
+  /** Switch projects: adopt a Session of that workspace first, then re-root. */
+  const selectProject = (path) => {
+    if (path === '') {
+      store.setPreferredRoot('')
+      return
+    }
+    const sessionId = sessionOfProject(path)
+    if (sessionId === undefined) {
+      store.setNotice(tr('projectNoSession'))
+      return
+    }
+    store.rememberSession(sessionId)
+    store.setPreferredRoot(path)
+  }
+
+  // Mouse side buttons are the usual back/forward gesture; Chromium would take
+  // them as history navigation, so both edges are claimed for the code history.
+  useEffect(() => {
+    // Only `auxclick` performs the step. `mousedown`/`mouseup` merely suppress
+    // the browser's own history navigation, otherwise one press would walk the
+    // history three times.
+    const isSideButton = (event) => event.button === 3 || event.button === 4
+    const suppress = (event) => {
+      if (!isSideButton(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const onAuxClick = (event) => {
+      if (!isSideButton(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.button === 3) store.goBack()
+      else store.goForward()
+    }
+    globalThis.addEventListener('mousedown', suppress, true)
+    globalThis.addEventListener('mouseup', suppress, true)
+    globalThis.addEventListener('auxclick', onAuxClick, true)
+    return () => {
+      globalThis.removeEventListener('mousedown', suppress, true)
+      globalThis.removeEventListener('mouseup', suppress, true)
+      globalThis.removeEventListener('auxclick', onAuxClick, true)
+    }
+  }, [store])
+
+  // Coming back to the window is a reliable moment to re-read open files: an
+  // external editor may have saved while this page was in the background.
+  useEffect(() => {
+    let timer
+    const refreshSoon = () => {
+      if (timer !== undefined) clearTimeout(timer)
+      timer = setTimeout(() => { timer = undefined; store.refreshTabs() }, 200)
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshSoon() }
+    globalThis.addEventListener('focus', refreshSoon)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      if (timer !== undefined) clearTimeout(timer)
+      globalThis.removeEventListener('focus', refreshSoon)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [store])
+
+  // Selecting this panel is what starts the mode: the navigation column folds
+  // away and the conversation floats over the panel. Unmounting reverses both.
+  useEffect(() => {
+    if (typeof onEnter !== 'function') return undefined
+    return onEnter()
+  }, [onEnter])
+
+  const missing = state.sessionId === null
+    ? `session=${state.sessionId === null ? 'none' : state.sessionId} root=${state.rootPath === '' ? 'none' : state.rootPath} remote=${state.remoteReady === true ? 'ready' : 'waiting'}`
+    : undefined
+
+  let content
+  if (state.sessionId === null || state.rootPath === '') {
+    content = h('div', { className: 'iw-empty' }, [
+      h('div', { key: 't', className: 'iw-empty-title' }, tr('noWorkspace')),
+      h('div', { key: 'h' }, tr('noWorkspaceHint')),
+      h('button', {
+        key: 'retry',
+        type: 'button',
+        className: 'iw-btn primary',
+        onClick: () => store.retryResolve(),
+      }, tr('reload')),
+      h('div', {
+        key: 'diag',
+        style: { marginTop: '10px', fontSize: '11px', opacity: 0.65, fontFamily: 'ui-monospace, monospace' },
+      }, missing ?? ''),
+    ])
+  } else if (tab === undefined) {
+    content = h(IdeEmptyEditor, { key: 'empty', tr })
+  } else if (tab.status === 'error') {
+    content = h('div', { className: 'iw-empty' }, [
+      h('div', { key: 't', className: 'iw-empty-title' }, tr('fileNotText')),
+      h('div', { key: 'e' }, `${tr('errorPrefix')}${tab.error}`),
+      h('button', {
+        key: 'r',
+        type: 'button',
+        className: 'iw-btn primary',
+        onClick: () => store.openFile(tab.path),
+      }, tr('reload')),
+    ])
+  } else {
+    content = h(IdeCodeView, { key: `code:${tab.path}`, tab, tr, store, navigate })
+  }
+
+  const banner = state.liveNotice === ''
+    ? null
+    : h('div', { key: 'banner', className: 'iw-banner' }, state.liveNotice)
+
+  return h('div', { className: 'iw-root' }, [
+    h(IdeStyles, { key: 'style' }),
+    h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
+    banner,
+    h('div', { key: 'body', className: 'iw-body' }, [
+      state.treeVisible ? h(IdeTree, { key: 'tree', store, state, tr }) : null,
+      state.treeVisible ? h(IdeResizer, { key: 'resize', store, state, tr }) : null,
+      h('div', { key: 'editor', className: 'iw-editor' }, [
+        h(IdeTabStrip, { key: 'tabs', store, state, tr, onBackToChat }),
+        tab === undefined
+          ? null
+          : h(IdeCrumbs, {
+            key: 'crumbs',
+            // A jar tab has no workspace path: show where it really came from.
+            path: tab.kind === 'jar' ? `${tab.dir}/${tab.name}` : tab.path,
+          }),
+        content,
+      ]),
+    ]),
+    h(IdeStatusBar, { key: 'status', store, state, tab, tr }),
+    state.paletteOpen
+      ? h(IdePalette, {
+        key: 'palette',
+        store,
+        tr,
+        actions,
+        onClose: () => store.setPaletteOpen(false),
+      })
+      : null,
+  ])
+}
