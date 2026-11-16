@@ -4,6 +4,25 @@ IDEA 风格的代码工作区插件：把 DSH 的中央区域切成「文件树 
 
 > 面向 DeepSeek Harness Web / Desktop GUI。宿主侧零改动，全部能力走 DSH 已注册的服务与插槽。
 
+## 不修改 DSH 本体（硬约束）
+
+插件**只写自己的目录**，以及以下用户态位置：
+
+```
+~/.dsh/profiles/<profile>/   profile 配置（package.json 的 bundles、cordis.patch.yml）
+~/.dsh/sessions/             会话数据
+~/.dsh/lsp-bin/ ~/.dsh/lsp-data/   语言服务器与索引
+```
+
+绝不写入 `/Applications/DeepSeek Harness.app`：改了会导致签名失效，升级时被覆盖或直接损坏，插件在升级后必然不可用。所有对 DSH 源码/类型定义的访问都是**只读**（通过 `ELECTRON_RUN_AS_NODE` 读 asar）。
+
+随时可自证：
+
+```bash
+./check-dsh-untouched.sh          # 签名 + app.asar 哈希 + 包内可疑文件
+./check-dsh-untouched.sh --rebase # 官方升级后重设哈希基线
+```
+
 ## 它长什么样
 
 进入方式（任选）：
@@ -40,11 +59,12 @@ IDEA 风格的代码工作区插件：把 DSH 的中央区域切成「文件树 
 - **源码视图**：行号、按语言着色、状态栏显示行数/语言/编码/实时状态。**不用虚拟滚动**——全部已加载行直接挂载（上限 6000 行），因为窗口化渲染曾在首次测量时漏画后续行，导致「下面全空白」。行内词法着色按行 memo，几千行文件重渲染也不重复着色。
 - **弹层定位**：用法弹层是 `position: fixed` 且**渲染在滚动容器之外**（否则会随源码滚动、并按代码区容器定位导致偏移），坐标用视口坐标，始终贴着鼠标出现
 - **同屏尝试记录（均未采用）**：右栏放对话（外壳搬走会话主面 → 面板卸载 + 遮罩）、右栏放代码（布局反了）、自绘浮窗（用户否决）。结论：代码工作区固定占**主栏**，与对话用 `⌘1`/`⌘2` 切换
-- **入口与快捷键**：入口在会话表头左侧（`conversation.header.leading`），不在左侧栏；`⌘1 / Ctrl+1` 回到对话，`⌘2 / Ctrl+2` 打开代码工作区
 - **存取器归属类推断**（引擎解析不到时，按确定程度依次尝试）：① `Type::getX` 方法引用自带类名；② `older.getX()` 从同文件局部变量声明取类型；③ `a.b().getX()` 链式接收者 → 取链底变量（`captor`）的**泛型实参**（`ArgumentCaptor<ExchangeRateInnerQuery>`），支持带包名的写法 `org.mockito.ArgumentCaptor<T>`；④ 兜底用一次 `hover` 拿返回类型；⑤ 首字母大写当作类本身。拿到类名后用 `import` 求全限定名
 - **自测**：`npm test` = 离线 harness（115 项）+ 归属推断（10 项，fixture）+ 真实 Maven 仓库端到端（3 项）。UI 层可用 `dsh --profile web` 起一个带 token 的本地实例在 Agent Window 里点（浏览器扩展协议需 ≥1.9 才能用 evaluate/sync；1.3 只能 click/fill/press）
 - **依赖 jar 源码跳转**：目标类不在工作区、但 Maven 仓库里有 `-sources.jar` 时，双击直接打开**只读虚拟标签**并定位到字段/行。宿主路由 `/dsh-ide/jar` 自己解析 ZIP 中央目录（不调用 unzip），按 jar 修改时间从新到旧扫描，命中结果做进程内索引；纯二进制 jar 返回「该 jar 没有源码」
 - **Lombok 存取器兜底**：引擎解析不到 `getX`/`setX`/`isX` 时，先在本文件找字段；再判断调用形态——若是方法引用 `Type::getX`，直接去 `Type.java` 里找 `x` 的字段声明并跳过去（这条不依赖引擎，因为方法引用自带归属类名）
+- **入口与快捷键**：入口在会话表头左侧（`conversation.header.leading`），不在左侧栏；两个命令注册进 DSH 快捷键目录（`ctx.shortcuts`），因此可在 **设置 → 通用设置 → 编辑快捷键** 里查看与改键：`代码工作区：打开 / 关闭`（桌面默认 ⌘2 / Ctrl+2）、`返回对话`（桌面默认 ⌘1 / Ctrl+1）。要点：① 插件导出必须声明 `inject: [... 'shortcuts']`，否则运行时抛 `cannot get property "shortcuts" without inject`；② **不要声明 `web:linux` 默认值**——该 profile 走 Linux 白名单（仅 Slash/Comma/Period），声明了会让整个注册失败；③ Web 默认另给 ⌥⌘I / ⌥⌘U，因为浏览器把 ⌘1/⌘2 用于切标签页
+- **对话改动列表（与代码工作区联动）**：注册进 `conversation.chat.turnTail`（列表槽、scope session），每轮末尾显示「代码改动 N +A -D」；点击某行 → 拉该文件 diff → 定位**第一个新增行** → 切到本插件主栏面板打开。数据来自 DSH 自带路由 `/api/changes.summary`、`/api/changes.diff`（与「已编辑 N 个文件」卡片同源，不解析消息、不改官方组件）。两个坑：① 摘要按 `workspace/changes` 事件序号取，不是 turn 结束序号（要从 `turn.data.get('deliverables').changes.seq` 读，用错会 404）；② **摘要在 Host 内存里**，DSH 重启后历史轮次没有摘要（官方卡片同样消失）——此时退回从 `useTrajectory` 已加载的事件窗口还原文件路径，覆盖不到的轮次就什么都不显示（不做宿主侧落盘，避免过重）
 - **语义代码导航**（走宿主 `ctx.lsp`，由真正的语言服务器回答）：
   - 手势：**单击不触发任何导航**（拖动选中/复制不会被误判）、**⌘/Ctrl + 单击**弹出「实现 / 调用方」、**双击**跳转到定义
   - `Ctrl`/`Cmd` + 点击标识符 → `goToDefinition`，无结果自动回落 `goToImplementation`；

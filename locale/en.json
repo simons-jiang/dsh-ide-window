@@ -87,5 +87,13 @@
   "tabCallersText": "Callers (text match)",
   "navBack": "Back (mouse side button)",
   "navForward": "Forward (mouse side button)",
-  "noSourceInJar": "No sources in that jar"
+  "noSourceInJar": "No sources in that jar",
+  "shortcutToggle": "Code workspace: open / close",
+  "shortcutBackToChat": "Back to conversation",
+  "turnChanges": "Code changes",
+  "turnChangesHint": "Open the first changed file in the code workspace",
+  "turnJumpHint": "Open in the code workspace at the changed line",
+  "turnJumpFailed": "Cannot open",
+  "turnFoldMore": "Show",
+  "turnFoldLess": "Collapse"
 }

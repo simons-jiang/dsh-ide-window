@@ -44,7 +44,10 @@ ${await dictionary('en')}
 ${await dictionary('zh')}
 
 ${fragments.join('\n')}
-    return { inject: ['slots', 'locale'], apply }
+    // 'shortcuts' is read directly at apply time (the plugin contributes two
+    // rebindable commands), and the client runtime refuses any service that is
+    // not declared here: cannot get property "shortcuts" without inject.
+    return { inject: ['slots', 'locale', 'shortcuts'], apply }
   },
 })
 `

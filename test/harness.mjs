@@ -152,7 +152,8 @@ function stubRemote(log) {
 
 /** Build the stub Cordis context and record everything the plugin does to it. */
 function stubContext(remote, log) {
-  const record = { registrations: [], effects: [], injections: [], injected: [] }
+  const record = {
+    shortcuts: [], registrations: [], effects: [], injections: [], injected: [] }
   const layout = {
     panelInfo: { getSnapshot: () => ({ activePanelId: null }) },
     selectPanel: (id) => record.selected = id,
@@ -222,6 +223,12 @@ function stubContext(remote, log) {
     layout,
     sidebarRight,
     sidebarRightTabs,
+    shortcuts: {
+      register(command) {
+        record.shortcuts.push(command)
+        return () => {}
+      },
+    },
     effect(fn, label) {
       record.effects.push(label)
       const dispose = fn()
@@ -508,6 +515,28 @@ navStore.openAt('Main.java', 1)
 await tick()
 check((navStore.getState().historyForward ?? []).length === 0, 'a fresh jump clears the forward stack')
 
+
+/** Extract one top-level function's source from a client fragment, for unit checks. */
+function grabSource(name) {
+  const source = readFileSync(new URL('../src/client/58-turn.js', import.meta.url), 'utf8')
+  const constant = source.indexOf(`const ${name} = `)
+  if (constant >= 0 && source.indexOf(`function ${name}(`) < 0) {
+    const end = source.indexOf('\n', constant)
+    return source.slice(constant, end)
+  }
+  const start = source.indexOf(`function ${name}(`)
+  if (start < 0) throw new Error(`missing ${name}`)
+  let depth = 0
+  for (let index = source.indexOf('{', start); index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1
+    else if (source[index] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(start, index + 1)
+    }
+  }
+  throw new Error(`unbalanced ${name}`)
+}
+
 // ---- jar sources -----------------------------------------------------------
 const jarStore = main.inject().store
 jarStore.rememberSession('session-1')
@@ -629,6 +658,77 @@ await tick()
 // surface, unmounting the panel and leaving the cover-overlay bug behind.
 footerInject.openPanel()
 check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code panel in the main column', String(mode.record.selected))
+
+// ---- turn changes ----------------------------------------------------------
+{
+  const names = mode.record.registrations.map((entry) => entry.name)
+  check(names.includes('conversation.chat.turnTail'), 'registers the turn changes entry', names.join(','))
+
+  // 首个改动行：hunk 的 newStart 加上跳过上下文行后的偏移
+  const drop = new Function(`${grabSource('ideFirstChangedLine')}\nreturn ideFirstChangedLine`)()
+  const diff = { kind: 'text', hunks: [
+    { oldStart: 1, oldLines: 2, newStart: 10, newLines: 3, lines: [' keep', '+added', ' keep'] },
+  ] }
+  check(drop(diff) === 11, 'the first added line is located', String(drop(diff)))
+  const deletionOnly = { kind: 'text', hunks: [
+    { oldStart: 4, oldLines: 1, newStart: 4, newLines: 0, lines: ['-gone'] },
+  ] }
+  check(drop(deletionOnly) === 4, 'a deletion-only hunk falls back to its start', String(drop(deletionOnly)))
+  check(drop({ kind: 'binary' }) === 0, 'a binary comparison has no line', String(drop({ kind: 'binary' })))
+
+  // 事件日志兜底：摘要丢失时从工具调用还原改动文件
+  const edited = new Function(`${grabSource('IDE_WRITE_TOOLS')}\n${grabSource('ideTurnEditedPaths')}\nreturn ideTurnEditedPaths`)()
+  const trajectory = {
+    eventLocations: new Map([
+      [10, { kind: 'turn', turn: { turn: 2 } }],
+      [11, { kind: 'step', turn: { turn: 2 }, step: {} }],
+      [12, { kind: 'turn', turn: { turn: 1 } }],
+    ]),
+    eventNodes: [
+      { matches: [{ event: { seq: 11, type: 'tool/call', data: { name: 'edit', arguments: '{"file_path":"src/A.java","old_string":"x"}' } } }] },
+      { matches: [{ event: { seq: 10, type: 'tool/call', data: { name: 'write', arguments: { path: 'src/B.java' } } } }] },
+      { matches: [{ event: { seq: 10, type: 'tool/call', data: { name: 'read', arguments: '{"file_path":"src/Ignored.java"}' } } }] },
+      { matches: [{ event: { seq: 12, type: 'tool/call', data: { name: 'edit', arguments: '{"file_path":"src/Other.java"}' } } }] },
+      { matches: [{ event: { seq: 11, type: 'tool/call', data: { name: 'edit', arguments: '{"file_path":"src/A.java"}' } } }] },
+    ],
+  }
+  // 真实会话日志里字段名是 arguments（不是 input）
+  const recovered = edited(trajectory, 2)
+  check(recovered.length === 2, 'read tools and other turns are ignored', JSON.stringify(recovered))
+  check(recovered[0] === 'src/A.java' && recovered[1] === 'src/B.java', 'paths keep first-touch order', JSON.stringify(recovered))
+  check(edited(trajectory, 9).length === 0, 'an unknown turn recovers nothing', JSON.stringify(edited(trajectory, 9)))
+}
+
+
+// ---- shortcut catalog ------------------------------------------------------
+{
+  const commands = mode.record.shortcuts
+  check(commands.length === 2, 'contributes two shortcuts', commands.map((entry) => entry.id).join(','))
+  const toggle = commands.find((entry) => entry.id === 'dsh-ide-window.toggle')
+  const back = commands.find((entry) => entry.id === 'dsh-ide-window.back-to-chat')
+  check(toggle !== undefined && back !== undefined, 'both command ids are stable')
+  check(toggle?.defaults?.['desktop:macos']?.code === 'Digit2', 'desktop default opens the workspace on 2', JSON.stringify(toggle?.defaults?.['desktop:macos']))
+  check(back?.defaults?.['desktop:macos']?.code === 'Digit1', 'desktop default returns on 1', JSON.stringify(back?.defaults?.['desktop:macos']))
+  check((toggle?.defaults?.['web:macos']?.modifiers ?? []).includes('alt'), 'web default carries alt, so the browser keeps its digits', JSON.stringify(toggle?.defaults?.['web:macos']))
+  check((toggle?.defaults?.['web:macos']?.modifiers ?? []).includes('primary'), 'web default still uses primary', JSON.stringify(toggle?.defaults?.['web:macos']))
+  check(typeof toggle?.label === 'function' && toggle.label() !== 'shortcutToggle', 'the label is localized', String(toggle?.label?.()))
+  // The web validator checks every declared profile against a tiny Linux
+  // whitelist; declaring web:linux at all is what rejected the registration.
+  check(toggle?.defaults?.['web:linux'] === undefined, 'no web:linux default is declared', JSON.stringify(toggle?.defaults?.['web:linux']))
+  check(back?.defaults?.['web:linux'] === undefined, 'no web:linux default on the back command', JSON.stringify(back?.defaults?.['web:linux']))
+
+  // The resolver decides at input time: return-to-chat must not steal typing.
+  const editableBack = back?.resolve({ region: 'editable', modal: null, target: null })
+  check(editableBack?.status === 'pass', 'back-to-chat passes while typing', editableBack?.status)
+  const pageBack = back?.resolve({ region: 'page', modal: null, target: null })
+  check(pageBack?.status === 'handled', 'back-to-chat handles page input', pageBack?.status)
+  mode.record.selected = undefined
+  pageBack?.run()
+  check(mode.record.selected === null, 'the back command selects the conversation', String(mode.record.selected))
+  const pageToggle = toggle?.resolve({ region: 'page', modal: null, target: null })
+  check(pageToggle?.status === 'handled', 'the toggle handles page input', pageToggle?.status)
+}
+
 check(!modeLog.some((entry) => entry[0] === 'openTab'), 'open never opens a right-column tab', JSON.stringify(modeLog.filter((entry) => entry[0] === 'openTab')))
 check(!modeLog.some((entry) => entry[0] === 'toggleExpanded'), 'open never expands the right column')
 

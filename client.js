@@ -94,6 +94,14 @@ window.__ModuleLoader__.load({
     "navBack": "Back (mouse side button)",
     "navForward": "Forward (mouse side button)",
     "noSourceInJar": "No sources in that jar",
+    "shortcutToggle": "Code workspace: open / close",
+    "shortcutBackToChat": "Back to conversation",
+    "turnChanges": "Code changes",
+    "turnChangesHint": "Open the first changed file in the code workspace",
+    "turnJumpHint": "Open in the code workspace at the changed line",
+    "turnJumpFailed": "Cannot open",
+    "turnFoldMore": "Show",
+    "turnFoldLess": "Collapse",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -181,6 +189,14 @@ window.__ModuleLoader__.load({
     "navBack": "后退（鼠标侧键）",
     "navForward": "前进（鼠标侧键）",
     "noSourceInJar": "该 jar 没有源码",
+    "shortcutToggle": "代码工作区：打开 / 关闭",
+    "shortcutBackToChat": "返回对话",
+    "turnChanges": "代码改动",
+    "turnChangesHint": "在代码工作区打开第一个改动文件",
+    "turnJumpHint": "在代码工作区打开并定位到改动的行",
+    "turnJumpFailed": "打开失败",
+    "turnFoldMore": "展开其余",
+    "turnFoldLess": "收起",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -852,6 +868,80 @@ const IDE_CSS = `
 }
 .iw-header-entry.active { color: var(--dsw-alias-label-primary, #e6e8ec); }
 
+
+/* The Turn's changed files, shown beside the shipped deliverables card. */
+.iw-turn {
+  margin: 6px 0;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-overlay, #212429);
+  max-width: 720px;
+}
+.iw-turn-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-turn-head:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-turn-title { font-weight: 500; }
+.iw-turn-count {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2, #2a2e35);
+  font-size: 11px;
+  opacity: 0.85;
+}
+.iw-turn-add { color: #3fa55a; font-variant-numeric: tabular-nums; }
+.iw-turn-del { color: #c95c5c; font-variant-numeric: tabular-nums; }
+.iw-turn-rows { display: flex; flex-direction: column; }
+.iw-turn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 0;
+  border-top: 1px solid var(--dsw-alias-border-l1, #262a30);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-turn-row:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-turn-row.busy { opacity: 0.6; }
+.iw-turn-name { flex: 0 0 auto; }
+.iw-turn-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.55;
+  font-size: 11.5px;
+}
+.iw-turn-fold {
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-top: 1px solid var(--dsw-alias-border-l1, #262a30);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.iw-turn-fold:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -3498,6 +3588,291 @@ function IdeSessionTracker({ store, useSessions, useWorkspaces }) {
   return null
 }
 
+// ---- 58-turn.js ----------------------------------------------------------
+/**
+ * The Turn's file changes, wired to the code workspace.
+ *
+ * DSH records what a Turn changed and serves it from two authenticated routes the
+ * deliverables card already reads (`/api/changes.summary`, `/api/changes.diff`).
+ * This entry joins the same `conversation.chat.turnTail` list, so the list sits
+ * with the Turn it describes, and a click opens the file in this plugin's own
+ * panel at the first changed line rather than in the shipped review sidebar.
+ */
+
+/** Route the Host serves one Turn's changed-file summary from. */
+const IDE_CHANGES_SUMMARY = 'api/changes.summary'
+
+/** Route the Host serves one changed file's comparison from. */
+const IDE_CHANGES_DIFF = 'api/changes.diff'
+
+/** Rows shown before the list folds, matching the shipped card's height. */
+const IDE_TURN_ROWS = 4
+
+/** A browser-relative route, resolved against the page's base so a sub-path mount works. */
+function ideApiUrl(path, params) {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  const url = new URL(path, base)
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value))
+  return url.href
+}
+
+/**
+ * One Turn's changed files.
+ * @returns `{ ok: true, summary }` or a failure code.
+ */
+async function ideChangesSummary(sessionId, seq, signal) {
+  let response
+  try {
+    response = await fetch(ideApiUrl(IDE_CHANGES_SUMMARY, { sessionId, seq }), { signal })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  const summary = parsed.value ?? parsed
+  if (summary === null || typeof summary !== 'object' || !Array.isArray(summary.files)) {
+    return { ok: false, error: parsed.error?.code ?? 'shape' }
+  }
+  return { ok: true, summary }
+}
+
+/**
+ * One changed file's comparison for the Turn.
+ * @returns `{ ok: true, diff }` or a failure code.
+ */
+async function ideChangesDiff(sessionId, seq, index, signal) {
+  let response
+  try {
+    response = await fetch(ideApiUrl(IDE_CHANGES_DIFF, { sessionId, seq, index }), { signal })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  const diff = parsed.value ?? parsed
+  if (diff === null || typeof diff !== 'object') return { ok: false, error: parsed.error?.code ?? 'shape' }
+  return { ok: true, diff }
+}
+
+/**
+ * The first line this file gained, in its turn-end numbering.
+ *
+ * Hunk bodies carry `+`, `-`, or ` ` prefixes; walking the hunks in order and
+ * counting only context and added lines lands on the first added line's number.
+ * A deletion-only change answers its hunk's first new line.
+ *
+ * @returns the 1-based line, or 0 when the comparison has none.
+ */
+function ideFirstChangedLine(diff) {
+  if (diff?.kind !== 'text' || !Array.isArray(diff.hunks)) return 0
+  let fallback = 0
+  for (const hunk of diff.hunks) {
+    let line = Number.isFinite(hunk?.newStart) ? hunk.newStart : 1
+    for (const text of hunk?.lines ?? []) {
+      if (typeof text !== 'string') continue
+      if (text.startsWith('+')) return line
+      if (text.startsWith(' ') || text.startsWith('-')) {
+        if (fallback === 0) fallback = line
+        if (text.startsWith(' ')) line += 1
+      }
+    }
+  }
+  return fallback
+}
+
+/** Tool names that write to the workspace, matched case-insensitively. */
+const IDE_WRITE_TOOLS = /(^|_|\b)(edit|write|multiedit|str_replace|create|apply_patch|notebook_edit)(\b|_)/i
+
+/**
+ * Paths a Turn's write-tool calls touched, recovered from the event log.
+ *
+ * The Host keeps change summaries in memory only, so a restart leaves past Turns
+ * with no summary — while their tool calls stay in the Session log. This walks
+ * the Trajectory snapshot for calls placed inside the Turn and reads the path out
+ * of the call input, which tolerates every tool that names the file differently.
+ *
+ * @returns unique workspace-relative paths in first-touch order.
+ */
+function ideTurnEditedPaths(trajectory, turnNumber) {
+  if (trajectory === undefined || trajectory === null) return []
+  if (!Number.isFinite(turnNumber)) return []
+  const mine = new Set()
+  for (const [seq, location] of trajectory.eventLocations ?? []) {
+    if (location === undefined || location === null) continue
+    if (location.kind === 'turn' && location.turn?.turn === turnNumber) mine.add(seq)
+    else if (location.kind === 'step' && location.turn?.turn === turnNumber) mine.add(seq)
+  }
+  const paths = []
+  const seen = new Set()
+  for (const node of trajectory.eventNodes ?? []) {
+    for (const match of node?.matches ?? []) {
+      const event = match?.event
+      if (event === undefined || event === null) continue
+      if (!mine.has(event.seq)) continue
+      if (event.type !== 'tool/call') continue
+      const name = String(event.data?.name ?? '')
+      if (!IDE_WRITE_TOOLS.test(name)) continue
+      // The Session log names the field `arguments`; older shapes used `input`.
+      const raw = event.data?.arguments ?? event.data?.input
+      let payload
+      try {
+        payload = typeof raw === 'string' ? raw : JSON.stringify(raw ?? {})
+      } catch (error) {
+        void error
+        continue
+      }
+      for (const key of ['file_path', 'filePath', 'path', 'notebook_path']) {
+        const pattern = new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)+)"`)
+        const found = pattern.exec(payload)
+        if (found === null) continue
+        let value = found[1].replace(/\\\\(.)/g, '$1')
+        if (value === '' || seen.has(value)) break
+        seen.add(value)
+        paths.push(value)
+        break
+      }
+    }
+  }
+  return paths
+}
+
+/**
+ * The Turn's changes, with a jump into the code workspace per file.
+ *
+ * Renders nothing when the Turn changed no files, so Turns that only talked stay
+ * as compact as they were.
+ */
+function IdeTurnChanges(props) {
+  const { sessionId, seq, turn, store, translate, openPanel, useTrajectory } = props
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const [state, setState] = useState({ files: [], total: 0, added: 0, deleted: 0, failed: false, fromLog: false })
+  // Hooks must run during render: read the Trajectory snapshot here and let the
+  // async path below close over it, instead of calling the hook in a callback.
+  const trajectory = typeof useTrajectory === 'function' ? useTrajectory((snapshot) => snapshot) : undefined
+  const [expanded, setExpanded] = useState(false)
+  const [busy, setBusy] = useState('')
+
+  // The summary is served under the `workspace/changes` event's sequence, not the
+  // Turn's closing one: the shipped deliverables node records it on the Turn, so
+  // read it from there and only fall back to the slot's own sequence.
+  const recorded = typeof turn?.data?.get === 'function' ? turn.data.get('deliverables') : undefined
+  const changesSeq = Number.isFinite(recorded?.changes?.seq)
+    ? recorded.changes.seq
+    : (Number.isFinite(seq) ? seq : undefined)
+
+  useEffect(() => {
+    if (typeof sessionId !== 'string' || !Number.isFinite(changesSeq)) return undefined
+    const controller = new AbortController()
+    void ideChangesSummary(sessionId, changesSeq, controller.signal)
+      .then(async (result) => {
+        if (result.ok !== true) {
+          // The Host keeps change summaries in memory only, so a Turn whose Host
+          // restarted has none. Its tool calls stay in the Session log, so the
+          // list is recovered from the loaded Trajectory window when it reaches
+          // back far enough.
+          const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+          setState({
+            files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
+            total: recovered.length,
+            added: 0,
+            deleted: 0,
+            failed: recovered.length === 0,
+            fromLog: true,
+          })
+          return
+        }
+        const { files, total, added, deleted } = result.summary
+        setState({
+          files: files.filter((file) => typeof file?.path === 'string' && file.path !== ''),
+          total: Number.isFinite(total) ? total : files.length,
+          added: Number.isFinite(added) ? added : 0,
+          deleted: Number.isFinite(deleted) ? deleted : 0,
+          failed: false,
+          fromLog: false,
+        })
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [sessionId, changesSeq, trajectory])
+
+  if (state.failed || state.files.length === 0) return null
+
+  const foldable = state.files.length > IDE_TURN_ROWS
+  const rows = foldable && !expanded ? state.files.slice(0, IDE_TURN_ROWS) : state.files
+
+  const jump = async (file, index) => {
+    if (busy !== '') return
+    setBusy(file.path)
+    let line = 0
+    if (!state.fromLog) {
+      const fetched = await ideChangesDiff(sessionId, changesSeq, index)
+      if (fetched.ok === true) line = ideFirstChangedLine(fetched.diff)
+    }
+    setBusy('')
+    const opened = store.openAt(file.path, line === 0 ? undefined : line)
+    if (!opened) {
+      store.setNotice(`${tr('turnJumpFailed')}: ${file.display ?? file.path}`)
+      return
+    }
+    store.setNotice('')
+    if (typeof openPanel === 'function') openPanel()
+  }
+
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', { key: 'box', className: 'iw-turn' }, [
+      h('button', {
+        key: 'head',
+        type: 'button',
+        className: 'iw-turn-head',
+        title: tr('turnChangesHint'),
+        onClick: () => {
+          const first = state.files[0]
+          if (first !== undefined) void jump(first, 0)
+        },
+      }, [
+        h(IdeFileIcon, { key: 'ic', lang: '', size: 14 }),
+        h('span', { key: 't', className: 'iw-turn-title' }, tr('turnChanges')),
+        h('span', { key: 'c', className: 'iw-turn-count' }, `${state.total}`),
+        state.fromLog
+          ? null
+          : h('span', { key: 'a', className: 'iw-turn-add' }, `+${state.added}`),
+        state.fromLog
+          ? null
+          : h('span', { key: 'd', className: 'iw-turn-del' }, `-${state.deleted}`),
+      ]),
+      h('div', { key: 'rows', className: 'iw-turn-rows' }, rows.map((file, index) => h('button', {
+        key: file.path,
+        type: 'button',
+        className: `iw-turn-row${busy === file.path ? ' busy' : ''}`,
+        title: `${file.display ?? file.path}  ${tr('turnJumpHint')}`,
+        onClick: () => void jump(file, index),
+      }, [
+        h('span', { key: 'n', className: 'iw-turn-name' }, (file.display ?? file.path).split('/').pop()),
+        h('span', { key: 'p', className: 'iw-turn-path' }, file.display ?? file.path),
+        state.fromLog
+          ? null
+          : h('span', { key: 'a', className: 'iw-turn-add' }, `+${file.added ?? 0}`),
+        state.fromLog
+          ? null
+          : h('span', { key: 'd', className: 'iw-turn-del' }, `-${file.deleted ?? 0}`),
+      ]))),
+      foldable
+        ? h('button', {
+          key: 'fold',
+          type: 'button',
+          className: 'iw-turn-fold',
+          onClick: () => setExpanded(!expanded),
+        }, expanded ? tr('turnFoldLess') : `${tr('turnFoldMore')} (${state.files.length - IDE_TURN_ROWS})`)
+        : null,
+    ]),
+  ])
+}
+
 // ---- 60-jump.js ----------------------------------------------------------
 /**
  * Reference interception: a file address opened anywhere in the shell becomes a
@@ -5155,6 +5530,18 @@ function apply(ctx) {
     inject: () => ({ store, translate, openPanel, backToChat }),
   }, IdeFooterAction)), 'dsh-ide-window: footer action')
 
+  // The Turn's changed files, in the Turn's own tail: clicking one opens this
+  // panel at the first changed line. `seq` and `sessionId` come from the slot's
+  // owner props, so the card always describes the Turn it sits under.
+  ctx.effect(() => ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
+    name: 'conversation.chat.turnTail',
+    id: `${IDE_NS}:turn-changes`,
+    order: 30,
+    registrant: IDE_NS,
+    locale: IDE_NS,
+    inject: () => ({ store, translate, openPanel }),
+  }, IdeTurnChanges)), 'dsh-ide-window: turn changes')
+
   // The conversation header's leading seat: global navigation, left of the title.
   ctx.effect(() => ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
     name: 'conversation.header.leading',
@@ -5172,26 +5559,63 @@ function apply(ctx) {
     inject: () => ({ store }),
   }, IdeSessionTracker)), 'dsh-ide-window: session tracker')
 
-  // ⌘1 / Ctrl+1 goes to the conversation, ⌘2 / Ctrl+2 to this panel. Registered
-  // at apply scope so both work from either view; editable fields keep their own
-  // shortcuts, so typing in the composer is not hijacked.
-  try {
-    if (typeof globalThis.addEventListener === 'function') {
-      globalThis.addEventListener('keydown', (event) => {
-        if (event.metaKey !== true && event.ctrlKey !== true) return
-        if (event.altKey === true || event.shiftKey === true) return
-        if (event.key !== '1' && event.key !== '2') return
-        const target = event.target
-        const tag = target?.tagName ?? ''
-        const editable = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true
-        if (editable && event.key === '1') return
-        event.preventDefault()
-        if (event.key === '1') selectPanel(null)
-        else openPanel()
-      }, true)
+  /**
+   * The two commands this plugin contributes to the shortcut catalog.
+   *
+   * Registered through `ctx.shortcuts` rather than a raw keydown listener, so
+   * they appear in Settings → Shortcuts and every user can rebind them. Web
+   * defaults carry `alt` because plain ⌘1/⌘2 switches browser tabs.
+   */
+  const IDE_SHORTCUTS = [
+    {
+      id: 'dsh-ide-window.toggle',
+      label: () => translate('shortcutToggle'),
+      aliases: ['code', 'workspace', 'ide', 'panel', '代码', '工作区'],
+      run: () => openPanel(),
+    },
+    {
+      id: 'dsh-ide-window.back-to-chat',
+      label: () => translate('shortcutBackToChat'),
+      aliases: ['conversation', 'chat', 'back', '对话', '返回'],
+      run: () => selectPanel(null),
+    },
+  ]
+
+  // Registered directly on `ctx.shortcuts`: the service is guaranteed present by
+  // the module's `inject` list, and `ctx.effect` owns the disposer.
+  if (ctx.shortcuts !== undefined && typeof ctx.shortcuts.register === 'function') {
+    for (const command of IDE_SHORTCUTS) {
+      const digit = command.id.endsWith('toggle') ? 'Digit2' : 'Digit1'
+      const webCode = command.id.endsWith('toggle') ? 'KeyI' : 'KeyU'
+      try {
+        ctx.effect(() => ctx.shortcuts.register({
+          id: command.id,
+          label: command.label,
+          aliases: command.aliases,
+          defaults: {
+            'desktop:macos': { code: digit, modifiers: ['primary'] },
+            'desktop:windows': { code: digit, modifiers: ['primary'] },
+            'desktop:linux': { code: digit, modifiers: ['primary'] },
+            // Web keeps letters: the browser reserves the digit rows for tab
+            // switching, and this plugin's desktop binding is the one that matters.
+            // No `web:linux` default on purpose: that profile is validated
+            // against a tiny whitelist (Slash/Comma/Period), so shipping a
+            // letter there would reject the whole registration. Users on Linux
+            // can still bind it themselves.
+            'web:macos': { code: webCode, modifiers: ['primary', 'alt'] },
+            'web:windows': { code: webCode, modifiers: ['primary', 'alt'] },
+          },
+          regions: ['page', 'editable', 'terminal'],
+          modals: [],
+          resolve: ({ region }) => (region === 'editable' && command.id.endsWith('back-to-chat')
+            ? { status: 'pass' }
+            : { status: 'handled', run: () => command.run() }),
+        }), `dsh-ide-window: shortcut ${command.id}`)
+      } catch (error) {
+        // A bad default must never take the rest of the plugin down with it.
+        void error
+      }
     }
-  } catch (error) {
-    void error
   }
 
   /**
@@ -5239,6 +5663,9 @@ function apply(ctx) {
   ctx.effect(() => () => store.dispose(), 'dsh-ide-window: streams')
 }
 
-    return { inject: ['slots', 'locale'], apply }
+    // 'shortcuts' is read directly at apply time (the plugin contributes two
+    // rebindable commands), and the client runtime refuses any service that is
+    // not declared here: cannot get property "shortcuts" without inject.
+    return { inject: ['slots', 'locale', 'shortcuts'], apply }
   },
 })

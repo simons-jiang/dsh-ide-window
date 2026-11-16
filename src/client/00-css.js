@@ -666,6 +666,80 @@ const IDE_CSS = `
 }
 .iw-header-entry.active { color: var(--dsw-alias-label-primary, #e6e8ec); }
 
+
+/* The Turn's changed files, shown beside the shipped deliverables card. */
+.iw-turn {
+  margin: 6px 0;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-overlay, #212429);
+  max-width: 720px;
+}
+.iw-turn-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-turn-head:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-turn-title { font-weight: 500; }
+.iw-turn-count {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2, #2a2e35);
+  font-size: 11px;
+  opacity: 0.85;
+}
+.iw-turn-add { color: #3fa55a; font-variant-numeric: tabular-nums; }
+.iw-turn-del { color: #c95c5c; font-variant-numeric: tabular-nums; }
+.iw-turn-rows { display: flex; flex-direction: column; }
+.iw-turn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 0;
+  border-top: 1px solid var(--dsw-alias-border-l1, #262a30);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-turn-row:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-turn-row.busy { opacity: 0.6; }
+.iw-turn-name { flex: 0 0 auto; }
+.iw-turn-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.55;
+  font-size: 11.5px;
+}
+.iw-turn-fold {
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-top: 1px solid var(--dsw-alias-border-l1, #262a30);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.iw-turn-fold:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

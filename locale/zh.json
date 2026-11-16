@@ -87,5 +87,13 @@
   "tabCallersText": "调用方（文本匹配）",
   "navBack": "后退（鼠标侧键）",
   "navForward": "前进（鼠标侧键）",
-  "noSourceInJar": "该 jar 没有源码"
+  "noSourceInJar": "该 jar 没有源码",
+  "shortcutToggle": "代码工作区：打开 / 关闭",
+  "shortcutBackToChat": "返回对话",
+  "turnChanges": "代码改动",
+  "turnChangesHint": "在代码工作区打开第一个改动文件",
+  "turnJumpHint": "在代码工作区打开并定位到改动的行",
+  "turnJumpFailed": "打开失败",
+  "turnFoldMore": "展开其余",
+  "turnFoldLess": "收起"
 }

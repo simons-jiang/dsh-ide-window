@@ -441,6 +441,18 @@ function apply(ctx) {
     inject: () => ({ store, translate, openPanel, backToChat }),
   }, IdeFooterAction)), 'dsh-ide-window: footer action')
 
+  // The Turn's changed files, in the Turn's own tail: clicking one opens this
+  // panel at the first changed line. `seq` and `sessionId` come from the slot's
+  // owner props, so the card always describes the Turn it sits under.
+  ctx.effect(() => ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
+    name: 'conversation.chat.turnTail',
+    id: `${IDE_NS}:turn-changes`,
+    order: 30,
+    registrant: IDE_NS,
+    locale: IDE_NS,
+    inject: () => ({ store, translate, openPanel }),
+  }, IdeTurnChanges)), 'dsh-ide-window: turn changes')
+
   // The conversation header's leading seat: global navigation, left of the title.
   ctx.effect(() => ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
     name: 'conversation.header.leading',
@@ -458,26 +470,63 @@ function apply(ctx) {
     inject: () => ({ store }),
   }, IdeSessionTracker)), 'dsh-ide-window: session tracker')
 
-  // ⌘1 / Ctrl+1 goes to the conversation, ⌘2 / Ctrl+2 to this panel. Registered
-  // at apply scope so both work from either view; editable fields keep their own
-  // shortcuts, so typing in the composer is not hijacked.
-  try {
-    if (typeof globalThis.addEventListener === 'function') {
-      globalThis.addEventListener('keydown', (event) => {
-        if (event.metaKey !== true && event.ctrlKey !== true) return
-        if (event.altKey === true || event.shiftKey === true) return
-        if (event.key !== '1' && event.key !== '2') return
-        const target = event.target
-        const tag = target?.tagName ?? ''
-        const editable = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true
-        if (editable && event.key === '1') return
-        event.preventDefault()
-        if (event.key === '1') selectPanel(null)
-        else openPanel()
-      }, true)
+  /**
+   * The two commands this plugin contributes to the shortcut catalog.
+   *
+   * Registered through `ctx.shortcuts` rather than a raw keydown listener, so
+   * they appear in Settings → Shortcuts and every user can rebind them. Web
+   * defaults carry `alt` because plain ⌘1/⌘2 switches browser tabs.
+   */
+  const IDE_SHORTCUTS = [
+    {
+      id: 'dsh-ide-window.toggle',
+      label: () => translate('shortcutToggle'),
+      aliases: ['code', 'workspace', 'ide', 'panel', '代码', '工作区'],
+      run: () => openPanel(),
+    },
+    {
+      id: 'dsh-ide-window.back-to-chat',
+      label: () => translate('shortcutBackToChat'),
+      aliases: ['conversation', 'chat', 'back', '对话', '返回'],
+      run: () => selectPanel(null),
+    },
+  ]
+
+  // Registered directly on `ctx.shortcuts`: the service is guaranteed present by
+  // the module's `inject` list, and `ctx.effect` owns the disposer.
+  if (ctx.shortcuts !== undefined && typeof ctx.shortcuts.register === 'function') {
+    for (const command of IDE_SHORTCUTS) {
+      const digit = command.id.endsWith('toggle') ? 'Digit2' : 'Digit1'
+      const webCode = command.id.endsWith('toggle') ? 'KeyI' : 'KeyU'
+      try {
+        ctx.effect(() => ctx.shortcuts.register({
+          id: command.id,
+          label: command.label,
+          aliases: command.aliases,
+          defaults: {
+            'desktop:macos': { code: digit, modifiers: ['primary'] },
+            'desktop:windows': { code: digit, modifiers: ['primary'] },
+            'desktop:linux': { code: digit, modifiers: ['primary'] },
+            // Web keeps letters: the browser reserves the digit rows for tab
+            // switching, and this plugin's desktop binding is the one that matters.
+            // No `web:linux` default on purpose: that profile is validated
+            // against a tiny whitelist (Slash/Comma/Period), so shipping a
+            // letter there would reject the whole registration. Users on Linux
+            // can still bind it themselves.
+            'web:macos': { code: webCode, modifiers: ['primary', 'alt'] },
+            'web:windows': { code: webCode, modifiers: ['primary', 'alt'] },
+          },
+          regions: ['page', 'editable', 'terminal'],
+          modals: [],
+          resolve: ({ region }) => (region === 'editable' && command.id.endsWith('back-to-chat')
+            ? { status: 'pass' }
+            : { status: 'handled', run: () => command.run() }),
+        }), `dsh-ide-window: shortcut ${command.id}`)
+      } catch (error) {
+        // A bad default must never take the rest of the plugin down with it.
+        void error
+      }
     }
-  } catch (error) {
-    void error
   }
 
   /**
