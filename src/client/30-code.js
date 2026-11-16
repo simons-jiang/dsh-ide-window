@@ -57,6 +57,12 @@ function IdeFileTab({ tab, active, store, tr }) {
     onAuxClick: (event) => {
       if (event.button === 1) store.closeTab(tab.path)
     },
+    // Right click opens the same menu IDEA puts on an editor tab.
+    onContextMenu: (event) => {
+      event.preventDefault()
+      const box = event.currentTarget.getBoundingClientRect()
+      store.setTabMenu({ path: tab.path, x: box.left, y: box.bottom + 2 })
+    },
   }, [
     h('span', { key: 'ic', style: { display: 'inline-flex' } }, h(IdeFileIcon, { lang: ideLangOf(tab.name), size: 13 })),
     h('span', { key: 'lb', className: 'iw-tab-label' }, tab.name),

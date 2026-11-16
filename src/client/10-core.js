@@ -390,6 +390,8 @@ function ideCreateStore(refs) {
     rootPath: '',
     /** True once the `workspaceFiles` Remote face is reachable. */
     remoteReady: false,
+    /** The tab context menu, or null: `{ path, x, y }` in panel coordinates. */
+    tabMenu: null,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -987,6 +989,62 @@ function ideCreateStore(refs) {
     patch({ tabs: [], activePath: null })
   }
 
+  /**
+   * Close tabs by predicate, keeping the active one sensible.
+   *
+   * One implementation serves 「关闭其他 / 关闭右侧 / 关闭未修改 / 关闭只读」: the
+   * difference is only which tabs the predicate keeps.
+   */
+  function closeTabsWhere(keep) {
+    const tabs = state.tabs.filter(keep)
+    if (tabs.length === state.tabs.length) return
+    const kept = new Set(tabs.map((tab) => tab.path))
+    for (const tab of state.tabs) {
+      if (!kept.has(tab.path)) tabByAbsolute.delete(ideAbs(state.rootPath, tab.path))
+    }
+    const activePath = tabs.some((tab) => tab.path === state.activePath)
+      ? state.activePath
+      : (tabs[tabs.length - 1]?.path ?? null)
+    patch({ tabs, activePath })
+  }
+
+  /** Close every tab except `path`; an unknown path closes nothing. */
+  function closeOthers(path) {
+    if (!state.tabs.some((tab) => tab.path === path)) return
+    closeTabsWhere((tab) => tab.path === path)
+  }
+
+  /** Close every tab to the right of `path`. */
+  function closeToRight(path) {
+    const index = state.tabs.findIndex((tab) => tab.path === path)
+    if (index < 0) return
+    const kept = new Set(state.tabs.slice(0, index + 1).map((tab) => tab.path))
+    closeTabsWhere((tab) => kept.has(tab.path))
+  }
+
+  /** Close every tab to the left of `path`. */
+  function closeToLeft(path) {
+    const index = state.tabs.findIndex((tab) => tab.path === path)
+    if (index < 0) return
+    const kept = new Set(state.tabs.slice(index).map((tab) => tab.path))
+    closeTabsWhere((tab) => kept.has(tab.path))
+  }
+
+  /** Close the jar tabs: they are the read-only rows this panel can open. */
+  function closeReadOnly() {
+    closeTabsWhere((tab) => tab.kind !== 'jar')
+  }
+
+  /** Close every tab whose file the editor never modified (all of them: read-only). */
+  function closeUnmodified() {
+    closeTabsWhere(() => false)
+  }
+
+  /** Open or close the tab context menu. */
+  function setTabMenu(menu) {
+    patch({ tabMenu: menu === null || menu === undefined ? null : menu })
+  }
+
   /** Activate one tab. */
   function activateTab(path) {
     if (path !== state.activePath) recordHistory()
@@ -1242,6 +1300,12 @@ function ideCreateStore(refs) {
     openFile,
     openAt,
     closeTab,
+    closeOthers,
+    closeToRight,
+    closeToLeft,
+    closeReadOnly,
+    closeUnmodified,
+    setTabMenu,
     closeOtherTabs,
     closeAllTabs,
     activateTab,

@@ -852,6 +852,44 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'when no source is readable either, the banner says so', JSON.stringify(outside.notices.slice(-1)))
 }
 
+// ---- tab context menu ------------------------------------------------------
+{
+  const store = mode.record.registrations.find((entry) => entry.name === 'main').inject().store
+  store.setRoot('/tmp/ws')
+  // 三个标签：两个工作区文件 + 一个 jar
+  store.openAt('a/A.java', 1)
+  store.openAt('b/B.java', 1)
+  store.openJarSource({ className: 'x.Y', jar: '/tmp/x-sources.jar', text: 'class Y {}', line: 1 })
+  const paths = () => store.getState().tabs.map((tab) => tab.path)
+  check(paths().length === 3, 'three tabs are open', JSON.stringify(paths()))
+
+  store.setTabMenu({ path: 'b/B.java', x: 10, y: 20 })
+  check(store.getState().tabMenu?.path === 'b/B.java', 'the menu records its tab')
+
+  store.closeToRight('b/B.java')
+  check(paths().length === 2, 'closing to the right keeps the left ones', JSON.stringify(paths()))
+  check(!paths().includes('#jar#x.Y'), 'the jar tab to the right is gone', JSON.stringify(paths()))
+
+  // 重新开一个 jar，验证「关闭左侧」只留下自己
+  store.openJarSource({ className: 'x.Y', jar: '/tmp/x-sources.jar', text: 'class Y {}', line: 1 })
+  store.closeToLeft('#jar#x.Y')
+  check(paths().length === 1 && paths()[0] === '#jar#x.Y', 'closing to the left keeps the tab itself', JSON.stringify(paths()))
+
+  store.openAt('c/C.java', 1)
+  store.closeReadOnly()
+  check(!paths().some((path) => path.startsWith('#jar#')), 'read-only jar tabs close first', JSON.stringify(paths()))
+
+  store.closeOthers('#jar#none')
+  check(paths().length === 1, 'closing others with an absent tab keeps everything', JSON.stringify(paths()))
+  store.closeOthers(paths()[0])
+  check(paths().length === 1, 'closing others keeps exactly one', JSON.stringify(paths()))
+
+  store.closeAllTabs()
+  check(paths().length === 0, 'closing all empties the strip', JSON.stringify(paths()))
+  store.setTabMenu(null)
+  check(store.getState().tabMenu === null, 'the menu closes')
+}
+
 // ---- the single shortcut registry ------------------------------------------
 {
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()

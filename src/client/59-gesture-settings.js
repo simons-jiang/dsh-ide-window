@@ -213,3 +213,69 @@ function IdeWorkspaceSettingsItem(props) {
       : null,
   ])
 }
+
+/**
+ * The tab context menu, mirroring IDEA's.
+ *
+ * Items that need data this plugin does not own — DSH keeps no draft API for
+ * 「添加到智能体上下文」 — copy an `@`-reference instead and say so, rather than
+ * pretending to do something.
+ */
+function IdeTabMenu({ store, state, tr, copy }) {
+  const menu = state.tabMenu
+  if (menu === null || menu === undefined) return null
+  const path = menu.path
+  const tab = state.tabs.find((entry) => entry.path === path)
+  if (tab === undefined) return null
+  const run = (action) => () => {
+    store.setTabMenu(null)
+    action()
+  }
+  // Icons on the left and the label next to them, the way an editor's menu reads.
+  const items = [
+    { key: 'close', icon: IdeCloseIcon, label: tr('tabMenuClose'), run: () => store.closeTab(path) },
+    { key: 'others', icon: IdeLayersIcon, label: tr('tabMenuCloseOthers'), run: () => store.closeOthers(path) },
+    { key: 'all', icon: IdeStackIcon, label: tr('tabMenuCloseAll'), run: () => store.closeAllTabs() },
+    { key: 'unmodified', icon: IdeDotIcon, label: tr('tabMenuCloseUnmodified'), run: () => store.closeUnmodified() },
+    { key: 'left', icon: IdeArrowLeftIcon, label: tr('tabMenuCloseLeft'), run: () => store.closeToLeft(path) },
+    { key: 'right', icon: IdeArrowRightIcon, label: tr('tabMenuCloseRight'), run: () => store.closeToRight(path) },
+    { key: 'readonly', icon: IdeLockIcon, label: tr('tabMenuCloseReadOnly'), run: () => store.closeReadOnly() },
+    { key: 'sep1', separator: true },
+    { key: 'context', icon: IdeAtIcon, label: tr('tabMenuAddToContext'), run: () => copy(`@${path}`) },
+    { key: 'copy', icon: IdeCopyIcon, label: tr('tabMenuCopyPath'), run: () => copy(path) },
+  ]
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: () => store.setTabMenu(null),
+      onContextMenu: (event) => {
+        event.preventDefault()
+        store.setTabMenu(null)
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('tabMenuLabel'),
+      // Keep the menu inside the window when the tab sits near an edge.
+      style: {
+        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
+        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 340))}px`,
+      },
+      onPointerDown: (event) => event.stopPropagation(),
+    }, items.map((item) => (item.separator === true
+      ? h('div', { key: item.key, className: 'iw-menu-sep' })
+      : h('button', {
+        key: item.key,
+        type: 'button',
+        role: 'menuitem',
+        className: 'iw-menu-item',
+        onClick: run(item.run),
+      }, [
+        h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+        h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+      ]))))),
+  ])
+}

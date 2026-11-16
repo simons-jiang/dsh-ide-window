@@ -125,5 +125,16 @@
   "settingsBasic": "Basics",
   "settingsFont": "Font size",
   "settingsCodeFont": "Editor",
-  "settingsTreeFont": "File tree"
+  "settingsTreeFont": "File tree",
+  "tabMenuClose": "Close",
+  "tabMenuCloseOthers": "Close other tabs",
+  "tabMenuCloseAll": "Close all tabs",
+  "tabMenuCloseUnmodified": "Close unmodified tabs",
+  "tabMenuCloseRight": "Close tabs to the right",
+  "tabMenuCloseReadOnly": "Close all read-only tabs",
+  "tabMenuAddToContext": "Add to agent context",
+  "tabMenuCopyPath": "Copy path / reference",
+  "tabMenuCopied": "Copied — paste it into the chat input",
+  "tabMenuCloseLeft": "Close tabs to the left",
+  "tabMenuLabel": "Tab actions"
 }

@@ -916,6 +916,61 @@ const IDE_CSS = `
   padding: 4px 0 8px 10px;
   border-left: 1.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
+
+/* Tab context menu: DSH's menu surface, with the panel's own typography. */
+.iw-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  background: transparent;
+}
+.iw-menu {
+  position: fixed;
+  min-width: 232px;
+  padding: 5px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-md, 10px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #23262b));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, none);
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.35));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.iw-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 27px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 27px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-menu-item:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
+.iw-menu-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, #4a7dff));
+}
+.iw-menu-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+.iw-menu-label { flex: 1 1 auto; }
+.iw-menu-sep {
+  height: 0.5px;
+  margin: 5px 8px;
+  background: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+}
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

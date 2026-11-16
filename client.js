@@ -132,6 +132,17 @@ window.__ModuleLoader__.load({
     "settingsFont": "Font size",
     "settingsCodeFont": "Editor",
     "settingsTreeFont": "File tree",
+    "tabMenuClose": "Close",
+    "tabMenuCloseOthers": "Close other tabs",
+    "tabMenuCloseAll": "Close all tabs",
+    "tabMenuCloseUnmodified": "Close unmodified tabs",
+    "tabMenuCloseRight": "Close tabs to the right",
+    "tabMenuCloseReadOnly": "Close all read-only tabs",
+    "tabMenuAddToContext": "Add to agent context",
+    "tabMenuCopyPath": "Copy path / reference",
+    "tabMenuCopied": "Copied — paste it into the chat input",
+    "tabMenuCloseLeft": "Close tabs to the left",
+    "tabMenuLabel": "Tab actions",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -257,6 +268,17 @@ window.__ModuleLoader__.load({
     "settingsFont": "字号",
     "settingsCodeFont": "代码字号",
     "settingsTreeFont": "文件树字号",
+    "tabMenuClose": "关闭",
+    "tabMenuCloseOthers": "关闭其他标签页",
+    "tabMenuCloseAll": "关闭所有标签页",
+    "tabMenuCloseUnmodified": "关闭未修改标签页",
+    "tabMenuCloseRight": "关闭右侧标签页",
+    "tabMenuCloseReadOnly": "关闭所有只读项",
+    "tabMenuAddToContext": "添加到智能体上下文",
+    "tabMenuCopyPath": "复制路径/引用",
+    "tabMenuCopied": "已复制，可直接粘贴到对话输入框",
+    "tabMenuCloseLeft": "关闭左侧标签页",
+    "tabMenuLabel": "标签页操作",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1178,6 +1200,61 @@ const IDE_CSS = `
   padding: 4px 0 8px 10px;
   border-left: 1.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
+
+/* Tab context menu: DSH's menu surface, with the panel's own typography. */
+.iw-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  background: transparent;
+}
+.iw-menu {
+  position: fixed;
+  min-width: 232px;
+  padding: 5px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-md, 10px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #23262b));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, none);
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.35));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.iw-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 27px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 27px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-menu-item:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
+.iw-menu-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, #4a7dff));
+}
+.iw-menu-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+.iw-menu-label { flex: 1 1 auto; }
+.iw-menu-sep {
+  height: 0.5px;
+  margin: 5px 8px;
+  background: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+}
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -1313,6 +1390,57 @@ function IdeLinkIcon({ size = 15 }) {
     h('path', { key: 'a', d: 'M6.4 9.6 9.6 6.4' }),
     h('path', { key: 'b', d: 'M7.1 4.6 8.5 3.2a2.6 2.6 0 0 1 3.7 3.7l-1.4 1.4' }),
     h('path', { key: 'c', d: 'M8.9 11.4 7.5 12.8a2.6 2.6 0 0 1-3.7-3.7l1.4-1.4' }),
+  ])
+}
+
+/** Menu glyphs: arrows, copy, layers and a lock, all 14px on the same grid. */
+function IdeArrowLeftIcon({ size = 13 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M11 7H3M6.5 3.5 3 7l3.5 3.5' })])
+}
+
+function IdeArrowRightIcon({ size = 13 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M3 7h8M7.5 3.5 11 7l-3.5 3.5' })])
+}
+
+function IdeCopyIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 5, y: 5, width: 6, height: 6, rx: 1.2 }),
+    h('path', { key: 'b', d: 'M9 5V3.6A1.6 1.6 0 0 0 7.4 2H3.6A1.6 1.6 0 0 0 2 3.6v3.8A1.6 1.6 0 0 0 3.6 9H5' }),
+  ])
+}
+
+function IdeLayersIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 2, y: 2, width: 6, height: 6, rx: 1.2 }),
+    h('rect', { key: 'b', x: 6, y: 6, width: 6, height: 6, rx: 1.2 }),
+  ])
+}
+
+function IdeStackIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M2 5.5 7 3l5 2.5-5 2.5-5-2.5Z' }),
+    h('path', { key: 'b', d: 'M2 9 7 11.5 12 9' }),
+  ])
+}
+
+function IdeDotIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 2, y: 2, width: 10, height: 10, rx: 2.4 }),
+    h('circle', { key: 'b', cx: 7, cy: 7, r: 1.8 }),
+  ])
+}
+
+function IdeLockIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 3, y: 6, width: 8, height: 6, rx: 1.4 }),
+    h('path', { key: 'b', d: 'M5 6V4.6a2 2 0 0 1 4 0V6' }),
+  ])
+}
+
+function IdeAtIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'a', cx: 7, cy: 7, r: 2 }),
+    h('path', { key: 'b', d: 'M9 7v1.2a1.8 1.8 0 0 0 3.6 0V7A5.6 5.6 0 1 0 7 12.6c1 0 1.9-.2 2.6-.6' }),
   ])
 }
 
@@ -1961,6 +2089,8 @@ function ideCreateStore(refs) {
     rootPath: '',
     /** True once the `workspaceFiles` Remote face is reachable. */
     remoteReady: false,
+    /** The tab context menu, or null: `{ path, x, y }` in panel coordinates. */
+    tabMenu: null,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -2558,6 +2688,62 @@ function ideCreateStore(refs) {
     patch({ tabs: [], activePath: null })
   }
 
+  /**
+   * Close tabs by predicate, keeping the active one sensible.
+   *
+   * One implementation serves 「关闭其他 / 关闭右侧 / 关闭未修改 / 关闭只读」: the
+   * difference is only which tabs the predicate keeps.
+   */
+  function closeTabsWhere(keep) {
+    const tabs = state.tabs.filter(keep)
+    if (tabs.length === state.tabs.length) return
+    const kept = new Set(tabs.map((tab) => tab.path))
+    for (const tab of state.tabs) {
+      if (!kept.has(tab.path)) tabByAbsolute.delete(ideAbs(state.rootPath, tab.path))
+    }
+    const activePath = tabs.some((tab) => tab.path === state.activePath)
+      ? state.activePath
+      : (tabs[tabs.length - 1]?.path ?? null)
+    patch({ tabs, activePath })
+  }
+
+  /** Close every tab except `path`; an unknown path closes nothing. */
+  function closeOthers(path) {
+    if (!state.tabs.some((tab) => tab.path === path)) return
+    closeTabsWhere((tab) => tab.path === path)
+  }
+
+  /** Close every tab to the right of `path`. */
+  function closeToRight(path) {
+    const index = state.tabs.findIndex((tab) => tab.path === path)
+    if (index < 0) return
+    const kept = new Set(state.tabs.slice(0, index + 1).map((tab) => tab.path))
+    closeTabsWhere((tab) => kept.has(tab.path))
+  }
+
+  /** Close every tab to the left of `path`. */
+  function closeToLeft(path) {
+    const index = state.tabs.findIndex((tab) => tab.path === path)
+    if (index < 0) return
+    const kept = new Set(state.tabs.slice(index).map((tab) => tab.path))
+    closeTabsWhere((tab) => kept.has(tab.path))
+  }
+
+  /** Close the jar tabs: they are the read-only rows this panel can open. */
+  function closeReadOnly() {
+    closeTabsWhere((tab) => tab.kind !== 'jar')
+  }
+
+  /** Close every tab whose file the editor never modified (all of them: read-only). */
+  function closeUnmodified() {
+    closeTabsWhere(() => false)
+  }
+
+  /** Open or close the tab context menu. */
+  function setTabMenu(menu) {
+    patch({ tabMenu: menu === null || menu === undefined ? null : menu })
+  }
+
   /** Activate one tab. */
   function activateTab(path) {
     if (path !== state.activePath) recordHistory()
@@ -2813,6 +2999,12 @@ function ideCreateStore(refs) {
     openFile,
     openAt,
     closeTab,
+    closeOthers,
+    closeToRight,
+    closeToLeft,
+    closeReadOnly,
+    closeUnmodified,
+    setTabMenu,
     closeOtherTabs,
     closeAllTabs,
     activateTab,
@@ -3120,6 +3312,12 @@ function IdeFileTab({ tab, active, store, tr }) {
     onClick: () => store.activateTab(tab.path),
     onAuxClick: (event) => {
       if (event.button === 1) store.closeTab(tab.path)
+    },
+    // Right click opens the same menu IDEA puts on an editor tab.
+    onContextMenu: (event) => {
+      event.preventDefault()
+      const box = event.currentTarget.getBoundingClientRect()
+      store.setTabMenu({ path: tab.path, x: box.left, y: box.bottom + 2 })
     },
   }, [
     h('span', { key: 'ic', style: { display: 'inline-flex' } }, h(IdeFileIcon, { lang: ideLangOf(tab.name), size: 13 })),
@@ -4116,6 +4314,19 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    h(IdeTabMenu, {
+      key: 'tabmenu',
+      store,
+      state,
+      tr,
+      copy: (text) => {
+        const clip = globalThis.navigator?.clipboard
+        if (clip !== undefined && typeof clip.writeText === 'function') {
+          void clip.writeText(text).catch(() => undefined)
+        }
+        store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
+      },
+    }),
     h('div', { key: 'body', className: 'iw-body' }, [
       state.treeVisible ? h(IdeTree, { key: 'tree', store, state, tr }) : null,
       state.treeVisible ? h(IdeResizer, { key: 'resize', store, state, tr }) : null,
@@ -4860,6 +5071,72 @@ function IdeWorkspaceSettingsItem(props) {
           : null,
       ])
       : null,
+  ])
+}
+
+/**
+ * The tab context menu, mirroring IDEA's.
+ *
+ * Items that need data this plugin does not own — DSH keeps no draft API for
+ * 「添加到智能体上下文」 — copy an `@`-reference instead and say so, rather than
+ * pretending to do something.
+ */
+function IdeTabMenu({ store, state, tr, copy }) {
+  const menu = state.tabMenu
+  if (menu === null || menu === undefined) return null
+  const path = menu.path
+  const tab = state.tabs.find((entry) => entry.path === path)
+  if (tab === undefined) return null
+  const run = (action) => () => {
+    store.setTabMenu(null)
+    action()
+  }
+  // Icons on the left and the label next to them, the way an editor's menu reads.
+  const items = [
+    { key: 'close', icon: IdeCloseIcon, label: tr('tabMenuClose'), run: () => store.closeTab(path) },
+    { key: 'others', icon: IdeLayersIcon, label: tr('tabMenuCloseOthers'), run: () => store.closeOthers(path) },
+    { key: 'all', icon: IdeStackIcon, label: tr('tabMenuCloseAll'), run: () => store.closeAllTabs() },
+    { key: 'unmodified', icon: IdeDotIcon, label: tr('tabMenuCloseUnmodified'), run: () => store.closeUnmodified() },
+    { key: 'left', icon: IdeArrowLeftIcon, label: tr('tabMenuCloseLeft'), run: () => store.closeToLeft(path) },
+    { key: 'right', icon: IdeArrowRightIcon, label: tr('tabMenuCloseRight'), run: () => store.closeToRight(path) },
+    { key: 'readonly', icon: IdeLockIcon, label: tr('tabMenuCloseReadOnly'), run: () => store.closeReadOnly() },
+    { key: 'sep1', separator: true },
+    { key: 'context', icon: IdeAtIcon, label: tr('tabMenuAddToContext'), run: () => copy(`@${path}`) },
+    { key: 'copy', icon: IdeCopyIcon, label: tr('tabMenuCopyPath'), run: () => copy(path) },
+  ]
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: () => store.setTabMenu(null),
+      onContextMenu: (event) => {
+        event.preventDefault()
+        store.setTabMenu(null)
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('tabMenuLabel'),
+      // Keep the menu inside the window when the tab sits near an edge.
+      style: {
+        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
+        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 340))}px`,
+      },
+      onPointerDown: (event) => event.stopPropagation(),
+    }, items.map((item) => (item.separator === true
+      ? h('div', { key: item.key, className: 'iw-menu-sep' })
+      : h('button', {
+        key: item.key,
+        type: 'button',
+        role: 'menuitem',
+        className: 'iw-menu-item',
+        onClick: run(item.run),
+      }, [
+        h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+        h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+      ]))))),
   ])
 }
 

@@ -128,6 +128,57 @@ function IdeLinkIcon({ size = 15 }) {
   ])
 }
 
+/** Menu glyphs: arrows, copy, layers and a lock, all 14px on the same grid. */
+function IdeArrowLeftIcon({ size = 13 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M11 7H3M6.5 3.5 3 7l3.5 3.5' })])
+}
+
+function IdeArrowRightIcon({ size = 13 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M3 7h8M7.5 3.5 11 7l-3.5 3.5' })])
+}
+
+function IdeCopyIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 5, y: 5, width: 6, height: 6, rx: 1.2 }),
+    h('path', { key: 'b', d: 'M9 5V3.6A1.6 1.6 0 0 0 7.4 2H3.6A1.6 1.6 0 0 0 2 3.6v3.8A1.6 1.6 0 0 0 3.6 9H5' }),
+  ])
+}
+
+function IdeLayersIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 2, y: 2, width: 6, height: 6, rx: 1.2 }),
+    h('rect', { key: 'b', x: 6, y: 6, width: 6, height: 6, rx: 1.2 }),
+  ])
+}
+
+function IdeStackIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M2 5.5 7 3l5 2.5-5 2.5-5-2.5Z' }),
+    h('path', { key: 'b', d: 'M2 9 7 11.5 12 9' }),
+  ])
+}
+
+function IdeDotIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 2, y: 2, width: 10, height: 10, rx: 2.4 }),
+    h('circle', { key: 'b', cx: 7, cy: 7, r: 1.8 }),
+  ])
+}
+
+function IdeLockIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'a', x: 3, y: 6, width: 8, height: 6, rx: 1.4 }),
+    h('path', { key: 'b', d: 'M5 6V4.6a2 2 0 0 1 4 0V6' }),
+  ])
+}
+
+function IdeAtIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'a', cx: 7, cy: 7, r: 2 }),
+    h('path', { key: 'b', d: 'M9 7v1.2a1.8 1.8 0 0 0 3.6 0V7A5.6 5.6 0 1 0 7 12.6c1 0 1.9-.2 2.6-.6' }),
+  ])
+}
+
 /** Search Everywhere: a magnifier. */
 function IdeSearchIcon({ size = 15 }) {
   return ideSvg(size, [

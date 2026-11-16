@@ -125,5 +125,16 @@
   "settingsBasic": "基础设置",
   "settingsFont": "字号",
   "settingsCodeFont": "代码字号",
-  "settingsTreeFont": "文件树字号"
+  "settingsTreeFont": "文件树字号",
+  "tabMenuClose": "关闭",
+  "tabMenuCloseOthers": "关闭其他标签页",
+  "tabMenuCloseAll": "关闭所有标签页",
+  "tabMenuCloseUnmodified": "关闭未修改标签页",
+  "tabMenuCloseRight": "关闭右侧标签页",
+  "tabMenuCloseReadOnly": "关闭所有只读项",
+  "tabMenuAddToContext": "添加到智能体上下文",
+  "tabMenuCopyPath": "复制路径/引用",
+  "tabMenuCopied": "已复制，可直接粘贴到对话输入框",
+  "tabMenuCloseLeft": "关闭左侧标签页",
+  "tabMenuLabel": "标签页操作"
 }

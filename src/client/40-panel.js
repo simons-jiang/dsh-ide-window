@@ -384,6 +384,19 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    h(IdeTabMenu, {
+      key: 'tabmenu',
+      store,
+      state,
+      tr,
+      copy: (text) => {
+        const clip = globalThis.navigator?.clipboard
+        if (clip !== undefined && typeof clip.writeText === 'function') {
+          void clip.writeText(text).catch(() => undefined)
+        }
+        store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
+      },
+    }),
     h('div', { key: 'body', className: 'iw-body' }, [
       state.treeVisible ? h(IdeTree, { key: 'tree', store, state, tr }) : null,
       state.treeVisible ? h(IdeResizer, { key: 'resize', store, state, tr }) : null,
