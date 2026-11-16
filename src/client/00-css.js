@@ -874,6 +874,13 @@ const IDE_CSS = `
   color: var(--dsw-alias-state-business-primary, #4a7dff);
 }
 .iw-gesture-chip.taken { opacity: 0.35; cursor: not-allowed; }
+
+.iw-turn-shell .iw-turn-shell-row {
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

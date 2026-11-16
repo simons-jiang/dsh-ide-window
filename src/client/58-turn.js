@@ -20,6 +20,43 @@ const IDE_TURN_ROWS = 4
 /** Summaries with a request in flight, so concurrent mounts ask only once. */
 const ideSummaryRequests = new Set()
 
+/** Shell commands that write files, which never reach the edit tools. */
+const IDE_SHELL_WRITES = /(?:^|[\s;&|])(?:git\s+(?:apply|add|commit|checkout|restore|reset|rebase|merge|cherry-pick|stash|clean|mv|rm)\b|sed\s+-i|tee\b|cp\b|mv\b|rm\b)|>{1,2}\s*[^\s|]|python3?\s+-c|node\s+-e/
+
+/**
+ * Whether this Turn changed files through the shell instead of the edit tools.
+ *
+ * The Host counts edits it can see; a file rewritten by `python3 -c` or committed
+ * from `git` never produces a change summary, so the card would silently say
+ * nothing. Detecting the pattern lets the card at least explain itself.
+ *
+ * @returns `true` when a shell call in this Turn looks like it wrote files.
+ */
+function ideTurnTouchedShell(trajectory, turnNumber) {
+  const nodes = Array.isArray(trajectory?.eventNodes) ? trajectory.eventNodes : []
+  const locations = trajectory?.eventLocations
+  for (const node of nodes) {
+    const event = typeof locations?.get === 'function' ? locations.get(node.seq) : undefined
+    const placed = event === undefined ? node : { ...node, ...event }
+    if (placed.kind !== 'event' && placed.type !== undefined && placed.type !== 'tool/call') continue
+    if (placed.type !== 'tool/call') continue
+    if (typeof turnNumber === 'number' && placed.turn !== undefined && placed.turn !== turnNumber) continue
+    const name = typeof placed.data?.name === 'string' ? placed.data.name.toLowerCase() : ''
+    if (name !== 'bash' && name !== 'shell') continue
+    const raw = placed.data?.arguments
+    let command = ''
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+      command = typeof parsed?.command === 'string' ? parsed.command : ''
+    } catch (error) {
+      void error
+      command = typeof raw === 'string' ? raw : ''
+    }
+    if (IDE_SHELL_WRITES.test(command)) return true
+  }
+  return false
+}
+
 /** A browser-relative route, resolved against the page's base so a sub-path mount works. */
 function ideApiUrl(path, params) {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
@@ -194,6 +231,7 @@ function IdeTurnChanges(props) {
         deleted: 0,
         failed: recovered.length === 0,
         fromLog: true,
+        fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
       })
       return undefined
     }
@@ -228,6 +266,7 @@ function IdeTurnChanges(props) {
             deleted: 0,
             failed: recovered.length === 0,
             fromLog: true,
+            fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
           })
           return
         }
@@ -245,7 +284,19 @@ function IdeTurnChanges(props) {
     return () => controller.abort()
   }, [sessionId, changesSeq, trajectory])
 
-  if (state.failed || state.files.length === 0) return null
+  if (state.files.length === 0) {
+    if (state.fromShell !== true) return null
+    // The Turn wrote files through the shell, which the Host cannot summarise:
+    // say so instead of rendering nothing at all.
+    return h(React.Fragment, null, [
+      h(IdeStyles, { key: 'style' }),
+      h('div', { key: 'shell', className: 'iw-turn iw-turn-shell' }, h('div', {
+        key: 'row',
+        className: 'iw-turn-shell-row',
+        title: tr('turnShellHint'),
+      }, tr('turnShellOnly'))),
+    ])
+  }
 
   const foldable = state.files.length > IDE_TURN_ROWS
   const rows = foldable && !expanded ? state.files.slice(0, IDE_TURN_ROWS) : state.files

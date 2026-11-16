@@ -123,6 +123,8 @@ window.__ModuleLoader__.load({
     "ksChange": "Change",
     "ksReset": "Reset",
     "ksCancel": "Cancel",
+    "turnShellOnly": "This turn changed files through the shell; DSH keeps no file list for it",
+    "turnShellHint": "The files were written by bash commands (git / sed / redirect / python -c), which the Host cannot summarise per file",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -239,6 +241,8 @@ window.__ModuleLoader__.load({
     "ksChange": "修改",
     "ksReset": "恢复默认",
     "ksCancel": "取消",
+    "turnShellOnly": "本轮通过 shell 修改了文件，DSH 未记录改动清单",
+    "turnShellHint": "文件是用 bash 命令（git / sed / 重定向 / python -c 等）改的，DSH 只统计编辑工具，所以没有逐文件清单",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1118,6 +1122,13 @@ const IDE_CSS = `
   color: var(--dsw-alias-state-business-primary, #4a7dff);
 }
 .iw-gesture-chip.taken { opacity: 0.35; cursor: not-allowed; }
+
+.iw-turn-shell .iw-turn-shell-row {
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -3104,6 +3115,32 @@ function ideColumnsOf(lines) {
 /** Whether one tokenizer run is a plain identifier the user can follow. */
 const IDE_SYMBOL_RUN = /^[A-Za-z_$][\w$]{0,63}$/
 
+/**
+ * The clickable symbol inside one tokenizer run.
+ *
+ * Annotations arrive as a single `@Type` (or `@a.b.Type`) run, so the click has to
+ * strip the `@` and point at the simple name: the language server wants the
+ * identifier's own position, and without this an annotation is not clickable at
+ * all — neither ⌘+click nor double click reaches it.
+ *
+ * @returns `{ name, offset }` — the symbol and its column inside the run — or
+ * `undefined` when the run is not a followable identifier.
+ */
+function ideSymbolOfRun(run) {
+  if (run === undefined || typeof run?.text !== 'string') return undefined
+  if (run.cls === 'iw-ann') {
+    const raw = run.text.replace(/^@/, '')
+    const simple = raw.split('.').pop() ?? ''
+    if (!IDE_SYMBOL_RUN.test(simple)) return undefined
+    return { name: simple, offset: run.text.length - simple.length }
+  }
+  if (run.cls === '' || run.cls === 'iw-fn' || run.cls === 'iw-type') {
+    if (!IDE_SYMBOL_RUN.test(run.text)) return undefined
+    return { name: run.text, offset: 0 }
+  }
+  return undefined
+}
+
 /** One rendered source row. */
 function IdeCodeLine({ index, text, lang, hit, vcs }) {
   // Tokenising is the expensive part of a row; it depends on the text alone, so
@@ -3113,13 +3150,15 @@ function IdeCodeLine({ index, text, lang, hit, vcs }) {
   const rendered = runs.map((run, order) => {
     const at = column
     column += run.text.length
-    if ((run.cls === '' || run.cls === 'iw-fn' || run.cls === 'iw-type') && IDE_SYMBOL_RUN.test(run.text)) {
-      // An identifier: the container's click handler resolves it through LSP.
+    const symbol = ideSymbolOfRun(run)
+    if (symbol !== undefined) {
+      // An identifier (or an annotation's type name): the container's click
+      // handler resolves it through LSP.
       return h('span', {
         key: order,
         className: `${run.cls} iw-sym`,
-        'data-iw-sym': run.text,
-        'data-iw-col': at,
+        'data-iw-sym': symbol.name,
+        'data-iw-col': at + symbol.offset,
       }, run.text)
     }
     if (run.cls === '') return run.text
@@ -3303,31 +3342,38 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       const locations = outcome?.locations ?? []
       // The query time is only a hint in the banner; a missing value is fine.
       const queryMs = typeof outcome?.ms === 'number' ? outcome.ms : undefined
-      if (locations.length === 0) {
-        // Not in this workspace: the class may live in a dependency jar, whose
-        // source is still readable when the artifact ships `-sources`.
-        const fromJar = await openFromJar(name, position)
-        if (fromJar) return
-        store.setNotice(`${tr('noDefinition')}: ${name}`)
+      store.setNotice('')
+
+      if (locations.length > 1) {
+        setPopup({
+          name,
+          ms: queryMs,
+          sections: [{ key: 'impl', title: `${tr('tabDeclaration')} (${locations.length})`, rows: locations.slice(0, 8) }],
+          ...popupAt(event),
+        })
         return
       }
-      store.setNotice('')
       if (locations.length === 1) {
         // Say where the jump went: a wrong answer is then one glance away
         // instead of a mystery about whether the gesture did anything.
-        const opened = store.openAt(locations[0].path, locations[0].line)
-        const loadMs = store.getState().lastLoadMs
-        store.setNotice(opened
-          ? `\u2192 ${ideBasename(locations[0].path)}:${locations[0].line} \u00b7 \u67e5\u8be2 ${queryMs ?? '?'}ms \u00b7 \u8f7d\u5165 ${loadMs ?? '?'}ms`
-          : `${tr('jumpFailed')}: ${locations[0].path}`)
-        return
+        if (store.openAt(locations[0].path, locations[0].line)) {
+          const loadMs = store.getState().lastLoadMs
+          store.setNotice(`\u2192 ${ideBasename(locations[0].path)}:${locations[0].line} \u00b7 \u67e5\u8be2 ${queryMs ?? '?'}ms \u00b7 \u8f7d\u5165 ${loadMs ?? '?'}ms`)
+          return
+        }
+        // The server answered with a location outside the workspace — a
+        // dependency jar. The editor cannot open that path, but its sources are
+        // readable, so the fallbacks below still apply.
       }
-      setPopup({
-        name,
-        ms: queryMs,
-        sections: [{ key: 'impl', title: `${tr('tabDeclaration')} (${locations.length})`, rows: locations.slice(0, 8) }],
-        ...popupAt(event),
-      })
+
+      // An annotation attribute (`@Log(name = "x")`) is a method on the annotation
+      // type, so the symbol alone resolves nothing.
+      const annotationType = ideAnnotationTypeAt(lines, position)
+      if (annotationType !== '' && await openAnnotationAttribute(annotationType, name, position)) return
+      // A type from a dependency: its source is readable when the artifact ships
+      // `-sources`, which is true for everything this workspace imports.
+      if (await openFromJar(name, position)) return
+      store.setNotice(`${tr('noDefinition')}: ${name}`)
     } catch (error) {
       store.setNotice(`${tr('lspFailed')}: ${error?.code ?? error?.message ?? 'unknown'}`)
     }
@@ -3353,6 +3399,32 @@ function IdeCodeView({ tab, tr, store, navigate }) {
    *
    * @returns whether a read-only tab was opened.
    */
+  /**
+   * Open the declaration of an annotation attribute (`@Log(name = "x")` → `name()`).
+   *
+   * The attribute is not a symbol of this file: it is a method on the annotation
+   * type, which usually comes from a dependency jar. Without this, a click on such
+   * an attribute reports 「未找到定义」 even though the source is readable.
+   *
+   * @returns `true` when the attribute's declaration was opened.
+   */
+  const openAnnotationAttribute = async (typeName, attribute, position) => {
+    const fqn = ideImportedFqn(typeName)
+    if (fqn === '') return false
+    const found = await ideJarSourceQuery(fqn)
+    if (found.ok !== true || found.found !== true) return false
+    const index = ideAttributeLineIn(found.text.split('\n'), attribute)
+    store.openJarSource({
+      className: fqn,
+      jar: found.jar,
+      text: found.text,
+      line: index >= 0 ? index + 1 : undefined,
+    })
+    const jarFile = found.jar.split('/').pop() ?? ''
+    store.setNotice(`\u2192 ${jarFile} \u203a ${typeName}.java${index >= 0 ? `:${index + 1}` : ''}`)
+    return true
+  }
+
   const openFromJar = async (name, position) => {
     // Where the owner comes from, in order of certainty:
     //   1. `Type::getX` states it in the line;
@@ -3394,7 +3466,6 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     const fqn = ideImportedFqn(owner)
     if (fqn === '') return false
     const found = await ideJarSourceQuery(fqn)
-    try { globalThis.console?.warn?.('[ide-jar-result]', JSON.stringify({ ok: found.ok, found: found.found, jar: found.jar })) } catch (e) { void e }
     if (found.ok !== true || found.found !== true) {
       if (found.ok === true) store.setNotice(`${tr('noSourceInJar')}: ${owner}`)
       return found.ok === true
@@ -4087,6 +4158,43 @@ const IDE_TURN_ROWS = 4
 /** Summaries with a request in flight, so concurrent mounts ask only once. */
 const ideSummaryRequests = new Set()
 
+/** Shell commands that write files, which never reach the edit tools. */
+const IDE_SHELL_WRITES = /(?:^|[\s;&|])(?:git\s+(?:apply|add|commit|checkout|restore|reset|rebase|merge|cherry-pick|stash|clean|mv|rm)\b|sed\s+-i|tee\b|cp\b|mv\b|rm\b)|>{1,2}\s*[^\s|]|python3?\s+-c|node\s+-e/
+
+/**
+ * Whether this Turn changed files through the shell instead of the edit tools.
+ *
+ * The Host counts edits it can see; a file rewritten by `python3 -c` or committed
+ * from `git` never produces a change summary, so the card would silently say
+ * nothing. Detecting the pattern lets the card at least explain itself.
+ *
+ * @returns `true` when a shell call in this Turn looks like it wrote files.
+ */
+function ideTurnTouchedShell(trajectory, turnNumber) {
+  const nodes = Array.isArray(trajectory?.eventNodes) ? trajectory.eventNodes : []
+  const locations = trajectory?.eventLocations
+  for (const node of nodes) {
+    const event = typeof locations?.get === 'function' ? locations.get(node.seq) : undefined
+    const placed = event === undefined ? node : { ...node, ...event }
+    if (placed.kind !== 'event' && placed.type !== undefined && placed.type !== 'tool/call') continue
+    if (placed.type !== 'tool/call') continue
+    if (typeof turnNumber === 'number' && placed.turn !== undefined && placed.turn !== turnNumber) continue
+    const name = typeof placed.data?.name === 'string' ? placed.data.name.toLowerCase() : ''
+    if (name !== 'bash' && name !== 'shell') continue
+    const raw = placed.data?.arguments
+    let command = ''
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+      command = typeof parsed?.command === 'string' ? parsed.command : ''
+    } catch (error) {
+      void error
+      command = typeof raw === 'string' ? raw : ''
+    }
+    if (IDE_SHELL_WRITES.test(command)) return true
+  }
+  return false
+}
+
 /** A browser-relative route, resolved against the page's base so a sub-path mount works. */
 function ideApiUrl(path, params) {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
@@ -4261,6 +4369,7 @@ function IdeTurnChanges(props) {
         deleted: 0,
         failed: recovered.length === 0,
         fromLog: true,
+        fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
       })
       return undefined
     }
@@ -4295,6 +4404,7 @@ function IdeTurnChanges(props) {
             deleted: 0,
             failed: recovered.length === 0,
             fromLog: true,
+            fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
           })
           return
         }
@@ -4312,7 +4422,19 @@ function IdeTurnChanges(props) {
     return () => controller.abort()
   }, [sessionId, changesSeq, trajectory])
 
-  if (state.failed || state.files.length === 0) return null
+  if (state.files.length === 0) {
+    if (state.fromShell !== true) return null
+    // The Turn wrote files through the shell, which the Host cannot summarise:
+    // say so instead of rendering nothing at all.
+    return h(React.Fragment, null, [
+      h(IdeStyles, { key: 'style' }),
+      h('div', { key: 'shell', className: 'iw-turn iw-turn-shell' }, h('div', {
+        key: 'row',
+        className: 'iw-turn-shell-row',
+        title: tr('turnShellHint'),
+      }, tr('turnShellOnly'))),
+    ])
+  }
 
   const foldable = state.files.length > IDE_TURN_ROWS
   const rows = foldable && !expanded ? state.files.slice(0, IDE_TURN_ROWS) : state.files
@@ -4951,6 +5073,61 @@ function ideTimeline() {
 const IDE_MAX_ANCHOR_TRIES = 8
 
 /** The property a Java bean accessor works on: `getX`/`setX`/`isX` \u2192 `x`. */
+/**
+ * The line declaring an annotation attribute, ignoring mentions in comments.
+ *
+ * Annotation sources often document themselves with `{@link #name()}`, so a naive
+ * search lands in the javadoc instead of the declaration.
+ *
+ * @returns the 0-based index, or -1 when no declaration is found.
+ */
+function ideAttributeLineIn(lines, attribute) {
+  if (!Array.isArray(lines) || typeof attribute !== 'string' || attribute === '') return -1
+  const call = new RegExp(`\\b${attribute}\\s*\\(`)
+  const declaration = new RegExp(`^\\s*(?:(?:public|protected|private|abstract|default|static|final)\\s+)*[\\w<>\\[\\].?, ]+\\b${attribute}\\s*\\(`)
+  let fallback = -1
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (!call.test(line)) continue
+    const trimmed = line.trim()
+    if (trimmed.startsWith('*') || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('@')) continue
+    if (declaration.test(line)) return index
+    if (fallback < 0) fallback = index
+  }
+  return fallback
+}
+
+/**
+ * The annotation type whose argument list contains `position`, if any.
+ *
+ * Annotation attributes are written `@Log(name = "x")`, so a click on `name`
+ * resolves nothing on its own: the declaration lives in the annotation type, and
+ * that type is usually imported from a dependency.
+ *
+ * @returns the simple type name, or an empty string when the position is not
+ * inside an annotation's arguments.
+ */
+function ideAnnotationTypeAt(lines, position) {
+  const line = lines?.[position?.line] ?? ''
+  if (line === '') return ''
+  // A multi-line annotation puts the type on an earlier line, so look back a
+  // little; the stray `)` check below keeps an already-closed annotation out.
+  const start = Math.max(0, position.line - 3)
+  const text = lines.slice(start, position.line).join('\n') + '\n' + line.slice(0, position.character)
+  const matches = [...text.matchAll(/@([A-Z][\w$]*)\s*\(/g)]
+  if (matches.length === 0) return ''
+  const last = matches[matches.length - 1]
+  let depth = 0
+  for (const character of text.slice(last.index + last[0].length)) {
+    if (character === '(') depth += 1
+    else if (character === ')') {
+      depth -= 1
+      if (depth < 0) return ''
+    }
+  }
+  return last[1]
+}
+
 function ideBeanFieldName(name) {
   const match = /^(?:get|set|is)([A-Z][\w$]*)$/.exec(typeof name === 'string' ? name : '')
   if (match === null) return undefined

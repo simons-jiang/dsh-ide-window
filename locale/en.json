@@ -116,5 +116,7 @@
   "ksRecording": "Press keys…",
   "ksChange": "Change",
   "ksReset": "Reset",
-  "ksCancel": "Cancel"
+  "ksCancel": "Cancel",
+  "turnShellOnly": "This turn changed files through the shell; DSH keeps no file list for it",
+  "turnShellHint": "The files were written by bash commands (git / sed / redirect / python -c), which the Host cannot summarise per file"
 }

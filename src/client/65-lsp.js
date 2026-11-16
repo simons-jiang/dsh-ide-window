@@ -275,6 +275,61 @@ function ideTimeline() {
 const IDE_MAX_ANCHOR_TRIES = 8
 
 /** The property a Java bean accessor works on: `getX`/`setX`/`isX` \u2192 `x`. */
+/**
+ * The line declaring an annotation attribute, ignoring mentions in comments.
+ *
+ * Annotation sources often document themselves with `{@link #name()}`, so a naive
+ * search lands in the javadoc instead of the declaration.
+ *
+ * @returns the 0-based index, or -1 when no declaration is found.
+ */
+function ideAttributeLineIn(lines, attribute) {
+  if (!Array.isArray(lines) || typeof attribute !== 'string' || attribute === '') return -1
+  const call = new RegExp(`\\b${attribute}\\s*\\(`)
+  const declaration = new RegExp(`^\\s*(?:(?:public|protected|private|abstract|default|static|final)\\s+)*[\\w<>\\[\\].?, ]+\\b${attribute}\\s*\\(`)
+  let fallback = -1
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (!call.test(line)) continue
+    const trimmed = line.trim()
+    if (trimmed.startsWith('*') || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('@')) continue
+    if (declaration.test(line)) return index
+    if (fallback < 0) fallback = index
+  }
+  return fallback
+}
+
+/**
+ * The annotation type whose argument list contains `position`, if any.
+ *
+ * Annotation attributes are written `@Log(name = "x")`, so a click on `name`
+ * resolves nothing on its own: the declaration lives in the annotation type, and
+ * that type is usually imported from a dependency.
+ *
+ * @returns the simple type name, or an empty string when the position is not
+ * inside an annotation's arguments.
+ */
+function ideAnnotationTypeAt(lines, position) {
+  const line = lines?.[position?.line] ?? ''
+  if (line === '') return ''
+  // A multi-line annotation puts the type on an earlier line, so look back a
+  // little; the stray `)` check below keeps an already-closed annotation out.
+  const start = Math.max(0, position.line - 3)
+  const text = lines.slice(start, position.line).join('\n') + '\n' + line.slice(0, position.character)
+  const matches = [...text.matchAll(/@([A-Z][\w$]*)\s*\(/g)]
+  if (matches.length === 0) return ''
+  const last = matches[matches.length - 1]
+  let depth = 0
+  for (const character of text.slice(last.index + last[0].length)) {
+    if (character === '(') depth += 1
+    else if (character === ')') {
+      depth -= 1
+      if (depth < 0) return ''
+    }
+  }
+  return last[1]
+}
+
 function ideBeanFieldName(name) {
   const match = /^(?:get|set|is)([A-Z][\w$]*)$/.exec(typeof name === 'string' ? name : '')
   if (match === null) return undefined

@@ -556,6 +556,22 @@ function grabSource(name, file = '58-turn.js') {
   throw new Error(`unbalanced ${name}`)
 }
 
+// ---- shell-only Turns are explained, not silent -----------------------------
+{
+  const touched = new Function(
+    `${grabSource('IDE_SHELL_WRITES', '58-turn.js')}\n${grabSource('ideTurnTouchedShell', '58-turn.js')}\nreturn ideTurnTouchedShell`,
+  )()
+  const make = (command, turn = 7) => ({
+    eventLocations: new Map([[1, { kind: 'turn', turn: { turn } }], [2, { kind: 'event' }]]),
+    eventNodes: [{ seq: 2, type: 'tool/call', turn, data: { name: 'bash', arguments: JSON.stringify({ command }) } }],
+  })
+  check(touched(make('git commit -am "x"'), 7) === true, 'a git commit counts as a shell write')
+  check(touched(make('python3 -c "open(1)"'), 7) === true, 'a python rewrite counts as a shell write')
+  check(touched(make('mvn -q compile'), 7) === false, 'a plain build does not')
+  check(touched(make('grep -rn foo src'), 7) === false, 'a read-only search does not')
+  check(touched(make('git commit -am x', 9), 7) === false, 'another Turn is ignored')
+}
+
 // ---- the changes card never asks for a summary the Host cannot serve --------
 {
   const source = readFileSync(new URL('../src/client/58-turn.js', import.meta.url), 'utf8')
@@ -694,6 +710,58 @@ await tick()
 footerInject.openPanel()
 check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code panel in the main column', String(mode.record.selected))
 
+  const attrLine = new Function(`${grabSource('ideAttributeLineIn', '65-lsp.js')}\nreturn ideAttributeLineIn`)()
+  const jarSource = [
+    '/**',
+    ' * 通过 {@link #operateType()} 指定操作类型编码。',
+    ' */',
+    'public @interface OperateLog {',
+    '    String operateType() default "";',
+    '}',
+  ]
+  check(attrLine(jarSource, 'operateType') === 4, 'the declaration wins over the javadoc mention', String(attrLine(jarSource, 'operateType')))
+  check(attrLine(jarSource, 'missing') === -1, 'an absent attribute reports -1', String(attrLine(jarSource, 'missing')))
+
+// ---- annotation runs are clickable ----------------------------------------
+{
+  const symbol = new Function(
+    `${grabSource('IDE_SYMBOL_RUN', '30-code.js')}\n${grabSource('ideSymbolOfRun', '30-code.js')}\nreturn ideSymbolOfRun`,
+  )()
+  const anno = symbol({ cls: 'iw-ann', text: '@OperateLog' })
+  check(anno?.name === 'OperateLog', 'an annotation run yields its type name', JSON.stringify(anno))
+  check(anno?.offset === 1, 'the offset points past the @', String(anno?.offset))
+
+  const qualified = symbol({ cls: 'iw-ann', text: '@com.a.OperateLog' })
+  check(qualified?.name === 'OperateLog', 'a fully qualified annotation yields the simple name', JSON.stringify(qualified))
+  check(qualified?.offset === 7, 'its offset points at the simple name', String(qualified?.offset))
+
+  check(symbol({ cls: 'iw-type', text: 'ReconBillEntity' })?.name === 'ReconBillEntity', 'a type is still clickable')
+  check(symbol({ cls: 'iw-str', text: '@OperateLog' }) === undefined, 'a string is never clickable')
+  check(symbol({ cls: 'iw-ann', text: '@' }) === undefined, 'a bare @ is not a symbol')
+}
+
+// ---- annotation attributes ------------------------------------------------
+{
+  const typeAt = new Function(`${grabSource('ideAnnotationTypeAt', '65-lsp.js')}\nreturn ideAnnotationTypeAt`)()
+  const lines = [
+    '  @OperateLog(operateType = "RECON_BILL_CONFIRM", bizType = "BILL")',
+    '  public void confirmByPlatform() {}',
+  ]
+  check(typeAt(lines, { line: 0, character: 18 }) === 'OperateLog', 'an attribute inside an annotation names its type', String(typeAt(lines, { line: 0, character: 18 })))
+  check(typeAt(lines, { line: 1, character: 16 }) === '', 'a symbol outside the arguments is not an annotation attribute', String(typeAt(lines, { line: 1, character: 16 })))
+  check(typeAt(['  int gap = f(a, b);'], { line: 0, character: 15 }) === '', 'a plain call is not an annotation')
+
+  // 多行注解：类型在上一行
+  const spread = [
+    '  @OperateLog(',
+    '      operateType = "X",',
+    '      bizType = "BILL")',
+  ]
+  check(typeAt(spread, { line: 1, character: 10 }) === 'OperateLog', 'a multi-line annotation is still found', String(typeAt(spread, { line: 1, character: 10 })))
+  check(typeAt(['  @First(a = 1)', '  @Second(b = 2)'], { line: 1, character: 12 }) === 'Second', 'the innermost annotation wins', String(typeAt(['  @First(a = 1)', '  @Second(b = 2)'], { line: 1, character: 12 })))
+  check(typeAt(['  @First(a = 1); int x = 2;'], { line: 0, character: 24 }) === '', 'an annotation that already closed is not matched')
+}
+
 // ---- jumping to a definition (the suspended path) --------------------------
 {
   // 这段逻辑是组件内的闭包，之前没有用例真正跑过它，所以 `outcome is not defined`
@@ -704,6 +772,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     const popups = []
     const factory = new Function(
       'store', 'tab', 'tr', 'navigate', 'setPopup', 'openFromJar', 'popupAt', 'ideBasename',
+      'ideAnnotationTypeAt', 'openAnnotationAttribute', 'lines',
       `${source}
       return { jump: jumpToDefinition }`,
     )
@@ -721,6 +790,10 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
       async () => false,
       () => ({ x: 1, y: 2 }),
       (path) => path.split('/').pop(),
+      // 注解属性走另一条分支：这个桩返回空，表示当前行不在注解参数里。
+      () => '',
+      async () => false,
+      ['class B {}'],
     )
     return { api, notices, popups }
   }
@@ -744,10 +817,13 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(failing.notices.some((text) => typeof text === 'string' && text.includes('noDefinition')),
     'a symbol no server knows reports「未找到定义」', JSON.stringify(failing.notices.slice(-1)))
 
-  const refused = build({ definition: async () => ({ locations: [{ path: 'pkg/B.java', line: 12 }], ms: 5 }) }, false)
-  await refused.api.jump('periodTime', { line: 3, character: 4 }, { clientX: 10, clientY: 10 })
-  check(refused.notices.some((text) => typeof text === 'string' && text.includes('jumpFailed')),
-    'a panel that cannot open the file says so', JSON.stringify(refused.notices.slice(-1)))
+  // 定义在工作区之外（依赖 jar）时，不能直接报「打开失败」：还要去 jar 里找源码。
+  const outside = build({ definition: async () => ({ locations: [{ path: '/Users/x/.m2/a-sources.jar!/pkg/B.java', line: 12 }], ms: 5 }) }, false)
+  await outside.api.jump('periodTime', { line: 3, character: 4 }, { clientX: 10, clientY: 10 })
+  check(!outside.notices.some((text) => typeof text === 'string' && text.includes('jumpFailed')),
+    'a location inside a dependency jar is not reported as a failed jump', JSON.stringify(outside.notices.slice(-1)))
+  check(outside.notices.some((text) => typeof text === 'string' && text.includes('noDefinition')),
+    'when no source is readable either, the banner says so', JSON.stringify(outside.notices.slice(-1)))
 }
 
 // ---- the single shortcut registry ------------------------------------------

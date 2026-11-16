@@ -116,5 +116,7 @@
   "ksRecording": "请按键…",
   "ksChange": "修改",
   "ksReset": "恢复默认",
-  "ksCancel": "取消"
+  "ksCancel": "取消",
+  "turnShellOnly": "本轮通过 shell 修改了文件，DSH 未记录改动清单",
+  "turnShellHint": "文件是用 bash 命令（git / sed / 重定向 / python -c 等）改的，DSH 只统计编辑工具，所以没有逐文件清单"
 }

@@ -115,6 +115,32 @@ function ideColumnsOf(lines) {
 /** Whether one tokenizer run is a plain identifier the user can follow. */
 const IDE_SYMBOL_RUN = /^[A-Za-z_$][\w$]{0,63}$/
 
+/**
+ * The clickable symbol inside one tokenizer run.
+ *
+ * Annotations arrive as a single `@Type` (or `@a.b.Type`) run, so the click has to
+ * strip the `@` and point at the simple name: the language server wants the
+ * identifier's own position, and without this an annotation is not clickable at
+ * all — neither ⌘+click nor double click reaches it.
+ *
+ * @returns `{ name, offset }` — the symbol and its column inside the run — or
+ * `undefined` when the run is not a followable identifier.
+ */
+function ideSymbolOfRun(run) {
+  if (run === undefined || typeof run?.text !== 'string') return undefined
+  if (run.cls === 'iw-ann') {
+    const raw = run.text.replace(/^@/, '')
+    const simple = raw.split('.').pop() ?? ''
+    if (!IDE_SYMBOL_RUN.test(simple)) return undefined
+    return { name: simple, offset: run.text.length - simple.length }
+  }
+  if (run.cls === '' || run.cls === 'iw-fn' || run.cls === 'iw-type') {
+    if (!IDE_SYMBOL_RUN.test(run.text)) return undefined
+    return { name: run.text, offset: 0 }
+  }
+  return undefined
+}
+
 /** One rendered source row. */
 function IdeCodeLine({ index, text, lang, hit, vcs }) {
   // Tokenising is the expensive part of a row; it depends on the text alone, so
@@ -124,13 +150,15 @@ function IdeCodeLine({ index, text, lang, hit, vcs }) {
   const rendered = runs.map((run, order) => {
     const at = column
     column += run.text.length
-    if ((run.cls === '' || run.cls === 'iw-fn' || run.cls === 'iw-type') && IDE_SYMBOL_RUN.test(run.text)) {
-      // An identifier: the container's click handler resolves it through LSP.
+    const symbol = ideSymbolOfRun(run)
+    if (symbol !== undefined) {
+      // An identifier (or an annotation's type name): the container's click
+      // handler resolves it through LSP.
       return h('span', {
         key: order,
         className: `${run.cls} iw-sym`,
-        'data-iw-sym': run.text,
-        'data-iw-col': at,
+        'data-iw-sym': symbol.name,
+        'data-iw-col': at + symbol.offset,
       }, run.text)
     }
     if (run.cls === '') return run.text
@@ -314,31 +342,38 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       const locations = outcome?.locations ?? []
       // The query time is only a hint in the banner; a missing value is fine.
       const queryMs = typeof outcome?.ms === 'number' ? outcome.ms : undefined
-      if (locations.length === 0) {
-        // Not in this workspace: the class may live in a dependency jar, whose
-        // source is still readable when the artifact ships `-sources`.
-        const fromJar = await openFromJar(name, position)
-        if (fromJar) return
-        store.setNotice(`${tr('noDefinition')}: ${name}`)
+      store.setNotice('')
+
+      if (locations.length > 1) {
+        setPopup({
+          name,
+          ms: queryMs,
+          sections: [{ key: 'impl', title: `${tr('tabDeclaration')} (${locations.length})`, rows: locations.slice(0, 8) }],
+          ...popupAt(event),
+        })
         return
       }
-      store.setNotice('')
       if (locations.length === 1) {
         // Say where the jump went: a wrong answer is then one glance away
         // instead of a mystery about whether the gesture did anything.
-        const opened = store.openAt(locations[0].path, locations[0].line)
-        const loadMs = store.getState().lastLoadMs
-        store.setNotice(opened
-          ? `\u2192 ${ideBasename(locations[0].path)}:${locations[0].line} \u00b7 \u67e5\u8be2 ${queryMs ?? '?'}ms \u00b7 \u8f7d\u5165 ${loadMs ?? '?'}ms`
-          : `${tr('jumpFailed')}: ${locations[0].path}`)
-        return
+        if (store.openAt(locations[0].path, locations[0].line)) {
+          const loadMs = store.getState().lastLoadMs
+          store.setNotice(`\u2192 ${ideBasename(locations[0].path)}:${locations[0].line} \u00b7 \u67e5\u8be2 ${queryMs ?? '?'}ms \u00b7 \u8f7d\u5165 ${loadMs ?? '?'}ms`)
+          return
+        }
+        // The server answered with a location outside the workspace — a
+        // dependency jar. The editor cannot open that path, but its sources are
+        // readable, so the fallbacks below still apply.
       }
-      setPopup({
-        name,
-        ms: queryMs,
-        sections: [{ key: 'impl', title: `${tr('tabDeclaration')} (${locations.length})`, rows: locations.slice(0, 8) }],
-        ...popupAt(event),
-      })
+
+      // An annotation attribute (`@Log(name = "x")`) is a method on the annotation
+      // type, so the symbol alone resolves nothing.
+      const annotationType = ideAnnotationTypeAt(lines, position)
+      if (annotationType !== '' && await openAnnotationAttribute(annotationType, name, position)) return
+      // A type from a dependency: its source is readable when the artifact ships
+      // `-sources`, which is true for everything this workspace imports.
+      if (await openFromJar(name, position)) return
+      store.setNotice(`${tr('noDefinition')}: ${name}`)
     } catch (error) {
       store.setNotice(`${tr('lspFailed')}: ${error?.code ?? error?.message ?? 'unknown'}`)
     }
@@ -364,6 +399,32 @@ function IdeCodeView({ tab, tr, store, navigate }) {
    *
    * @returns whether a read-only tab was opened.
    */
+  /**
+   * Open the declaration of an annotation attribute (`@Log(name = "x")` → `name()`).
+   *
+   * The attribute is not a symbol of this file: it is a method on the annotation
+   * type, which usually comes from a dependency jar. Without this, a click on such
+   * an attribute reports 「未找到定义」 even though the source is readable.
+   *
+   * @returns `true` when the attribute's declaration was opened.
+   */
+  const openAnnotationAttribute = async (typeName, attribute, position) => {
+    const fqn = ideImportedFqn(typeName)
+    if (fqn === '') return false
+    const found = await ideJarSourceQuery(fqn)
+    if (found.ok !== true || found.found !== true) return false
+    const index = ideAttributeLineIn(found.text.split('\n'), attribute)
+    store.openJarSource({
+      className: fqn,
+      jar: found.jar,
+      text: found.text,
+      line: index >= 0 ? index + 1 : undefined,
+    })
+    const jarFile = found.jar.split('/').pop() ?? ''
+    store.setNotice(`\u2192 ${jarFile} \u203a ${typeName}.java${index >= 0 ? `:${index + 1}` : ''}`)
+    return true
+  }
+
   const openFromJar = async (name, position) => {
     // Where the owner comes from, in order of certainty:
     //   1. `Type::getX` states it in the line;
@@ -405,7 +466,6 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     const fqn = ideImportedFqn(owner)
     if (fqn === '') return false
     const found = await ideJarSourceQuery(fqn)
-    try { globalThis.console?.warn?.('[ide-jar-result]', JSON.stringify({ ok: found.ok, found: found.found, jar: found.jar })) } catch (e) { void e }
     if (found.ok !== true || found.found !== true) {
       if (found.ok === true) store.setNotice(`${tr('noSourceInJar')}: ${owner}`)
       return found.ok === true
