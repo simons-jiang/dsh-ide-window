@@ -584,6 +584,155 @@ function grabSource(name, file = '58-turn.js') {
 
 }
 
+/**
+ * One function out of the Host half or a client fragment, for a direct call here.
+ *
+ * `grabSource` stops at the first `}`, which is the end of a destructured
+ * parameter list rather than of the body; this variant walks the parameter list
+ * first so `idePaletteEntries({ category, … })` survives.
+ */
+function sourceFunction(name, file = undefined) {
+  const source = file === undefined
+    ? readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+    : readFileSync(new URL(`../src/client/${file}`, import.meta.url), 'utf8')
+  const start = source.indexOf(`function ${name}(`)
+  if (start < 0) throw new Error(`missing ${name}`)
+  let parens = 0
+  let index = source.indexOf('(', start)
+  for (; index < source.length; index += 1) {
+    if (source[index] === '(') parens += 1
+    else if (source[index] === ')') {
+      parens -= 1
+      if (parens === 0) break
+    }
+  }
+  let depth = 0
+  for (index = source.indexOf('{', index); index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1
+    else if (source[index] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(start, index + 1)
+    }
+  }
+  throw new Error(`unbalanced ${name}`)
+}
+
+// ---- content-search extension scoping --------------------------------------
+{
+  const globs = new Function(`const MAX_GREP_EXTENSIONS = 40\n${sourceFunction('grepExtensionGlobs')}\nreturn grepExtensionGlobs`)()
+  check(globs(['java']).join(' ') === '--glob *.java', 'one extension becomes one include glob', globs(['java']).join(' '))
+  check(globs(['.TS']).join(' ') === '--glob *.ts', 'a leading dot is dropped and case normalised', globs(['.TS']).join(' '))
+  check(globs(['java', 'kt']).length === 4, 'two extensions are two globs', String(globs(['java', 'kt']).length))
+  check(globs(['../etc', 'java; rm', 'a b']).length === 0, 'anything that is not a bare extension is refused', JSON.stringify(globs(['../etc', 'java; rm', 'a b'])))
+  check(globs(undefined).length === 0, 'an absent list scopes nothing', String(globs(undefined).length))
+  check(globs(['java']).every((part) => !part.includes('!')), 'the scoping can only narrow, never negate', JSON.stringify(globs(['java'])))
+}
+
+// ---- the palette's 「类」 and 「符号」 sources ----------------------------------
+{
+  const source = [
+    grabSource('IDE_CODE_EXTENSIONS', '70-palette.js'),
+    'const IDE_CODE_EXTENSION_SET = new Set(IDE_CODE_EXTENSIONS)',
+    sourceFunction('ideIsCodePath', '70-palette.js'),
+    sourceFunction('ideFqnOf', '70-palette.js'),
+    sourceFunction('ideClassName', '70-palette.js'),
+    sourceFunction('ideSymbolPattern', '70-palette.js'),
+    sourceFunction('ideSymbolOfLine', '70-palette.js'),
+    sourceFunction('ideDirOf', '70-palette.js'),
+    sourceFunction('ideWordEdges', '70-palette.js'),
+    sourceFunction('ideMatchRank', '70-palette.js'),
+    sourceFunction('ideFileRank', '70-palette.js'),
+    sourceFunction('ideSymbolRank', '70-palette.js'),
+    sourceFunction('ideActionRank', '70-palette.js'),
+    sourceFunction('ideRankRows', '70-palette.js'),
+    sourceFunction('idePaletteEntries', '70-palette.js'),
+    sourceFunction('ideBasename', '10-core.js'),
+  ].join('\n')
+  const palette = new Function(`${source}\nreturn {
+    ideIsCodePath, ideFqnOf, ideClassName, ideSymbolPattern, ideSymbolOfLine,
+    ideMatchRank, ideFileRank, ideSymbolRank, ideActionRank, idePaletteEntries,
+  }`)()
+
+  check(palette.ideIsCodePath('src/A.java') === true, 'a Java file is code', String(palette.ideIsCodePath('src/A.java')))
+  check(palette.ideIsCodePath('src/A.JAVA') === true, 'the check ignores case', String(palette.ideIsCodePath('src/A.JAVA')))
+  check(palette.ideIsCodePath('README.md') === false, 'markdown is not code', String(palette.ideIsCodePath('README.md')))
+  check(palette.ideIsCodePath('pom.xml') === false, 'build config is not code', String(palette.ideIsCodePath('pom.xml')))
+  check(palette.ideIsCodePath('Makefile') === false, 'an extension-less name is not claimed', String(palette.ideIsCodePath('Makefile')))
+
+  // 类：文件即类，展示全限定名
+  check(palette.ideFqnOf('order-service-application/src/main/java/com/x/OrderService.java') === 'com.x.OrderService',
+    'a source root is stripped into a package name', palette.ideFqnOf('order-service-application/src/main/java/com/x/OrderService.java'))
+  check(palette.ideFqnOf('src/test/java/com/x/OrderServiceTest.java') === 'com.x.OrderServiceTest',
+    'a test source root is recognised too', palette.ideFqnOf('src/test/java/com/x/OrderServiceTest.java'))
+  check(palette.ideFqnOf('pkg/a/B.java') === 'pkg.a.B', 'a path without a source root keeps its shape', palette.ideFqnOf('pkg/a/B.java'))
+  check(palette.ideClassName('src/main/java/com/x/OrderService.java') === 'OrderService', 'the class name is the file name', palette.ideClassName('src/main/java/com/x/OrderService.java'))
+
+  // 符号：声明形状的 ripgrep 模式（JS 侧去掉内联 (?i) 后按 'i' 校验）
+  const patternFor = (name) => palette.ideSymbolPattern(name).replace(/\(\?i:/g, '(?:')
+  const pattern = patternFor('operat')
+  // The ripgrep pattern scopes case-insensitivity to the identifier; the JS
+  // approximation makes that group plain and applies the flag for the fixtures.
+  const asJs = pattern.replace(/\(\?i:/g, '(?:')
+  const matches = (line) => new RegExp(asJs, 'i').test(line)
+  check(pattern !== '', 'an identifier prefix yields a pattern', pattern.slice(0, 40))
+  check(palette.ideSymbolPattern('a.b.C') === '', 'a package name is not a symbol query', palette.ideSymbolPattern('a.b.C'))
+  check(matches('    private Long operatorId;'), 'a typed field is a declaration', 'field')
+  check(matches('    public enum OperationTypeEnum {'), 'a type declaration is a declaration', 'type')
+  check(matches('    OPERATION("desc")'), 'an enum constant is a declaration', 'constant')
+  check(matches('    public static final String OPERATOR_REQUIRED = "x";'), 'a constant field is a declaration', 'constant field')
+  check(matches('const operatorIndex = 1'), 'a script constant is a declaration', 'script const')
+  check(matches('function operatorName() {}'), 'a function is a declaration', 'script function')
+  check(matches('    async function operatorLoad() {}'), 'an async function is a declaration', 'script async')
+  const billPattern = patternFor('bill')
+  const billMatches = (line) => new RegExp(billPattern).test(line)
+  check(!billMatches('            return bill;'), 'a lowercase leading word is not a type', 'return')
+  check(billMatches('    private Long billId;'), 'a typed field still matches the case-sensitive shape', 'field')
+  check(!matches('        Map<String, Foo> operatorIndex = new LinkedHashMap<>();'), 'a local variable inside a method is not a symbol', 'local')
+  check(!matches('        return operator.call();'), 'a call is not a declaration', 'call')
+  check(!matches('            operator = null;'), 'an assignment is not a declaration', 'assignment')
+  check(!matches('    // operator notes'), 'a comment is not a declaration', 'comment')
+
+  check(JSON.stringify(palette.ideSymbolOfLine('    private Long operatorId;', 'operat')) === JSON.stringify({ name: 'operatorId', kind: 'field' }),
+    'a field keeps its name and kind', JSON.stringify(palette.ideSymbolOfLine('    private Long operatorId;', 'operat')))
+  check(palette.ideSymbolOfLine('    public String getOperator() {', 'getOperat')?.kind === 'method', 'a method is recognised', JSON.stringify(palette.ideSymbolOfLine('    public String getOperator() {', 'getOperat')))
+  check(palette.ideSymbolOfLine('    public enum OperationTypeEnum {', 'Operat')?.kind === 'type', 'a type is recognised', JSON.stringify(palette.ideSymbolOfLine('    public enum OperationTypeEnum {', 'Operat')))
+  check(palette.ideSymbolOfLine('    // nothing here', 'Operat') === undefined, 'a line without the prefix yields nothing', String(palette.ideSymbolOfLine('    // nothing here', 'Operat')))
+
+  // 相关性
+  check(palette.ideSymbolRank({ name: 'operatorId' }, 'operatorId') > palette.ideSymbolRank({ name: 'operatorIdx' }, 'operatorId'),
+    'an exact symbol name outranks a longer prefix', `${palette.ideSymbolRank({ name: 'operatorId' }, 'operatorId')} / ${palette.ideSymbolRank({ name: 'operatorIdx' }, 'operatorId')}`)
+  check(palette.ideSymbolRank({ name: 'OperationTypeEnum', kind: 'type' }, 'operat') > palette.ideSymbolRank({ name: 'operationTypeEnum', kind: 'field' }, 'operat'),
+    'a type outranks a member of the same name', `${palette.ideSymbolRank({ name: 'OperationTypeEnum', kind: 'type' }, 'operat')} / ${palette.ideSymbolRank({ name: 'operationTypeEnum', kind: 'field' }, 'operat')}`)
+  const whole = palette.ideMatchRank('return getBy(id);', 'getBy')
+  const prefix = palette.ideMatchRank('return getById(id);', 'getBy')
+  const inside = palette.ideMatchRank('return forgetBy(id);', 'getBy')
+  check(whole > prefix, 'a whole identifier outranks a prefix', `${whole} / ${prefix}`)
+  check(prefix > inside, 'a prefix outranks a contained substring', `${prefix} / ${inside}`)
+  check(palette.ideMatchRank('int other = 1;', 'getBy') === 0, 'a row rg matched as a pattern ranks last instead of vanishing', String(palette.ideMatchRank('int other = 1;', 'getBy')))
+  check(palette.ideFileRank('src/OrderService.java', 'OrderService') > palette.ideFileRank('src/OrderServiceHelper.java', 'OrderService'),
+    'a file named exactly the query comes first', `${palette.ideFileRank('src/OrderService.java', 'OrderService')} / ${palette.ideFileRank('src/OrderServiceHelper.java', 'OrderService')}`)
+  check(palette.ideActionRank('Refresh', 'refresh') === 100, 'an exact command name wins', String(palette.ideActionRank('Refresh', 'refresh')))
+
+  // 合并视图：类 → 符号 → 文件 → 文本 → 操作；源码文件只在「类」出现一次
+  const classes = [{ path: 'src/main/java/com/x/OrderService.java', name: 'OrderService', fqn: 'com.x.OrderService' }]
+  const symbols = [{ path: 'src/main/java/com/x/OrderService.java', line: 12, name: 'orderId', kind: 'field', fqn: 'com.x.OrderService' }]
+  const files = [{ path: 'src/main/java/com/x/OrderService.java', line: undefined }, { path: 'pom.xml', line: undefined }]
+  const text = [{ path: 'README.md', line: 3, text: 'order id' }, { path: 'src/main/java/com/x/OrderService.java', line: 40, text: 'this.orderId' }]
+  const actions = [{ id: 'tree', label: 'Toggle tree', run: () => {} }]
+  const merged = palette.idePaletteEntries({ category: 'all', classes, symbols, files, text, actions, query: 'order' })
+  check(merged.map((row) => row.kind).join(',') === 'class,symbol,files,text,actions',
+    'the merged view runs classes, symbols, files, text, actions', merged.map((row) => row.kind).join(','))
+  check(merged.filter((row) => row.kind === 'files').length === 1, 'a source file is not repeated under files', String(merged.filter((row) => row.kind === 'files').length))
+  check(merged.filter((row) => row.kind === 'text').length === 1, 'a code line is not repeated under text', String(merged.filter((row) => row.kind === 'text').length))
+  check(palette.idePaletteEntries({ category: 'files', classes, symbols, files, text, actions, query: 'order' }).filter((row) => row.kind === 'files').length === 2,
+    'the files tab still lists every file', String(palette.idePaletteEntries({ category: 'files', classes, symbols, files, text, actions, query: 'order' }).filter((row) => row.kind === 'files').length))
+  check(palette.idePaletteEntries({ category: 'class', classes, symbols, files, text, actions, query: 'order' }).every((row) => row.kind === 'class'),
+    'the class tab lists classes only', JSON.stringify(palette.idePaletteEntries({ category: 'class', classes, symbols, files, text, actions, query: 'order' }).map((row) => row.kind)))
+  const symbolRow = merged.find((row) => row.kind === 'symbol')
+  check(symbolRow?.path === 'src/main/java/com/x/OrderService.java' && symbolRow?.line === 12, 'a symbol row carries its line for the jump', JSON.stringify(symbolRow))
+  check(symbolRow?.detail === 'com.x.OrderService', 'a symbol row names its declaring class', String(symbolRow?.detail))
+}
+
 // ---- shell-only Turns are explained, not silent -----------------------------
 {
   const touched = new Function(

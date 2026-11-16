@@ -62,7 +62,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 | `60-jump.js` | 文件地址声明与跳转拦截（`dsh-resource://file/session/**`） |
 | `65-lsp.js` | LSP 语义辅助（符号消歧、注解属性、bean 字段推断） |
 | `68-grep.js` | 工作区搜索 + jar 源码查询客户端 |
-| `70-palette.js` | Search Everywhere（所有/文件/文本/操作） |
+| `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
 
 ### 3.2 宿主路由（`index.js`）
@@ -107,7 +107,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 - 兜底链：LSP → 注解属性 → import FQN → jar 源码 → 文本提示
 
 ### 4.3 搜索
-- **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，四分类（所有 / 文件 / 文本 / 操作）
+- **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（非源码）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
 
 ### 4.4 与对话联动

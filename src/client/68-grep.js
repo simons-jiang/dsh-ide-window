@@ -18,10 +18,13 @@ function ideGrepUrl() {
 /**
  * Ask the Host for content matches.
  *
+ * @param options - optional `path` (one file or directory inside the
+ *   workspace), `caseSensitive`, and `extensions` (source suffixes; the Host
+ *   turns them into ripgrep include globs).
  * @returns `{ ok: true, matches, truncated }` or `{ ok: false, error }`.
  */
 async function ideGrepQuery(root, query, options = {}) {
-  const { path: scope, caseSensitive, signal } = options
+  const { path: scope, caseSensitive, extensions, signal } = options
   let response
   try {
     response = await fetch(ideGrepUrl(), {
@@ -32,6 +35,7 @@ async function ideGrepQuery(root, query, options = {}) {
         workspaceRoot: root,
         ...scope === undefined || scope === '' ? {} : { path: scope },
         ...caseSensitive === true ? { caseSensitive: true } : {},
+        ...Array.isArray(extensions) && extensions.length > 0 ? { extensions } : {},
       }),
       signal,
     })

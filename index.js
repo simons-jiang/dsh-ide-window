@@ -319,6 +319,33 @@ async function diffWorkspace(payload) {
   return { untracked: false, hunks }
 }
 
+/** Largest number of extensions one content search may be narrowed to. */
+const MAX_GREP_EXTENSIONS = 40
+
+/**
+ * `--glob` pairs that restrict a content search to the given extensions.
+ *
+ * The palette's 「代码」 view is the caller: it names source extensions so a
+ * field name cannot be crowded out by documentation or generated config. Each
+ * entry is accepted only as a bare extension (`java`, `.ts` → `ts`), never as a
+ * free-form glob, so a caller can narrow the search but never widen it.
+ *
+ * @param extensions - extension names, with or without a leading dot.
+ * @returns argv pairs, ready to splice into ripgrep's argument list.
+ */
+export function grepExtensionGlobs(extensions) {
+  if (!Array.isArray(extensions)) return []
+  const globs = []
+  for (const raw of extensions) {
+    if (typeof raw !== 'string') continue
+    const value = raw.trim().replace(/^\./, '').toLowerCase()
+    if (!/^[a-z0-9_+-]{1,16}$/.test(value)) continue
+    globs.push('--glob', `*.${value}`)
+    if (globs.length >= MAX_GREP_EXTENSIONS * 2) break
+  }
+  return globs
+}
+
 /**
  * Run one content search through the packaged ripgrep.
  *
@@ -354,11 +381,15 @@ function grepWorkspace(payload) {
       '--glob', '!**/.git/**',
       '--glob', '!**/node_modules/**',
       '--glob', '!**/target/**',
+      ...grepExtensionGlobs(payload?.extensions),
       '--max-count', '20',
       '--', query, scope,
     ]
     const child = spawn(binary, argv, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
     const matches = []
+    // `--vimgrep` prints one row per *match*, so two hits on the same line are
+    // two rows with the same path and line. The editor shows one row per line.
+    const seen = new Set()
     let buffer = ''
     let settled = false
     const finish = (failure) => {
@@ -375,7 +406,13 @@ function grepWorkspace(payload) {
         const line = buffer.slice(0, index)
         buffer = buffer.slice(index + 1)
         const parsed = parseGrepLine(line, root)
-        if (parsed !== undefined && parsed.path !== '') matches.push(parsed)
+        if (parsed !== undefined && parsed.path !== '') {
+          const key = `${parsed.path}:${parsed.line}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            matches.push(parsed)
+          }
+        }
         if (matches.length >= MAX_GREP_MATCHES) {
           child.kill('SIGTERM')
           buffer = ''
