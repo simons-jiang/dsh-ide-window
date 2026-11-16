@@ -140,5 +140,19 @@
   "tabMenuCopyPath": "复制路径/引用",
   "tabMenuCopied": "已复制，可直接粘贴到对话输入框",
   "tabMenuCloseLeft": "关闭左侧标签页",
-  "tabMenuLabel": "标签页操作"
+  "tabMenuLabel": "标签页操作",
+  "gutterMenuLabel": "代码区操作",
+  "gutterMenuAnnotate": "使用 Git 追溯注解",
+  "gutterMenuUnannotate": "关闭 Git 追溯注解",
+  "setupTitle": "代码导航未就绪",
+  "setupBody": "代码工作区可以浏览文件；跳转、引用和实现需要 IntelliJ 语言服务器（JetBrains 授权版）。",
+  "setupStep1": "在 profile 里安装 LSP 管道包，版本必须与 DSH 一致。",
+  "setupStep2": "把 IntelliJ 授权版服务器放到本机，在 profile 的 cordis.patch.yml 里 insert lsp / lsp-stdio 两行（README「代码导航」有完整 YAML）。",
+  "setupStep3": "没有 JetBrains 授权时，先在账号页激活许可，再完全退出并重开 DSH。",
+  "setupLicence": "授权入口：",
+  "setupRecheck": "重新检测",
+  "setupChecking": "检测中…",
+  "setupClose": "关闭",
+  "setupReady": "代码导航已就绪",
+  "setupStill": "仍未检测到 LSP：看一下 DSH 启动日志和 profile 的 cordis.patch.yml。"
 }

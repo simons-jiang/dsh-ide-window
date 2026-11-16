@@ -37,7 +37,7 @@
 ### 3.1 两半：宿主 + 客户端
 
 ```
-index.js               宿主（Node ESM）：注册 5 条 HTTP 路由，转发到 DSH 服务
+index.js               宿主（Node ESM）：注册 6 条 HTTP 路由，转发到 DSH 服务
 client.js              客户端产物（build.mjs 生成，**必须提交**）
 src/client/*.js        客户端源码片段（构建时按文件名排序拼接）
 build.mjs              把 15 个片段 + locale 拼成 client.js
@@ -74,6 +74,8 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 | `/dsh-ide/diff` | 单文件 VCS 改动块 | `git diff -U0`，解析成行区间 |
 | `/dsh-ide/jar` | 依赖源码 | 扫 `~/.m2/repository/**/*-sources.jar`（1900+ 个，按 mtime 新→旧，单次预算 600），**进程内解析 ZIP 中央目录**，不反编译、不复制、不落盘 |
 | `/dsh-ide/status` | 工作区未提交文件 | `git status --porcelain=v1`，返回 `{path, status}` |
+| `/dsh-ide/blame` | 每行的最后提交人 | `git blame --line-porcelain`，返回 `{line, author, time}` |
+| `/dsh-ide/doctor` | 依赖自检 | `ctx.get('lsp')` 是否挂载，返回 `{lsp}`；引导页据此弹出 |
 
 ### 3.3 用到的 DSH 槽位
 
@@ -105,6 +107,9 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 - 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明
 - 定义在依赖 jar 内时 → 自动去 sources jar 找源码（含「跳过 javadoc 里的 `{@link #x()}`」判定）
 - 兜底链：LSP → 注解属性 → import FQN → jar 源码 → 文本提示
+- **Git 追溯注解**：代码左侧（git 变化条 / 行号）右键 →「使用 Git 追溯注解」，逐行显示 `日期 作者`，相邻提交交替底色；同一项可关闭。宿主路由 `/dsh-ide/blame` 一次解析整份文件、按 `root|path|version` 缓存；注解开启时隐藏行尾 Code Vision。状态在 store 的 `annotate`（`path → true`）与 `codeMenu`
+- **未装 LSP 的引导页**：进入代码工作区时打 `/dsh-ide/doctor`，`ctx.lsp` 没挂载就弹「代码导航未就绪」（列出管道包版本、服务器、JetBrains 授权三步 + 重新检测）；授权在服务器进程内，插件只引导不登录
+- **Code Vision**：可见的**方法**声明行尾显示「N 个用法 · M 个实现」和该行最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的方法声明，字段与局部变量都不会出现；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
 ### 4.3 搜索
 - **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（非源码）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
@@ -217,7 +222,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 ## 九、文件地图（找东西用）
 
 ```
-index.js                      宿主：5 条路由 + jar ZIP 解析 + git 状态/差异
+index.js                      宿主：6 条路由 + jar ZIP 解析 + git 状态/差异/ blame
 client.js                     构建产物（提交）
 build.mjs                     拼接 + 注入校验（禁止未声明的 ide* 辅助函数）
 cordis.patch.yml              profile 插入项

@@ -234,3 +234,11 @@ function IdeArrowRightIcon({ size = 15 }) {
     h('path', { key: 'b', d: 'M10.5 8h-7' }),
   ])
 }
+
+/** A clock: the Git annotate action. */
+function IdeClockIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'a', cx: 7, cy: 7, r: 5 }),
+    h('path', { key: 'b', d: 'M7 4.2V7l2 1.3' }),
+  ])
+}

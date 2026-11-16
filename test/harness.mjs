@@ -359,6 +359,11 @@ check(typeof fileType?.canOpen === 'function', 'file type can veto an address')
 // ---- data layer -----------------------------------------------------------
 const store = main.inject().store
 check(typeof store?.rememberSession === 'function', 'panel inject exposes the store')
+check(store.getState().annotate?.['Main.java'] !== true, 'Git annotate starts off')
+store.toggleAnnotate('Main.java')
+check(store.getState().annotate?.['Main.java'] === true, 'Git annotate turns on')
+store.toggleAnnotate('Main.java')
+check(store.getState().annotate?.['Main.java'] !== true, 'Git annotate turns off again')
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 store.rememberSession('session-1')
@@ -731,6 +736,75 @@ function sourceFunction(name, file = undefined) {
   const symbolRow = merged.find((row) => row.kind === 'symbol')
   check(symbolRow?.path === 'src/main/java/com/x/OrderService.java' && symbolRow?.line === 12, 'a symbol row carries its line for the jump', JSON.stringify(symbolRow))
   check(symbolRow?.detail === 'com.x.OrderService', 'a symbol row names its declaring class', String(symbolRow?.detail))
+}
+
+// ---- Code Vision: method declarations and counts ---------------------------
+{
+  const source = [
+    sourceFunction('ideDeclarations', '30-code.js'),
+    sourceFunction('ideVisionLabel', '30-code.js'),
+    sourceFunction('ideVisionCount', '30-code.js'),
+    sourceFunction('ideAnnotateRows', '30-code.js'),
+  ].join('\n')
+  const vision = new Function(`${source}\nreturn { ideDeclarations, ideVisionLabel, ideVisionCount, ideAnnotateRows }`)()
+  const lines = [
+    'package demo;',
+    'public class Demo {',
+    '    /** counts */',
+    '    private Long operatorId;',
+    '    private final List<Foo> fooList = new ArrayList<>();',
+    '    public String getOperatorName() {',
+    '        return operatorName;',
+    '    // public void commented() {',
+    '    @Override',
+    '    public Demo() {',
+    '    public static void main(String[] args) {',
+    '}',
+  ]
+  const found = vision.ideDeclarations(lines, 0, lines.length)
+  const byName = new Map(found.map((item) => [item.name, item]))
+  check(byName.has('getOperatorName'), 'a method is a hint target', found.map((item) => item.name).join(','))
+  check(byName.get('getOperatorName')?.index === 5, 'the declaration keeps its line index', String(byName.get('getOperatorName')?.index))
+  check(byName.get('getOperatorName')?.column === lines[5].indexOf('getOperatorName'), 'the column points at the name', String(byName.get('getOperatorName')?.column))
+  check(byName.has('main'), 'a static main is a hint target', found.map((item) => item.name).join(','))
+  check(!byName.has('operatorId'), 'a field earns no hint', found.map((item) => item.name).join(','))
+  check(!byName.has('fooList'), 'a generic field earns no hint', found.map((item) => item.name).join(','))
+  check(!byName.has('operatorName'), 'a return statement is not a declaration', found.map((item) => item.name).join(','))
+  check(!byName.has('commented'), 'a commented-out declaration is not one', found.map((item) => item.name).join(','))
+  check(!byName.has('Demo'), 'a constructor is not a method declaration', found.map((item) => item.name).join(','))
+  const shadow = vision.ideDeclarations(['    private Foo Foo() {'], 0, 1)
+  check(shadow[0]?.column === 16, 'the column is the name, not the type', String(shadow[0]?.column))
+  check(vision.ideDeclarations(['        ReconFundDocDto doc = requireDoc(docId);'], 0, 1).length === 0, 'a local inside a method body earns no hint', JSON.stringify(vision.ideDeclarations(['        ReconFundDocDto doc = requireDoc(docId);'], 0, 1)))
+  check(vision.ideDeclarations(lines, 3, 4).length === 0, 'a field-only range yields nothing', String(vision.ideDeclarations(lines, 3, 4).length))
+  check(vision.ideDeclarations(lines, 5, 6).length === 1, 'a range only covers its own lines', String(vision.ideDeclarations(lines, 5, 6).length))
+
+  check(vision.ideVisionLabel(1, 1) === '1 个用法 · 1 个实现', 'counts read as a sentence', vision.ideVisionLabel(1, 1))
+  check(vision.ideVisionLabel(3, 0) === '3 个用法', 'zero implementations are omitted', vision.ideVisionLabel(3, 0))
+  const locations = [
+    { path: 'a/B.java', line: 12 },
+    { path: 'a/B.java', line: 12 },
+    { path: 'a/C.java', line: 3 },
+    { path: 'a/C.java', line: 3 },
+    { path: 'a/D.java', line: 9 },
+    { path: undefined, line: 1 },
+  ]
+  check(vision.ideVisionCount(locations, 'a/B.java', 12) === 2, 'the declaration is excluded and duplicates collapse', String(vision.ideVisionCount(locations, 'a/B.java', 12)))
+  check(vision.ideVisionCount(undefined, 'a/B.java', 12) === 0, 'no locations means no count', String(vision.ideVisionCount(undefined, 'a/B.java', 12)))
+
+  // Git annotate: one cell per line, banded by adjacent commit.
+  const blames = new Map([
+    [1, { author: 'simon', date: '2026/11/3', time: 1 }],
+    [2, { author: 'simon', date: '2026/11/3', time: 1 }],
+    [3, { author: 'alice', date: '2026/11/4', time: 2 }],
+    [5, { author: 'alice', date: '2026/11/4', time: 2 }],
+  ])
+  const annotate = vision.ideAnnotateRows(blames, 6)
+  check(annotate.get(1)?.label === '2026/11/3 simon', 'an annotate cell names the date and author', JSON.stringify(annotate.get(1)))
+  check(annotate.get(1)?.band === annotate.get(2)?.band, 'one commit keeps one band', `${annotate.get(1)?.band}/${annotate.get(2)?.band}`)
+  check(annotate.get(1)?.band !== annotate.get(3)?.band, 'the next commit starts a new band', `${annotate.get(1)?.band}/${annotate.get(3)?.band}`)
+  check(annotate.get(4)?.label === '', 'a line without blame stays empty', JSON.stringify(annotate.get(4)))
+  check(annotate.size === 6, 'every line gets a cell', String(annotate.size))
+  check(vision.ideAnnotateRows(undefined, 3).size === 0, 'no blame means no cells', String(vision.ideAnnotateRows(undefined, 3).size))
 }
 
 // ---- shell-only Turns are explained, not silent -----------------------------

@@ -147,6 +147,20 @@ window.__ModuleLoader__.load({
     "tabMenuCopied": "Copied — paste it into the chat input",
     "tabMenuCloseLeft": "Close tabs to the left",
     "tabMenuLabel": "Tab actions",
+    "gutterMenuLabel": "Code gutter actions",
+    "gutterMenuAnnotate": "Annotate with Git blame",
+    "gutterMenuUnannotate": "Close Git annotate",
+    "setupTitle": "Code navigation is not ready",
+    "setupBody": "The workspace can browse files; navigation needs the IntelliJ language server (JetBrains licensed build).",
+    "setupStep1": "Install the LSP plumbing packages in the profile, at the version this DSH build uses.",
+    "setupStep2": "Place the licensed IntelliJ server on this machine, then insert the lsp / lsp-stdio rows in the profile cordis.patch.yml (the README has the full YAML).",
+    "setupStep3": "Without a JetBrains licence, activate one at the account page, then fully quit and reopen DSH.",
+    "setupLicence": "Licence:",
+    "setupRecheck": "Check again",
+    "setupChecking": "Checking…",
+    "setupClose": "Close",
+    "setupReady": "Code navigation is ready",
+    "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml.",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -287,6 +301,20 @@ window.__ModuleLoader__.load({
     "tabMenuCopied": "已复制，可直接粘贴到对话输入框",
     "tabMenuCloseLeft": "关闭左侧标签页",
     "tabMenuLabel": "标签页操作",
+    "gutterMenuLabel": "代码区操作",
+    "gutterMenuAnnotate": "使用 Git 追溯注解",
+    "gutterMenuUnannotate": "关闭 Git 追溯注解",
+    "setupTitle": "代码导航未就绪",
+    "setupBody": "代码工作区可以浏览文件；跳转、引用和实现需要 IntelliJ 语言服务器（JetBrains 授权版）。",
+    "setupStep1": "在 profile 里安装 LSP 管道包，版本必须与 DSH 一致。",
+    "setupStep2": "把 IntelliJ 授权版服务器放到本机，在 profile 的 cordis.patch.yml 里 insert lsp / lsp-stdio 两行（README「代码导航」有完整 YAML）。",
+    "setupStep3": "没有 JetBrains 授权时，先在账号页激活许可，再完全退出并重开 DSH。",
+    "setupLicence": "授权入口：",
+    "setupRecheck": "重新检测",
+    "setupChecking": "检测中…",
+    "setupClose": "关闭",
+    "setupReady": "代码导航已就绪",
+    "setupStill": "仍未检测到 LSP：看一下 DSH 启动日志和 profile 的 cordis.patch.yml。",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -629,6 +657,21 @@ const IDE_CSS = `
 .iw-vcs.a { background: #3fa55a; }
 .iw-vcs.m { background: #3b7dd8; }
 .iw-vcs.d { background: #c95c5c; }
+.iw-blame {
+  flex: 0 0 auto;
+  width: 168px;
+  padding-right: 10px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 11px;
+  opacity: 0.85;
+  user-select: none;
+  border-right: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+}
+.iw-blame.b { background: color-mix(in srgb, var(--dsw-alias-label-primary, #e6e8ec) 4%, transparent); }
 .iw-ln {
   flex: 0 0 auto;
   width: 56px;
@@ -639,6 +682,15 @@ const IDE_CSS = `
   user-select: none;
 }
 .iw-src { flex: 0 0 auto; padding-right: 24px; }
+/* Code Vision: usage/implementation counts and the last commit, after the line. */
+.iw-vision {
+  flex: 0 0 auto;
+  margin-left: 18px;
+  color: var(--dsw-alias-label-tertiary, #7c8592);
+  opacity: 0.8;
+  user-select: none;
+  font-style: italic;
+}
 .iw-kw { color: #cf8ee6; }
 .iw-str { color: #9ddc8b; }
 .iw-num { color: #e0b072; }
@@ -1263,6 +1315,71 @@ const IDE_CSS = `
   margin: 5px 8px;
   background: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
+
+/* ---- Setup guide (LSP seam missing) -------------------------------------- */
+.iw-setup-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.iw-setup {
+  width: min(640px, calc(100% - 48px));
+  max-height: calc(100% - 64px);
+  overflow: auto;
+  padding: 22px 24px 18px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-lg, 14px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #23262b));
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.35));
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.iw-setup-title {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.iw-setup-body p {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+}
+.iw-setup-steps {
+  margin: 0 0 6px;
+  padding-left: 20px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+}
+.iw-setup-steps li { margin-bottom: 6px; }
+.iw-setup-code {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-1, #1b1d22);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.iw-setup-link {
+  margin-bottom: 12px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+}
+.iw-setup-link a { color: var(--dsw-alias-brand-primary, #5b9dff); }
+.iw-setup-still {
+  margin-bottom: 12px;
+  color: #e0a35c;
+}
+.iw-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -1505,6 +1622,14 @@ function IdeArrowRightIcon({ size = 15 }) {
   return ideSvg(size, [
     h('path', { key: 'a', d: 'M5.5 3.5 10.5 8l-5 4.5' }),
     h('path', { key: 'b', d: 'M10.5 8h-7' }),
+  ])
+}
+
+/** A clock: the Git annotate action. */
+function IdeClockIcon({ size = 13 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'a', cx: 7, cy: 7, r: 5 }),
+    h('path', { key: 'b', d: 'M7 4.2V7l2 1.3' }),
   ])
 }
 
@@ -2099,6 +2224,10 @@ function ideCreateStore(refs) {
     remoteReady: false,
     /** The tab context menu, or null: `{ path, x, y }` in panel coordinates. */
     tabMenu: null,
+    /** The code-gutter context menu, or null: `{ path, x, y }`. */
+    codeMenu: null,
+    /** Files shown with Git annotate: `path → true`. */
+    annotate: {},
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -2752,6 +2881,20 @@ function ideCreateStore(refs) {
     patch({ tabMenu: menu === null || menu === undefined ? null : menu })
   }
 
+  /** Open or close the code-gutter context menu. */
+  function setCodeMenu(menu) {
+    patch({ codeMenu: menu === null || menu === undefined ? null : menu })
+  }
+
+  /** Turn the Git annotate gutter on or off for one file. */
+  function toggleAnnotate(path) {
+    if (typeof path !== 'string' || path === '') return
+    const next = { ...(state.annotate ?? {}) }
+    if (next[path] === true) delete next[path]
+    else next[path] = true
+    patch({ annotate: next })
+  }
+
   /** Activate one tab. */
   function activateTab(path) {
     if (path !== state.activePath) recordHistory()
@@ -3013,6 +3156,8 @@ function ideCreateStore(refs) {
     closeReadOnly,
     closeUnmodified,
     setTabMenu,
+    setCodeMenu,
+    toggleAnnotate,
     closeOtherTabs,
     closeAllTabs,
     activateTab,
@@ -3412,7 +3557,7 @@ function ideSymbolOfRun(run) {
 }
 
 /** One rendered source row. */
-function IdeCodeLine({ index, text, lang, hit, vcs }) {
+function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
   // Tokenising is the expensive part of a row; it depends on the text alone, so
   // a highlight change or a notice re-render never repeats it.
   const runs = useMemo(() => ideTokenize(text, lang), [text, lang])
@@ -3440,8 +3585,12 @@ function IdeCodeLine({ index, text, lang, hit, vcs }) {
     'data-iw-line': index,
   }, [
     h('span', { key: 'vcs', className: `iw-vcs${vcs === undefined ? '' : ` ${vcs}`}` }),
+    annotate === undefined
+      ? null
+      : h('span', { key: 'ann', className: `iw-blame${annotate.band === 1 ? ' b' : ''}` }, annotate.label),
     h('span', { key: 'ln', className: 'iw-ln' }, String(index + 1)),
     h('span', { key: 'src', className: 'iw-src' }, rendered),
+    vision === undefined ? null : h('span', { key: 'vision', className: 'iw-vision' }, vision),
   ])
 }
 
@@ -3547,6 +3696,220 @@ function ideChangeKinds(changes, lineCount) {
   return kinds
 }
 
+// ---- Code Vision ----------------------------------------------------------
+//
+// IDEA puts a line's facts next to the declaration: how many places use it,
+// how many classes implement it, and who last touched the line. The counts come
+// from the LSP seam (two queries per declaration), the author from `git blame`;
+// both are cached per file version and fetched only for declarations that are
+// on screen, so a scroll costs nothing after the first visit.
+
+/**
+ * Method declaration lines between two line indexes, as positions the language
+ * server understands.
+ *
+ * Methods only: a call-site count answers "who uses this behaviour", which is
+ * the question a reader has about a method; a field's count would only repeat
+ * its accessors. The shape is the symbol search's: a type, then the name. That
+ * is what keeps `return foo(` a statement, a constructor (`public Foo(`) out of
+ * the list, and a comment or an annotation from ever matching. The leading type
+ * is case-sensitive on purpose — a case-insensitive one would accept `return`.
+ *
+ * @returns `{ index, name, column }`; `index` is 0-based.
+ */
+function ideDeclarations(lines, from, to) {
+  const modifiers = '(?:(?:public|private|protected|static|final|abstract|synchronized|native|transient|volatile|default|strictfp)\\s+)*'
+  const type = '(?:[A-Z][\\w$]*(?:<[^>]*>)?(?:\\[\\])*|void|int|long|short|byte|char|boolean|float|double)'
+  // Methods live at the class-body level; a local variable inside a method body
+  // is indented once more and must not earn a hint.
+  const memberIndent = '^[ \t]{0,4}'
+  const methodShape = new RegExp(`${memberIndent}${modifiers}(?:${type}\\s+)+([A-Za-z_$][\\w$]*)\\s*\\(`)
+  const found = []
+  const last = Math.min(to, lines.length)
+  for (let index = Math.max(0, from); index < last; index += 1) {
+    const text = lines[index]
+    const trimmed = text.trimStart()
+    if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('@')) continue
+    const match = methodShape.exec(text)
+    if (match === null) continue
+    const name = match[1]
+    found.push({
+      index,
+      name,
+      // The name's own column, not the type's: `Foo Foo(` points at the second.
+      column: match.index + match[0].lastIndexOf(name),
+    })
+  }
+  return found
+}
+
+/** How the counts read next to a declaration. */
+function ideVisionLabel(usages, implementations) {
+  const parts = [`${usages} 个用法`]
+  if (implementations > 0) parts.push(`${implementations} 个实现`)
+  return parts.join(' · ')
+}
+
+/** Distinct locations of one query, without the declaration itself. */
+function ideVisionCount(locations, path, line) {
+  const seen = new Set()
+  let count = 0
+  for (const location of Array.isArray(locations) ? locations : []) {
+    if (typeof location?.path !== 'string') continue
+    if (location.path === path && location.line === line) continue
+    const key = `${location.path}:${location.line}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    count += 1
+  }
+  return count
+}
+
+/** Counts and blame for one file version, keyed by `${root}|${path}|${version}`. */
+const ideVisionCounts = new Map()
+const ideBlames = new Map()
+
+/** Queries already issued, so scrolling never repeats one. */
+const ideVisionPending = new Set()
+
+/** Set when the LSP seam is absent, so the panel stops asking. */
+let ideVisionDisabled = false
+
+/** Two declarations enriched at a time: the provider serialises queries anyway. */
+let ideVisionSlots = 2
+const ideVisionQueue = []
+
+function ideVisionPump() {
+  while (ideVisionSlots > 0 && ideVisionQueue.length > 0) {
+    ideVisionSlots -= 1
+    const task = ideVisionQueue.shift()
+    void task().finally(() => {
+      ideVisionSlots += 1
+      ideVisionPump()
+    })
+  }
+}
+
+/** Run one enrichment task when a slot frees up. */
+function ideVisionSchedule(task) {
+  return new Promise((resolve) => {
+    ideVisionQueue.push(() => task().then(resolve, resolve))
+    ideVisionPump()
+  })
+}
+
+/** The cache key of one file version. */
+function ideVisionKey(root, tab) {
+  return `${root}|${tab.path}|${tab.version}`
+}
+
+/** `line → label` already known for this file, counts and blame merged. */
+function ideVisionRows(root, tab) {
+  const key = ideVisionKey(root, tab)
+  const rows = new Map()
+  for (const [line, text] of ideVisionCounts.get(key) ?? []) rows.set(line, text)
+  for (const [line, blame] of ideBlames.get(key) ?? []) {
+    rows.set(line, [rows.get(line), blame.label].filter(Boolean).join('  '))
+  }
+  return rows
+}
+
+/**
+ * One Git annotate cell per line, banded by commit.
+ *
+ * @param blames - `line → { author, date, time }` (1-based).
+ * @param lineCount - how many lines the file has.
+ * @returns `line → { label, band }` (`band` is 0 or 1, so adjacent commits can
+ *   alternate a tint the way an editor's annotate view does).
+ */
+function ideAnnotateRows(blames, lineCount) {
+  const rows = new Map()
+  if (blames === undefined) return rows
+  let band = 0
+  let previous
+  for (let line = 1; line <= lineCount; line += 1) {
+    const blame = blames.get(line)
+    if (blame === undefined) {
+      rows.set(line, { label: '', band: 0 })
+      previous = undefined
+      continue
+    }
+    const key = `${blame.author}|${blame.time}`
+    if (key !== previous) {
+      band = band === 0 ? 1 : 0
+      previous = key
+    }
+    rows.set(line, { label: [blame.date, blame.author].filter(Boolean).join(' '), band })
+  }
+  return rows
+}
+
+/** Fetch usage and implementation counts for the given declarations. */
+function ideRequestVision(store, tab, declarations, done) {
+  const state = store.getState()
+  if (ideVisionDisabled || tab.kind === 'jar' || state.sessionId === null || state.rootPath === '') return
+  const key = ideVisionKey(state.rootPath, tab)
+  if (!ideVisionCounts.has(key)) ideVisionCounts.set(key, new Map())
+  const filePath = ideAbs(state.rootPath, tab.path)
+  for (const declaration of declarations) {
+    const line = declaration.index + 1
+    if (ideVisionCounts.get(key).has(line)) continue
+    const id = `${key}|${declaration.index}:${declaration.name}`
+    if (ideVisionPending.has(id)) continue
+    ideVisionPending.add(id)
+    const position = { line: declaration.index, character: declaration.column }
+    void ideVisionSchedule(async () => {
+      let failed = false
+      const fail = (error) => {
+        failed = true
+        if (error?.code === 'lsp-unavailable') ideVisionDisabled = true
+        return { locations: [] }
+      }
+      try {
+        const [references, implementations] = await Promise.all([
+          ideLspQuery({ operation: 'findReferences', filePath, workspaceRoot: state.rootPath, position }).catch(fail),
+          ideLspQuery({ operation: 'goToImplementation', filePath, workspaceRoot: state.rootPath, position }).catch(fail),
+        ])
+        // A failed query is not a zero: leave the line uncached so it can be
+        // answered when the server is available again.
+        if (!failed) {
+          const usages = ideVisionCount(references?.locations, tab.path, line)
+          const implemented = ideVisionCount(implementations?.locations, tab.path, line)
+          ideVisionCounts.get(key).set(line, ideVisionLabel(usages, implemented))
+          done()
+        }
+      } finally {
+        ideVisionPending.delete(id)
+      }
+    })
+  }
+}
+
+/** Fetch the last commit that touched each line, once per file version. */
+function ideRequestBlame(store, tab, done) {
+  const state = store.getState()
+  if (tab.kind === 'jar' || state.rootPath === '') return
+  const key = ideVisionKey(state.rootPath, tab)
+  const id = `${key}|blame`
+  if (ideBlames.has(key) || ideVisionPending.has(id)) return
+  ideVisionPending.add(id)
+  void ideBlameQuery(state.rootPath, tab.path)
+    .then((found) => {
+      if (found.ok !== true) return
+      const rows = new Map()
+      for (const row of found.lines) {
+        if (!Number.isFinite(row?.line) || typeof row?.author !== 'string' || row.author === '') continue
+        const when = Number.isFinite(row.time) && row.time > 0 ? new Date(row.time * 1000) : undefined
+        const date = when === undefined ? '' : `${when.getFullYear()}/${when.getMonth() + 1}/${when.getDate()}`
+        rows.set(row.line, { author: row.author, date, time: row.time, label: [row.author, date].filter(Boolean).join(' · ') })
+      }
+      ideBlames.set(key, rows)
+      done()
+    })
+    .catch(() => undefined)
+    .finally(() => ideVisionPending.delete(id))
+}
+
 /** The source view. */
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
@@ -3556,6 +3919,29 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const lines = useMemo(() => (tab.text === '' ? [] : tab.text.split('\n')), [tab.text])
   const columns = useMemo(() => ideColumnsOf(lines), [lines])
   const changeKinds = useMemo(() => ideChangeKinds(tab.changes, lines.length), [tab.changes, lines.length])
+  // Code Vision rows for this file version; a stamp re-renders the view when a
+  // background query answers.
+  const [visionStamp, setVisionStamp] = useState(0)
+  const rootPath = store.getState().rootPath
+  // Blame answers for every line; the hint belongs on declarations only.
+  const declarationRows = useMemo(
+    () => new Set(ideDeclarations(lines, 0, lines.length).map((item) => item.index + 1)),
+    [lines],
+  )
+  const visionRows = useMemo(() => {
+    if (tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return new Map()
+    const rows = ideVisionRows(rootPath, tab)
+    for (const line of [...rows.keys()]) {
+      if (!declarationRows.has(line)) rows.delete(line)
+    }
+    return rows
+  }, [rootPath, tab.path, tab.version, tab.status, tab.kind, visionStamp, declarationRows])
+  // Git annotate: every line carries its commit, so it is a per-file mode.
+  const annotateOn = store.getState().annotate?.[tab.path] === true
+  const annotateRows = useMemo(() => {
+    if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return undefined
+    return ideAnnotateRows(ideBlames.get(ideVisionKey(rootPath, tab)), lines.length)
+  }, [annotateOn, rootPath, tab.path, tab.version, tab.status, tab.kind, lines, visionStamp])
 
   // ---- symbol navigation --------------------------------------------------
   const [popup, setPopup] = useState(undefined)
@@ -3840,6 +4226,42 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     }
   }, [tab.path, store])
 
+  // Enrich the declarations on screen (counts) and the file once (blame). Both
+  // are cached per file version, so scrolling back costs nothing.
+  useEffect(() => {
+    if (tab.status !== 'ready' || tab.kind === 'jar' || tab.text === '') return undefined
+    const element = scrollRef.current
+    if (element === null) return undefined
+    const bump = () => setVisionStamp((value) => value + 1)
+    const request = () => {
+      const lineHeight = element.querySelector('.iw-line')?.getBoundingClientRect().height || IDE_LINE_HEIGHT
+      const start = Math.max(0, Math.floor(element.scrollTop / lineHeight) - 6)
+      const end = Math.min(lines.length, Math.ceil((element.scrollTop + element.clientHeight) / lineHeight) + 6)
+      ideRequestVision(store, tab, ideDeclarations(lines, start, end), bump)
+    }
+    request()
+    ideRequestBlame(store, tab, bump)
+    let timer
+    const onScroll = () => {
+      if (timer !== undefined) return
+      timer = setTimeout(() => {
+        timer = undefined
+        request()
+      }, 250)
+    }
+    element.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      if (timer !== undefined) clearTimeout(timer)
+      element.removeEventListener('scroll', onScroll)
+    }
+  }, [store, tab.path, tab.version, tab.status, tab.kind, tab.text, lines])
+
+  // Turning annotate on asks for the file's blame if the first pass had none.
+  useEffect(() => {
+    if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar') return
+    ideRequestBlame(store, tab, () => setVisionStamp((value) => value + 1))
+  }, [annotateOn, store, tab.path, tab.version, tab.status, tab.kind])
+
   if (lines.length === 0 && tab.text === '') {
     return h('div', { className: 'iw-empty' }, tr(tab.status === 'error' ? 'fileNotText' : 'loading'))
   }
@@ -3853,6 +4275,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     lang,
     hit: index === hitIndex,
     vcs: changeKinds.get(index),
+    vision: annotateRows === undefined ? visionRows.get(index + 1) : undefined,
+    annotate: annotateRows === undefined ? undefined : (annotateRows.get(index + 1) ?? { label: '', band: 0 }),
   }))
 
   const code = h('div', {
@@ -3889,6 +4313,17 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       event.preventDefault()
       if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
       else void showUsages(hit.name, hit.position, event)
+    },
+    onContextMenu: (event) => {
+      // The gutter — change bar, annotate column, line numbers — is where an
+      // editor offers Git annotate. On the source itself the platform menu stays.
+      const target = event.target
+      if (typeof target?.closest !== 'function') return
+      const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
+      if (gutter === null) return
+      if (tab.kind === 'jar') return
+      event.preventDefault()
+      store.setCodeMenu({ path: tab.path, x: event.clientX, y: event.clientY })
     },
     onKeyDown: (event) => {
       if (event.key === 'Escape') closePopup()
@@ -4115,6 +4550,71 @@ function IdeEmptyEditor({ tr }) {
   ])
 }
 
+/** Opens the setup guide once per page load; closing it keeps it closed. */
+let ideSetupDismissed = false
+
+/**
+ * The guide shown when the LSP seam is not mounted.
+ *
+ * Browsing works without a language server; navigating does not. The page says
+ * what is missing, how to install the pinned LSP packages, where the JetBrains
+ * licence lives, and re-checks on demand.
+ */
+function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
+  if (open !== true) return null
+  return h('div', {
+    key: 'backdrop',
+    className: 'iw-setup-backdrop',
+    onPointerDown: onClose,
+  }, h('div', {
+    key: 'card',
+    className: 'iw-setup',
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-label': tr('setupTitle'),
+    onPointerDown: (event) => event.stopPropagation(),
+  }, [
+    h('div', { key: 'title', className: 'iw-setup-title' }, tr('setupTitle')),
+    h('div', { key: 'body', className: 'iw-setup-body' }, [
+      h('p', { key: 'p' }, tr('setupBody')),
+      h('ol', { key: 'steps', className: 'iw-setup-steps' }, [
+        h('li', { key: 's1' }, tr('setupStep1')),
+        h('li', { key: 's2' }, tr('setupStep2')),
+        h('li', { key: 's3' }, tr('setupStep3')),
+      ]),
+    ]),
+    h('pre', { key: 'code', className: 'iw-setup-code' },
+      'dsh plugin --profile desktop add \\\n  @deepseek-ai/dsh-lsp@0.2.2-rc.3 \\\n  @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3'),
+    h('div', { key: 'licence', className: 'iw-setup-link' }, [
+      `${tr('setupLicence')} `,
+      h('a', {
+        key: 'a',
+        href: 'https://account.jetbrains.com/licenses',
+        target: '_blank',
+        rel: 'noreferrer',
+      }, 'account.jetbrains.com'),
+    ]),
+    still === true
+      ? h('div', { key: 'still', className: 'iw-setup-still' }, tr('setupStill'))
+      : null,
+    h('div', { key: 'actions', className: 'iw-setup-actions' }, [
+      h('button', {
+        key: 'check',
+        type: 'button',
+        className: 'iw-btn',
+        disabled: busy === true,
+        onClick: onCheck,
+      }, busy === true ? tr('setupChecking') : tr('setupRecheck')),
+      h('button', {
+        key: 'close',
+        type: 'button',
+        className: 'iw-btn primary',
+        onClick: onClose,
+      }, tr('setupClose')),
+    ]),
+  ]))
+}
+
 /** The centre panel entry. */
 /** How many times the panel body has rendered; a probe can read it. */
 let idePanelRenders = 0
@@ -4143,6 +4643,37 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     globalThis.addEventListener('keyup', onKey)
     return () => globalThis.removeEventListener('keyup', onKey)
   }, [store])
+  // The setup guide: one check when the workspace is entered, then on demand.
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [setupBusy, setSetupBusy] = useState(false)
+  const [setupStill, setSetupStill] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void ideDoctorQuery().then((found) => {
+      if (cancelled || found.ok !== true || found.lsp === true) return
+      if (!ideSetupDismissed) setSetupOpen(true)
+    })
+    return () => { cancelled = true }
+  }, [])
+  const checkSetup = () => {
+    setSetupBusy(true)
+    setSetupStill(false)
+    void ideDoctorQuery().then((found) => {
+      setSetupBusy(false)
+      if (found.ok === true && found.lsp === true) {
+        setSetupOpen(false)
+        store.setNotice(tr('setupReady'))
+        return
+      }
+      setSetupOpen(true)
+      setSetupStill(true)
+    })
+  }
+  const closeSetup = () => {
+    ideSetupDismissed = true
+    setSetupOpen(false)
+  }
+
   idePanelRenders += 1
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const tab = state.tabs.find((entry) => entry.path === state.activePath)
@@ -4322,6 +4853,12 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    h(IdeGutterMenu, {
+      key: 'guttermenu',
+      store,
+      state,
+      tr,
+    }),
     h(IdeTabMenu, {
       key: 'tabmenu',
       store,
@@ -4334,6 +4871,15 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
         }
         store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
       },
+    }),
+    h(IdeSetupDialog, {
+      key: 'setup',
+      tr,
+      open: setupOpen,
+      busy: setupBusy,
+      still: setupStill,
+      onCheck: checkSetup,
+      onClose: closeSetup,
     }),
     h('div', { key: 'body', className: 'iw-body' }, [
       state.treeVisible ? h(IdeTree, { key: 'tree', store, state, tr }) : null,
@@ -5145,6 +5691,57 @@ function IdeTabMenu({ store, state, tr, copy }) {
         h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
         h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
       ]))))),
+  ])
+}
+
+/** The code gutter's context menu: Git annotate for this file. */
+function IdeGutterMenu({ store, state, tr }) {
+  const menu = state.codeMenu
+  if (menu === null || menu === undefined) return null
+  const path = menu.path
+  const on = state.annotate?.[path] === true
+  const run = (action) => () => {
+    store.setCodeMenu(null)
+    action()
+  }
+  const items = [
+    {
+      key: 'annotate',
+      icon: IdeClockIcon,
+      label: on ? tr('gutterMenuUnannotate') : tr('gutterMenuAnnotate'),
+      run: () => store.toggleAnnotate(path),
+    },
+  ]
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: () => store.setCodeMenu(null),
+      onContextMenu: (event) => {
+        event.preventDefault()
+        store.setCodeMenu(null)
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('gutterMenuLabel'),
+      style: {
+        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
+        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 80))}px`,
+      },
+      onPointerDown: (event) => event.stopPropagation(),
+    }, items.map((item) => h('button', {
+      key: item.key,
+      type: 'button',
+      role: 'menuitem',
+      className: 'iw-menu-item',
+      onClick: run(item.run),
+    }, [
+      h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+      h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+    ])))),
   ])
 }
 
@@ -6077,6 +6674,65 @@ async function ideDiffQuery(root, path, signal) {
     untracked: parsed.value?.untracked === true,
     hunks: Array.isArray(parsed.value?.hunks) ? parsed.value.hunks : [],
   }
+}
+
+/** The blame route, resolved against the page base. */
+function ideBlameUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/blame', base).href
+}
+
+/**
+ * Ask the Host for the last commit that touched each line of one file.
+ *
+ * @returns `{ ok: true, lines }` or `{ ok: false, error }`; `lines` carries
+ *   `{ line, author, time }` entries, one per line git knows.
+ */
+async function ideBlameQuery(root, path, signal) {
+  let response
+  try {
+    response = await fetch(ideBlameUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot: root, path }),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'blame-failed' }
+  return { ok: true, lines: Array.isArray(parsed.value?.lines) ? parsed.value.lines : [] }
+}
+
+/** The doctor route, resolved against the page base. */
+function ideDoctorUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/doctor', base).href
+}
+
+/**
+ * Ask the Host whether the LSP seam is mounted in this profile.
+ *
+ * @returns `{ ok: true, lsp }` or `{ ok: false, error }`.
+ */
+async function ideDoctorQuery() {
+  let response
+  try {
+    response = await fetch(ideDoctorUrl(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  } catch (error) {
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'doctor-failed' }
+  return { ok: true, lsp: parsed.value?.lsp === true }
 }
 
 /** The jar-source route, resolved against the page base. */

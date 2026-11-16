@@ -392,6 +392,10 @@ function ideCreateStore(refs) {
     remoteReady: false,
     /** The tab context menu, or null: `{ path, x, y }` in panel coordinates. */
     tabMenu: null,
+    /** The code-gutter context menu, or null: `{ path, x, y }`. */
+    codeMenu: null,
+    /** Files shown with Git annotate: `path → true`. */
+    annotate: {},
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -1045,6 +1049,20 @@ function ideCreateStore(refs) {
     patch({ tabMenu: menu === null || menu === undefined ? null : menu })
   }
 
+  /** Open or close the code-gutter context menu. */
+  function setCodeMenu(menu) {
+    patch({ codeMenu: menu === null || menu === undefined ? null : menu })
+  }
+
+  /** Turn the Git annotate gutter on or off for one file. */
+  function toggleAnnotate(path) {
+    if (typeof path !== 'string' || path === '') return
+    const next = { ...(state.annotate ?? {}) }
+    if (next[path] === true) delete next[path]
+    else next[path] = true
+    patch({ annotate: next })
+  }
+
   /** Activate one tab. */
   function activateTab(path) {
     if (path !== state.activePath) recordHistory()
@@ -1306,6 +1324,8 @@ function ideCreateStore(refs) {
     closeReadOnly,
     closeUnmodified,
     setTabMenu,
+    setCodeMenu,
+    toggleAnnotate,
     closeOtherTabs,
     closeAllTabs,
     activateTab,

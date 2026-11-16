@@ -337,6 +337,21 @@ const IDE_CSS = `
 .iw-vcs.a { background: #3fa55a; }
 .iw-vcs.m { background: #3b7dd8; }
 .iw-vcs.d { background: #c95c5c; }
+.iw-blame {
+  flex: 0 0 auto;
+  width: 168px;
+  padding-right: 10px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 11px;
+  opacity: 0.85;
+  user-select: none;
+  border-right: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+}
+.iw-blame.b { background: color-mix(in srgb, var(--dsw-alias-label-primary, #e6e8ec) 4%, transparent); }
 .iw-ln {
   flex: 0 0 auto;
   width: 56px;
@@ -347,6 +362,15 @@ const IDE_CSS = `
   user-select: none;
 }
 .iw-src { flex: 0 0 auto; padding-right: 24px; }
+/* Code Vision: usage/implementation counts and the last commit, after the line. */
+.iw-vision {
+  flex: 0 0 auto;
+  margin-left: 18px;
+  color: var(--dsw-alias-label-tertiary, #7c8592);
+  opacity: 0.8;
+  user-select: none;
+  font-style: italic;
+}
 .iw-kw { color: #cf8ee6; }
 .iw-str { color: #9ddc8b; }
 .iw-num { color: #e0b072; }
@@ -971,6 +995,71 @@ const IDE_CSS = `
   margin: 5px 8px;
   background: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
+
+/* ---- Setup guide (LSP seam missing) -------------------------------------- */
+.iw-setup-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.iw-setup {
+  width: min(640px, calc(100% - 48px));
+  max-height: calc(100% - 64px);
+  overflow: auto;
+  padding: 22px 24px 18px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-lg, 14px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #23262b));
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.35));
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.iw-setup-title {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.iw-setup-body p {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+}
+.iw-setup-steps {
+  margin: 0 0 6px;
+  padding-left: 20px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+}
+.iw-setup-steps li { margin-bottom: 6px; }
+.iw-setup-code {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-1, #1b1d22);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.iw-setup-link {
+  margin-bottom: 12px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+}
+.iw-setup-link a { color: var(--dsw-alias-brand-primary, #5b9dff); }
+.iw-setup-still {
+  margin-bottom: 12px;
+  color: #e0a35c;
+}
+.iw-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

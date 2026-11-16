@@ -92,6 +92,8 @@ IDEA 风格的代码工作区插件：把 DSH 的中央区域切成「文件树 
 - **全仓库文件搜索**：树顶部的搜索框走宿主的 `workspaceFiles.search`（不是只过滤已展开的目录），输入即搜、去抖 180ms、只采用最新一次结果；`⌘P` / `Ctrl+P` 聚焦搜索框，`Esc` 清空，点结果直接打开并跳到该文件
 - **切换项目**：工具栏左上角的项目名是个下拉菜单，列出 shell 里所有工作区（外加当前会话的根目录），选一个即可切换；选择持久化在偏好里，也可以选「跟随当前会话」交回控制权。切换后按新根目录浏览（Remote 用绝对路径，不需要换会话），并且**每个项目各自记忆自己的打开标签**——切回去会恢复它上次的样子
 - **面板状态持久化**：按工作区根目录记住打开的文件标签、活动标签、展开的目录、树宽与显隐，存于浏览器 `localStorage`（`dsh-ide-window:view`，400ms 去抖）；回到面板或刷新页面后自动恢复并**重新读取文件内容**（不缓存旧内容，AI 的改动立即可见）。会话切换不再清空标签。上限：16 个标签、24 个展开目录、最近 3 个工程。**不写项目里的 `.idea`**，与仓库无关
+- **Code Vision（方法行尾提示）**：方法声明的行尾显示 `N 个用法 · M 个实现`（来自 LSP 的 references / implementation），后面跟该行最后一次 git 提交的作者与日期（`simon · 2026/11/3`）。只给类体层级（缩进 ≤4）的**方法**加提示——字段（属性）不加，方法里的局部变量也不会出现。计数只在声明滚进视口时懒加载（每次声明 2 次 LSP 查询），作者是一次 `git blame` 解析整份文件；两者都按文件版本缓存，滚动回来不会重复查询。LSP 不可用时只显示作者；查询失败的计数不落缓存，不会显示假的 0
+- **Git 追溯注解（annotate）**：在代码左侧（变更条 / 行号区域）右键 →「使用 Git 追溯注解」，每一行左侧显示该行的提交时间与提交人（`2026/11/3 simon`），相邻提交用浅色带区分，再右键同一项即可关闭。数据来自宿主 `/dsh-ide/blame`（一次 `git blame --line-porcelain` 解析整份文件，按文件版本缓存）；注解开启时会隐藏行尾的 Code Vision 提示，避免重复
 - **VCS 变更条**：行号左侧的色带标出相对 `HEAD` 的改动——绿=新增、蓝=修改、红=删除位置、整篇绿=未跟踪的新文件。宿主路由 `/dsh-ide/diff` 用 `git diff HEAD -U0` 解析 hunk，文本先显示、色带异步补上；文件在请求途中被改动则丢弃结果
 - **实时刷新**：每个展开的目录各挂一条 `workspaceFiles.changes` 流。宿主的帧带的是**被监视目录**（不是变动的文件），所以目录失效时重列该层，并**重读该目录下所有已打开的文件**；窗口重新获得焦点时也会重读（覆盖外部编辑器保存、页面在后台的情况）。刷新按钮重读**所有**标签，不再只重读出错的。
 - **自动收纳左侧导航栏**：进入时隐藏、离开时恢复；会先读 `data-sidebar-collapsed` 标记，已经收起就不动它。工具条上的按钮可以随时手动切换。
@@ -105,6 +107,44 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 ```
 
 浏览器里**硬刷新**（Cmd/Ctrl+Shift+R）后生效。改代码后只需 `node build.mjs` 再硬刷新。
+
+## 别人怎么装
+
+两种方式，都不需要本机路径：
+
+```sh
+# 方式一：pnpm 直装（pin commit；装完自动追加进 dsh.profile.bundles）
+dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-window.git#<40 位 commit>"
+```
+
+```json
+// 方式二：插件索引（给别人点按钮）：把 index.json 放到任意 https 静态主机
+{
+  "format": 1,
+  "title": { "en": "simon plugins", "zh": "simon 插件" },
+  "plugins": [{
+    "name": "@local/dsh-ide-window",
+    "versions": [{
+      "version": "0.1.0",
+      "publishTimestamp": 1790000000,
+      "source": { "type": "git", "url": "https://github.com/simons-jiang/dsh-ide-window", "commit": "<40 位 commit>" }
+    }]
+  }]
+}
+```
+
+对方在「插件 → 发现 → 添加索引源」里填这个 JSON 的 URL，点安装即可（DSH 会做版本兼容检查，确认框里会显示 Git 仓库与 commit）。`package.json` 里的 `engines.dsh` 会挡住不兼容的 DSH 版本；`client.js` 已提交，安装方不需要跑构建。
+
+### 代码导航要另外准备（不随插件分发）
+
+DSH 的 LSP 是可选 seam，本插件只消费它。别人装完插件、进入代码工作区时，如果 `ctx.lsp` 没挂载，会弹出「代码导航未就绪」引导页，列出缺的东西：
+
+1. **管道包**（版本必须和 DSH 一致，锁死 `0.2.2-rc.3`）：
+   `dsh plugin --profile desktop add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3`
+2. **服务器**：IntelliJ 授权版（build `271.2085.0`）要各自放到本机，然后在 profile 的 `cordis.patch.yml` 里 insert `lsp` / `lsp-stdio` 两行（见下一节 YAML）。服务器体积约 1.2 GB，且带 JetBrains 许可，**不放进 git 仓库**。
+3. **授权**：需要 IDEA Ultimate 许可；没有时先在 `account.jetbrains.com` 激活，再完全退出并重开 DSH。
+
+引导页的「重新检测」打的是 `POST /dsh-ide/doctor`，只检查 `ctx.lsp` 是否挂载。**授权状态在服务器进程内部**（日志里的 `License gate`），插件看不到，也不会替用户登录 JetBrains——它只负责把"没就绪"和修复步骤摆出来。
 
 ## 开发
 
@@ -156,6 +196,8 @@ node test/harness.mjs # 离线测试台：假 React + 假 ctx，跑注册与数�
 | 往仓库写元数据 | `.project`/`.classpath`/`.settings`/`.factorypath` | **无** |
 
 代价：IDEA 引擎**首次启动要建索引**（几分钟），期间点击会返回空结果（banner 会提示「若刚启动，请等索引完成后重试」）。索引建好后重启只需复用缓存。
+
+引导页：`ctx.lsp` 没有挂载时进入代码工作区会自动弹出（见上节）；`/dsh-ide/doctor` 只回答这一件事。
 
 ## 代码导航依赖（jdtls，回滚时参考）
 

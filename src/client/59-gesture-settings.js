@@ -279,3 +279,54 @@ function IdeTabMenu({ store, state, tr, copy }) {
       ]))))),
   ])
 }
+
+/** The code gutter's context menu: Git annotate for this file. */
+function IdeGutterMenu({ store, state, tr }) {
+  const menu = state.codeMenu
+  if (menu === null || menu === undefined) return null
+  const path = menu.path
+  const on = state.annotate?.[path] === true
+  const run = (action) => () => {
+    store.setCodeMenu(null)
+    action()
+  }
+  const items = [
+    {
+      key: 'annotate',
+      icon: IdeClockIcon,
+      label: on ? tr('gutterMenuUnannotate') : tr('gutterMenuAnnotate'),
+      run: () => store.toggleAnnotate(path),
+    },
+  ]
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: () => store.setCodeMenu(null),
+      onContextMenu: (event) => {
+        event.preventDefault()
+        store.setCodeMenu(null)
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('gutterMenuLabel'),
+      style: {
+        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
+        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 80))}px`,
+      },
+      onPointerDown: (event) => event.stopPropagation(),
+    }, items.map((item) => h('button', {
+      key: item.key,
+      type: 'button',
+      role: 'menuitem',
+      className: 'iw-menu-item',
+      onClick: run(item.run),
+    }, [
+      h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+      h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+    ])))),
+  ])
+}

@@ -177,6 +177,71 @@ function IdeEmptyEditor({ tr }) {
   ])
 }
 
+/** Opens the setup guide once per page load; closing it keeps it closed. */
+let ideSetupDismissed = false
+
+/**
+ * The guide shown when the LSP seam is not mounted.
+ *
+ * Browsing works without a language server; navigating does not. The page says
+ * what is missing, how to install the pinned LSP packages, where the JetBrains
+ * licence lives, and re-checks on demand.
+ */
+function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
+  if (open !== true) return null
+  return h('div', {
+    key: 'backdrop',
+    className: 'iw-setup-backdrop',
+    onPointerDown: onClose,
+  }, h('div', {
+    key: 'card',
+    className: 'iw-setup',
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-label': tr('setupTitle'),
+    onPointerDown: (event) => event.stopPropagation(),
+  }, [
+    h('div', { key: 'title', className: 'iw-setup-title' }, tr('setupTitle')),
+    h('div', { key: 'body', className: 'iw-setup-body' }, [
+      h('p', { key: 'p' }, tr('setupBody')),
+      h('ol', { key: 'steps', className: 'iw-setup-steps' }, [
+        h('li', { key: 's1' }, tr('setupStep1')),
+        h('li', { key: 's2' }, tr('setupStep2')),
+        h('li', { key: 's3' }, tr('setupStep3')),
+      ]),
+    ]),
+    h('pre', { key: 'code', className: 'iw-setup-code' },
+      'dsh plugin --profile desktop add \\\n  @deepseek-ai/dsh-lsp@0.2.2-rc.3 \\\n  @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3'),
+    h('div', { key: 'licence', className: 'iw-setup-link' }, [
+      `${tr('setupLicence')} `,
+      h('a', {
+        key: 'a',
+        href: 'https://account.jetbrains.com/licenses',
+        target: '_blank',
+        rel: 'noreferrer',
+      }, 'account.jetbrains.com'),
+    ]),
+    still === true
+      ? h('div', { key: 'still', className: 'iw-setup-still' }, tr('setupStill'))
+      : null,
+    h('div', { key: 'actions', className: 'iw-setup-actions' }, [
+      h('button', {
+        key: 'check',
+        type: 'button',
+        className: 'iw-btn',
+        disabled: busy === true,
+        onClick: onCheck,
+      }, busy === true ? tr('setupChecking') : tr('setupRecheck')),
+      h('button', {
+        key: 'close',
+        type: 'button',
+        className: 'iw-btn primary',
+        onClick: onClose,
+      }, tr('setupClose')),
+    ]),
+  ]))
+}
+
 /** The centre panel entry. */
 /** How many times the panel body has rendered; a probe can read it. */
 let idePanelRenders = 0
@@ -205,6 +270,37 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     globalThis.addEventListener('keyup', onKey)
     return () => globalThis.removeEventListener('keyup', onKey)
   }, [store])
+  // The setup guide: one check when the workspace is entered, then on demand.
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [setupBusy, setSetupBusy] = useState(false)
+  const [setupStill, setSetupStill] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void ideDoctorQuery().then((found) => {
+      if (cancelled || found.ok !== true || found.lsp === true) return
+      if (!ideSetupDismissed) setSetupOpen(true)
+    })
+    return () => { cancelled = true }
+  }, [])
+  const checkSetup = () => {
+    setSetupBusy(true)
+    setSetupStill(false)
+    void ideDoctorQuery().then((found) => {
+      setSetupBusy(false)
+      if (found.ok === true && found.lsp === true) {
+        setSetupOpen(false)
+        store.setNotice(tr('setupReady'))
+        return
+      }
+      setSetupOpen(true)
+      setSetupStill(true)
+    })
+  }
+  const closeSetup = () => {
+    ideSetupDismissed = true
+    setSetupOpen(false)
+  }
+
   idePanelRenders += 1
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const tab = state.tabs.find((entry) => entry.path === state.activePath)
@@ -384,6 +480,12 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    h(IdeGutterMenu, {
+      key: 'guttermenu',
+      store,
+      state,
+      tr,
+    }),
     h(IdeTabMenu, {
       key: 'tabmenu',
       store,
@@ -396,6 +498,15 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
         }
         store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
       },
+    }),
+    h(IdeSetupDialog, {
+      key: 'setup',
+      tr,
+      open: setupOpen,
+      busy: setupBusy,
+      still: setupStill,
+      onCheck: checkSetup,
+      onClose: closeSetup,
     }),
     h('div', { key: 'body', className: 'iw-body' }, [
       state.treeVisible ? h(IdeTree, { key: 'tree', store, state, tr }) : null,

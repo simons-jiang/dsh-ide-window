@@ -148,7 +148,7 @@ function ideSymbolOfRun(run) {
 }
 
 /** One rendered source row. */
-function IdeCodeLine({ index, text, lang, hit, vcs }) {
+function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
   // Tokenising is the expensive part of a row; it depends on the text alone, so
   // a highlight change or a notice re-render never repeats it.
   const runs = useMemo(() => ideTokenize(text, lang), [text, lang])
@@ -176,8 +176,12 @@ function IdeCodeLine({ index, text, lang, hit, vcs }) {
     'data-iw-line': index,
   }, [
     h('span', { key: 'vcs', className: `iw-vcs${vcs === undefined ? '' : ` ${vcs}`}` }),
+    annotate === undefined
+      ? null
+      : h('span', { key: 'ann', className: `iw-blame${annotate.band === 1 ? ' b' : ''}` }, annotate.label),
     h('span', { key: 'ln', className: 'iw-ln' }, String(index + 1)),
     h('span', { key: 'src', className: 'iw-src' }, rendered),
+    vision === undefined ? null : h('span', { key: 'vision', className: 'iw-vision' }, vision),
   ])
 }
 
@@ -283,6 +287,220 @@ function ideChangeKinds(changes, lineCount) {
   return kinds
 }
 
+// ---- Code Vision ----------------------------------------------------------
+//
+// IDEA puts a line's facts next to the declaration: how many places use it,
+// how many classes implement it, and who last touched the line. The counts come
+// from the LSP seam (two queries per declaration), the author from `git blame`;
+// both are cached per file version and fetched only for declarations that are
+// on screen, so a scroll costs nothing after the first visit.
+
+/**
+ * Method declaration lines between two line indexes, as positions the language
+ * server understands.
+ *
+ * Methods only: a call-site count answers "who uses this behaviour", which is
+ * the question a reader has about a method; a field's count would only repeat
+ * its accessors. The shape is the symbol search's: a type, then the name. That
+ * is what keeps `return foo(` a statement, a constructor (`public Foo(`) out of
+ * the list, and a comment or an annotation from ever matching. The leading type
+ * is case-sensitive on purpose — a case-insensitive one would accept `return`.
+ *
+ * @returns `{ index, name, column }`; `index` is 0-based.
+ */
+function ideDeclarations(lines, from, to) {
+  const modifiers = '(?:(?:public|private|protected|static|final|abstract|synchronized|native|transient|volatile|default|strictfp)\\s+)*'
+  const type = '(?:[A-Z][\\w$]*(?:<[^>]*>)?(?:\\[\\])*|void|int|long|short|byte|char|boolean|float|double)'
+  // Methods live at the class-body level; a local variable inside a method body
+  // is indented once more and must not earn a hint.
+  const memberIndent = '^[ \t]{0,4}'
+  const methodShape = new RegExp(`${memberIndent}${modifiers}(?:${type}\\s+)+([A-Za-z_$][\\w$]*)\\s*\\(`)
+  const found = []
+  const last = Math.min(to, lines.length)
+  for (let index = Math.max(0, from); index < last; index += 1) {
+    const text = lines[index]
+    const trimmed = text.trimStart()
+    if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('@')) continue
+    const match = methodShape.exec(text)
+    if (match === null) continue
+    const name = match[1]
+    found.push({
+      index,
+      name,
+      // The name's own column, not the type's: `Foo Foo(` points at the second.
+      column: match.index + match[0].lastIndexOf(name),
+    })
+  }
+  return found
+}
+
+/** How the counts read next to a declaration. */
+function ideVisionLabel(usages, implementations) {
+  const parts = [`${usages} 个用法`]
+  if (implementations > 0) parts.push(`${implementations} 个实现`)
+  return parts.join(' · ')
+}
+
+/** Distinct locations of one query, without the declaration itself. */
+function ideVisionCount(locations, path, line) {
+  const seen = new Set()
+  let count = 0
+  for (const location of Array.isArray(locations) ? locations : []) {
+    if (typeof location?.path !== 'string') continue
+    if (location.path === path && location.line === line) continue
+    const key = `${location.path}:${location.line}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    count += 1
+  }
+  return count
+}
+
+/** Counts and blame for one file version, keyed by `${root}|${path}|${version}`. */
+const ideVisionCounts = new Map()
+const ideBlames = new Map()
+
+/** Queries already issued, so scrolling never repeats one. */
+const ideVisionPending = new Set()
+
+/** Set when the LSP seam is absent, so the panel stops asking. */
+let ideVisionDisabled = false
+
+/** Two declarations enriched at a time: the provider serialises queries anyway. */
+let ideVisionSlots = 2
+const ideVisionQueue = []
+
+function ideVisionPump() {
+  while (ideVisionSlots > 0 && ideVisionQueue.length > 0) {
+    ideVisionSlots -= 1
+    const task = ideVisionQueue.shift()
+    void task().finally(() => {
+      ideVisionSlots += 1
+      ideVisionPump()
+    })
+  }
+}
+
+/** Run one enrichment task when a slot frees up. */
+function ideVisionSchedule(task) {
+  return new Promise((resolve) => {
+    ideVisionQueue.push(() => task().then(resolve, resolve))
+    ideVisionPump()
+  })
+}
+
+/** The cache key of one file version. */
+function ideVisionKey(root, tab) {
+  return `${root}|${tab.path}|${tab.version}`
+}
+
+/** `line → label` already known for this file, counts and blame merged. */
+function ideVisionRows(root, tab) {
+  const key = ideVisionKey(root, tab)
+  const rows = new Map()
+  for (const [line, text] of ideVisionCounts.get(key) ?? []) rows.set(line, text)
+  for (const [line, blame] of ideBlames.get(key) ?? []) {
+    rows.set(line, [rows.get(line), blame.label].filter(Boolean).join('  '))
+  }
+  return rows
+}
+
+/**
+ * One Git annotate cell per line, banded by commit.
+ *
+ * @param blames - `line → { author, date, time }` (1-based).
+ * @param lineCount - how many lines the file has.
+ * @returns `line → { label, band }` (`band` is 0 or 1, so adjacent commits can
+ *   alternate a tint the way an editor's annotate view does).
+ */
+function ideAnnotateRows(blames, lineCount) {
+  const rows = new Map()
+  if (blames === undefined) return rows
+  let band = 0
+  let previous
+  for (let line = 1; line <= lineCount; line += 1) {
+    const blame = blames.get(line)
+    if (blame === undefined) {
+      rows.set(line, { label: '', band: 0 })
+      previous = undefined
+      continue
+    }
+    const key = `${blame.author}|${blame.time}`
+    if (key !== previous) {
+      band = band === 0 ? 1 : 0
+      previous = key
+    }
+    rows.set(line, { label: [blame.date, blame.author].filter(Boolean).join(' '), band })
+  }
+  return rows
+}
+
+/** Fetch usage and implementation counts for the given declarations. */
+function ideRequestVision(store, tab, declarations, done) {
+  const state = store.getState()
+  if (ideVisionDisabled || tab.kind === 'jar' || state.sessionId === null || state.rootPath === '') return
+  const key = ideVisionKey(state.rootPath, tab)
+  if (!ideVisionCounts.has(key)) ideVisionCounts.set(key, new Map())
+  const filePath = ideAbs(state.rootPath, tab.path)
+  for (const declaration of declarations) {
+    const line = declaration.index + 1
+    if (ideVisionCounts.get(key).has(line)) continue
+    const id = `${key}|${declaration.index}:${declaration.name}`
+    if (ideVisionPending.has(id)) continue
+    ideVisionPending.add(id)
+    const position = { line: declaration.index, character: declaration.column }
+    void ideVisionSchedule(async () => {
+      let failed = false
+      const fail = (error) => {
+        failed = true
+        if (error?.code === 'lsp-unavailable') ideVisionDisabled = true
+        return { locations: [] }
+      }
+      try {
+        const [references, implementations] = await Promise.all([
+          ideLspQuery({ operation: 'findReferences', filePath, workspaceRoot: state.rootPath, position }).catch(fail),
+          ideLspQuery({ operation: 'goToImplementation', filePath, workspaceRoot: state.rootPath, position }).catch(fail),
+        ])
+        // A failed query is not a zero: leave the line uncached so it can be
+        // answered when the server is available again.
+        if (!failed) {
+          const usages = ideVisionCount(references?.locations, tab.path, line)
+          const implemented = ideVisionCount(implementations?.locations, tab.path, line)
+          ideVisionCounts.get(key).set(line, ideVisionLabel(usages, implemented))
+          done()
+        }
+      } finally {
+        ideVisionPending.delete(id)
+      }
+    })
+  }
+}
+
+/** Fetch the last commit that touched each line, once per file version. */
+function ideRequestBlame(store, tab, done) {
+  const state = store.getState()
+  if (tab.kind === 'jar' || state.rootPath === '') return
+  const key = ideVisionKey(state.rootPath, tab)
+  const id = `${key}|blame`
+  if (ideBlames.has(key) || ideVisionPending.has(id)) return
+  ideVisionPending.add(id)
+  void ideBlameQuery(state.rootPath, tab.path)
+    .then((found) => {
+      if (found.ok !== true) return
+      const rows = new Map()
+      for (const row of found.lines) {
+        if (!Number.isFinite(row?.line) || typeof row?.author !== 'string' || row.author === '') continue
+        const when = Number.isFinite(row.time) && row.time > 0 ? new Date(row.time * 1000) : undefined
+        const date = when === undefined ? '' : `${when.getFullYear()}/${when.getMonth() + 1}/${when.getDate()}`
+        rows.set(row.line, { author: row.author, date, time: row.time, label: [row.author, date].filter(Boolean).join(' · ') })
+      }
+      ideBlames.set(key, rows)
+      done()
+    })
+    .catch(() => undefined)
+    .finally(() => ideVisionPending.delete(id))
+}
+
 /** The source view. */
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
@@ -292,6 +510,29 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const lines = useMemo(() => (tab.text === '' ? [] : tab.text.split('\n')), [tab.text])
   const columns = useMemo(() => ideColumnsOf(lines), [lines])
   const changeKinds = useMemo(() => ideChangeKinds(tab.changes, lines.length), [tab.changes, lines.length])
+  // Code Vision rows for this file version; a stamp re-renders the view when a
+  // background query answers.
+  const [visionStamp, setVisionStamp] = useState(0)
+  const rootPath = store.getState().rootPath
+  // Blame answers for every line; the hint belongs on declarations only.
+  const declarationRows = useMemo(
+    () => new Set(ideDeclarations(lines, 0, lines.length).map((item) => item.index + 1)),
+    [lines],
+  )
+  const visionRows = useMemo(() => {
+    if (tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return new Map()
+    const rows = ideVisionRows(rootPath, tab)
+    for (const line of [...rows.keys()]) {
+      if (!declarationRows.has(line)) rows.delete(line)
+    }
+    return rows
+  }, [rootPath, tab.path, tab.version, tab.status, tab.kind, visionStamp, declarationRows])
+  // Git annotate: every line carries its commit, so it is a per-file mode.
+  const annotateOn = store.getState().annotate?.[tab.path] === true
+  const annotateRows = useMemo(() => {
+    if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return undefined
+    return ideAnnotateRows(ideBlames.get(ideVisionKey(rootPath, tab)), lines.length)
+  }, [annotateOn, rootPath, tab.path, tab.version, tab.status, tab.kind, lines, visionStamp])
 
   // ---- symbol navigation --------------------------------------------------
   const [popup, setPopup] = useState(undefined)
@@ -576,6 +817,42 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     }
   }, [tab.path, store])
 
+  // Enrich the declarations on screen (counts) and the file once (blame). Both
+  // are cached per file version, so scrolling back costs nothing.
+  useEffect(() => {
+    if (tab.status !== 'ready' || tab.kind === 'jar' || tab.text === '') return undefined
+    const element = scrollRef.current
+    if (element === null) return undefined
+    const bump = () => setVisionStamp((value) => value + 1)
+    const request = () => {
+      const lineHeight = element.querySelector('.iw-line')?.getBoundingClientRect().height || IDE_LINE_HEIGHT
+      const start = Math.max(0, Math.floor(element.scrollTop / lineHeight) - 6)
+      const end = Math.min(lines.length, Math.ceil((element.scrollTop + element.clientHeight) / lineHeight) + 6)
+      ideRequestVision(store, tab, ideDeclarations(lines, start, end), bump)
+    }
+    request()
+    ideRequestBlame(store, tab, bump)
+    let timer
+    const onScroll = () => {
+      if (timer !== undefined) return
+      timer = setTimeout(() => {
+        timer = undefined
+        request()
+      }, 250)
+    }
+    element.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      if (timer !== undefined) clearTimeout(timer)
+      element.removeEventListener('scroll', onScroll)
+    }
+  }, [store, tab.path, tab.version, tab.status, tab.kind, tab.text, lines])
+
+  // Turning annotate on asks for the file's blame if the first pass had none.
+  useEffect(() => {
+    if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar') return
+    ideRequestBlame(store, tab, () => setVisionStamp((value) => value + 1))
+  }, [annotateOn, store, tab.path, tab.version, tab.status, tab.kind])
+
   if (lines.length === 0 && tab.text === '') {
     return h('div', { className: 'iw-empty' }, tr(tab.status === 'error' ? 'fileNotText' : 'loading'))
   }
@@ -589,6 +866,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     lang,
     hit: index === hitIndex,
     vcs: changeKinds.get(index),
+    vision: annotateRows === undefined ? visionRows.get(index + 1) : undefined,
+    annotate: annotateRows === undefined ? undefined : (annotateRows.get(index + 1) ?? { label: '', band: 0 }),
   }))
 
   const code = h('div', {
@@ -625,6 +904,17 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       event.preventDefault()
       if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
       else void showUsages(hit.name, hit.position, event)
+    },
+    onContextMenu: (event) => {
+      // The gutter — change bar, annotate column, line numbers — is where an
+      // editor offers Git annotate. On the source itself the platform menu stays.
+      const target = event.target
+      if (typeof target?.closest !== 'function') return
+      const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
+      if (gutter === null) return
+      if (tab.kind === 'jar') return
+      event.preventDefault()
+      store.setCodeMenu({ path: tab.path, x: event.clientX, y: event.clientY })
     },
     onKeyDown: (event) => {
       if (event.key === 'Escape') closePopup()

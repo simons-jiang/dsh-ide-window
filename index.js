@@ -32,6 +32,8 @@ const ROUTE_GREP = '/dsh-ide/grep'
 const ROUTE_DIFF = '/dsh-ide/diff'
 const ROUTE_JAR = '/dsh-ide/jar'
 const ROUTE_STATUS = '/dsh-ide/status'
+const ROUTE_BLAME = '/dsh-ide/blame'
+const ROUTE_DOCTOR = '/dsh-ide/doctor'
 
 /** Largest number of content matches returned by one grep. */
 const MAX_GREP_MATCHES = 200
@@ -277,6 +279,61 @@ export function parseStatus(text) {
     if (status.includes('R') || status.includes('C')) index += 1
   }
   return entries
+}
+
+/**
+ * Parse `git blame --line-porcelain` into one entry per line.
+ *
+ * A header line (`<sha> <orig> <final> [count]`) opens a block; `author` and
+ * `author-time` carry the commit identity, and the block ends at the source
+ * line (prefixed with a tab). Only the final line number, the author and the
+ * epoch are kept: the editor shows who touched the line, not the hash.
+ *
+ * @param text - porcelain output.
+ * @returns `{ line, author, time }` entries in file order.
+ */
+export function parseBlame(text) {
+  const entries = []
+  let current
+  for (const raw of String(text ?? '').split('\n')) {
+    const header = /^[0-9a-f]{7,64} \d+ (\d+)(?: \d+)?$/.exec(raw)
+    if (header !== null) {
+      current = { line: Number(header[1]), author: '', time: 0 }
+      continue
+    }
+    if (current === undefined) continue
+    if (raw.startsWith('author ')) {
+      current.author = raw.slice('author '.length).trim()
+      continue
+    }
+    if (raw.startsWith('author-time ')) {
+      const value = Number(raw.slice('author-time '.length))
+      current.time = Number.isFinite(value) ? value : 0
+      continue
+    }
+    if (raw.startsWith('\t')) {
+      entries.push(current)
+      current = undefined
+    }
+  }
+  return entries
+}
+
+/** Largest number of blame rows returned for one file. */
+const MAX_BLAME_LINES = 20000
+
+/** The last commit that touched each line of one workspace file. */
+export async function blameWorkspace(payload) {
+  const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
+  const rel = typeof payload?.path === 'string' ? payload.path.trim() : ''
+  if (root === '' || rel === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot and path are required')
+  if (rel.startsWith('/') || rel.split('/').includes('..')) {
+    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
+  }
+  const result = await runCommand('git', ['blame', '--line-porcelain', '--', rel], root)
+  // An untracked file has no history yet: no rows, and no failure to report.
+  if (result.code !== 0) return { failed: true, lines: [] }
+  return { failed: false, lines: parseBlame(result.stdout).slice(0, MAX_BLAME_LINES) }
 }
 
 /** List the files a workspace has not committed yet. */
@@ -540,6 +597,20 @@ async function query(ctx, payload) {
   return { kind: 'locations', locations }
 }
 
+/**
+ * Whether the LSP seam is mounted in this profile.
+ *
+ * The setup guide keys off this: a profile without `@deepseek-ai/dsh-lsp` can
+ * still browse files, but nothing can navigate.
+ */
+export function doctorReport(ctx) {
+  try {
+    return { lsp: ctx.get('lsp') !== undefined }
+  } catch (error) {
+    return { lsp: false }
+  }
+}
+
 /** Serve one request. */
 function createHandler(ctx) {
   return async (request, response) => {
@@ -554,7 +625,7 @@ function createHandler(ctx) {
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -567,6 +638,10 @@ function createHandler(ctx) {
             ? jarSource(payload)
             : pathname === ROUTE_STATUS
               ? await statusWorkspace(payload)
+              : pathname === ROUTE_BLAME
+                ? await blameWorkspace(payload)
+              : pathname === ROUTE_DOCTOR
+                ? doctorReport(ctx)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -604,4 +679,14 @@ export function apply(ctx) {
     path: ROUTE_STATUS,
     handler,
   }), 'dsh-ide-window: workspace status route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_BLAME,
+    handler,
+  }), 'dsh-ide-window: blame route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_DOCTOR,
+    handler,
+  }), 'dsh-ide-window: doctor route')
 }

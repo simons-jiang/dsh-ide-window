@@ -140,5 +140,19 @@
   "tabMenuCopyPath": "Copy path / reference",
   "tabMenuCopied": "Copied — paste it into the chat input",
   "tabMenuCloseLeft": "Close tabs to the left",
-  "tabMenuLabel": "Tab actions"
+  "tabMenuLabel": "Tab actions",
+  "gutterMenuLabel": "Code gutter actions",
+  "gutterMenuAnnotate": "Annotate with Git blame",
+  "gutterMenuUnannotate": "Close Git annotate",
+  "setupTitle": "Code navigation is not ready",
+  "setupBody": "The workspace can browse files; navigation needs the IntelliJ language server (JetBrains licensed build).",
+  "setupStep1": "Install the LSP plumbing packages in the profile, at the version this DSH build uses.",
+  "setupStep2": "Place the licensed IntelliJ server on this machine, then insert the lsp / lsp-stdio rows in the profile cordis.patch.yml (the README has the full YAML).",
+  "setupStep3": "Without a JetBrains licence, activate one at the account page, then fully quit and reopen DSH.",
+  "setupLicence": "Licence:",
+  "setupRecheck": "Check again",
+  "setupChecking": "Checking…",
+  "setupClose": "Close",
+  "setupReady": "Code navigation is ready",
+  "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml."
 }

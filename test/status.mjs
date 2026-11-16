@@ -10,7 +10,7 @@
  * These fixtures are the exact shapes `git status --porcelain=v1 -z` prints,
  * including the rename/copy pair whose second field has no status prefix.
  */
-import { parseStatus } from '../index.js'
+import { parseStatus, parseBlame, doctorReport } from '../index.js'
 
 let failures = 0
 const ok = (name) => console.log(`  ✓ ${name}`)
@@ -73,6 +73,44 @@ const nul = (fields) => fields.map((field) => `${field}\0`).join('')
   check(parseStatus('').length === 0, 'empty output yields nothing')
   check(parseStatus('\0').length === 0, 'a lone NUL yields nothing')
   check(parseStatus(undefined).length === 0, 'a missing body yields nothing')
+}
+
+// ---- git blame -------------------------------------------------------------
+{
+  const fixture = [
+    '77240de99c9d8c2c3dee7fa4e1bf1d68319879ce 1 1 3',
+    'author simon',
+    'author-mail <simon@example.com>',
+    'author-time 1794792855',
+    'author-tz +0800',
+    'committer simon',
+    'summary feat: init',
+    'filename index.js',
+    '\t/**',
+    '77240de99c9d8c2c3dee7fa4e1bf1d68319879ce 2 2',
+    'author simon',
+    'author-time 1794792855',
+    '\t * text',
+    'aa11bb22cc33dd44ee55ff6677889900aabbccdd 3 3',
+    'author alice',
+    'author-time 1794800000',
+    '\tpublic class Demo {',
+  ].join('\n')
+  const rows = parseBlame(fixture)
+  check(rows.length === 3, 'three blamed lines', JSON.stringify(rows))
+  check(rows[0]?.line === 1 && rows[0]?.author === 'simon', 'the first line keeps its author', JSON.stringify(rows[0]))
+  check(rows[1]?.line === 2 && rows[1]?.author === 'simon', 'a short header (no count) still parses', JSON.stringify(rows[1]))
+  check(rows[2]?.line === 3 && rows[2]?.author === 'alice', 'a second author is read', JSON.stringify(rows[2]))
+  check(rows[0]?.time === 1794792855, 'the author timestamp is kept', String(rows[0]?.time))
+  check(parseBlame('').length === 0, 'empty blame yields nothing')
+  check(parseBlame('not porcelain').length === 0, 'garbage yields nothing')
+}
+
+// ---- profile doctor --------------------------------------------------------
+{
+  check(doctorReport({ get: () => undefined }).lsp === false, 'no LSP seam means not ready')
+  check(doctorReport({ get: () => ({}) }).lsp === true, 'a mounted LSP seam means ready')
+  check(doctorReport({ get: () => { throw new Error('no inject') } }).lsp === false, 'a throwing ctx is not ready')
 }
 
 console.log(failures === 0 ? '\nall status checks passed' : `\n${failures} status check(s) failed`)

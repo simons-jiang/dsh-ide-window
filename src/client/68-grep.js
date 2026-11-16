@@ -89,6 +89,65 @@ async function ideDiffQuery(root, path, signal) {
   }
 }
 
+/** The blame route, resolved against the page base. */
+function ideBlameUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/blame', base).href
+}
+
+/**
+ * Ask the Host for the last commit that touched each line of one file.
+ *
+ * @returns `{ ok: true, lines }` or `{ ok: false, error }`; `lines` carries
+ *   `{ line, author, time }` entries, one per line git knows.
+ */
+async function ideBlameQuery(root, path, signal) {
+  let response
+  try {
+    response = await fetch(ideBlameUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot: root, path }),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'blame-failed' }
+  return { ok: true, lines: Array.isArray(parsed.value?.lines) ? parsed.value.lines : [] }
+}
+
+/** The doctor route, resolved against the page base. */
+function ideDoctorUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/doctor', base).href
+}
+
+/**
+ * Ask the Host whether the LSP seam is mounted in this profile.
+ *
+ * @returns `{ ok: true, lsp }` or `{ ok: false, error }`.
+ */
+async function ideDoctorQuery() {
+  let response
+  try {
+    response = await fetch(ideDoctorUrl(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  } catch (error) {
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'doctor-failed' }
+  return { ok: true, lsp: parsed.value?.lsp === true }
+}
+
 /** The jar-source route, resolved against the page base. */
 function ideJarUrl() {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
