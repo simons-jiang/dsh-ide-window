@@ -481,13 +481,13 @@ function apply(ctx) {
     {
       id: 'dsh-ide-window.toggle',
       label: () => translate('shortcutToggle'),
-      aliases: ['code', 'workspace', 'ide', 'panel', '代码', '工作区'],
+      aliases: ['code', 'workspace', 'ide', 'panel', '代码', '工作区', '代码工作区'],
       run: () => openPanel(),
     },
     {
       id: 'dsh-ide-window.back-to-chat',
       label: () => translate('shortcutBackToChat'),
-      aliases: ['conversation', 'chat', 'back', '对话', '返回'],
+      aliases: ['conversation', 'chat', 'back', '对话', '返回', '代码工作区'],
       run: () => selectPanel(null),
     },
   ]

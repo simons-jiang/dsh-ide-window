@@ -89,11 +89,12 @@
   "navForward": "Forward (mouse side button)",
   "noSourceInJar": "No sources in that jar",
   "shortcutToggle": "Code workspace: open / close",
-  "shortcutBackToChat": "Back to conversation",
+  "shortcutBackToChat": "Code workspace: back to conversation",
   "turnChanges": "Code changes",
   "turnChangesHint": "Open the first changed file in the code workspace",
   "turnJumpHint": "Open in the code workspace at the changed line",
   "turnJumpFailed": "Cannot open",
   "turnFoldMore": "Show",
-  "turnFoldLess": "Collapse"
+  "turnFoldLess": "Collapse",
+  "turnChangesSingle": "1 changed file"
 }

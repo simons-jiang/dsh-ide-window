@@ -244,15 +244,17 @@ function IdeTurnChanges(props) {
           if (first !== undefined) void jump(first, 0)
         },
       }, [
-        h(IdeFileIcon, { key: 'ic', lang: '', size: 14 }),
-        h('span', { key: 't', className: 'iw-turn-title' }, tr('turnChanges')),
-        h('span', { key: 'c', className: 'iw-turn-count' }, `${state.total}`),
+        h('span', { key: 'tile', className: 'iw-turn-tile' }, h(IdeFileIcon, { key: 'ic', lang: '', size: 20 })),
+        h('span', { key: 'titles', className: 'iw-turn-titles' }, [
+          h('span', { key: 't', className: 'iw-turn-title' },
+            state.total === 1 ? tr('turnChangesSingle') : `${tr('turnChanges')} ${state.total}`),
+        ]),
         state.fromLog
           ? null
-          : h('span', { key: 'a', className: 'iw-turn-add' }, `+${state.added}`),
-        state.fromLog
-          ? null
-          : h('span', { key: 'd', className: 'iw-turn-del' }, `-${state.deleted}`),
+          : h('span', { key: 'stat', className: 'iw-turn-stat' }, [
+            h('span', { key: 'a', className: 'iw-turn-add' }, `+${state.added}`),
+            h('span', { key: 'd', className: 'iw-turn-del' }, `-${state.deleted}`),
+          ]),
       ]),
       h('div', { key: 'rows', className: 'iw-turn-rows' }, rows.map((file, index) => h('button', {
         key: file.path,
@@ -261,14 +263,13 @@ function IdeTurnChanges(props) {
         title: `${file.display ?? file.path}  ${tr('turnJumpHint')}`,
         onClick: () => void jump(file, index),
       }, [
-        h('span', { key: 'n', className: 'iw-turn-name' }, (file.display ?? file.path).split('/').pop()),
         h('span', { key: 'p', className: 'iw-turn-path' }, file.display ?? file.path),
         state.fromLog
           ? null
-          : h('span', { key: 'a', className: 'iw-turn-add' }, `+${file.added ?? 0}`),
-        state.fromLog
-          ? null
-          : h('span', { key: 'd', className: 'iw-turn-del' }, `-${file.deleted ?? 0}`),
+          : h('span', { key: 'c', className: 'iw-turn-counts' }, [
+            h('span', { key: 'a', className: 'iw-turn-add' }, `+${file.added ?? 0}`),
+            h('span', { key: 'd', className: 'iw-turn-del' }, `-${file.deleted ?? 0}`),
+          ]),
       ]))),
       foldable
         ? h('button', {
