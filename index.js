@@ -247,33 +247,43 @@ const MAX_DIFF_HUNKS = 4000
  * reported as wholly added, the way an editor shows a new file.
  */
 /**
- * Parse `git status --porcelain=v1` output into the files it lists.
+ * Parse `git status --porcelain=v1 -z` output into the files it lists.
+ *
+ * The NUL-separated form is the one to read: the line form quotes every path
+ * git considers unsafe — a space, a quote, a non-ASCII byte — and an escaped
+ * path is not a path, it is a C string literal. A Chinese file name arrives
+ * there as `"docs/\345\271\270..."` (the octal UTF-8 bytes), which the card
+ * would print verbatim and no jump could ever open. Nothing is quoted here.
  *
  * The status codes come straight from git so the card can say「M」/「A」/「?」
- * without inventing anything; a rename keeps both of its paths.
+ * without inventing anything. In this form a rename or a copy is `XY <new> NUL
+ * <old>`, so the old path's field carries no status prefix and is skipped: the
+ * new path is the file that exists.
  *
- * @param text - porcelain output, one line per file.
+ * @param text - NUL-separated porcelain output.
  * @returns `{ path, status }` entries in git's own order.
  */
-function parseStatus(text) {
+export function parseStatus(text) {
   const entries = []
-  for (const line of String(text ?? '').split('\n')) {
-    if (line.length < 4) continue
-    const status = line.slice(0, 2).trim() || '?'
-    const rest = line.slice(3).trim()
-    if (rest === '') continue
-    // A rename reads `R  old -> new`; the new path is the one that exists.
-    const path = rest.includes(' -> ') ? rest.split(' -> ').pop() : rest
+  const fields = String(text ?? '').split('\0')
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index]
+    if (field.length < 4) continue
+    const status = field.slice(0, 2).trim() || '?'
+    const path = field.slice(3)
+    if (path === '') continue
     entries.push({ path, status })
+    // R and C both carry a second field (the original path) that has no status.
+    if (status.includes('R') || status.includes('C')) index += 1
   }
   return entries
 }
 
 /** List the files a workspace has not committed yet. */
-async function statusWorkspace(payload) {
+export async function statusWorkspace(payload) {
   const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
   if (root === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot is required')
-  const result = await runCommand('git', ['status', '--porcelain=v1', '--untracked-files=normal'], root)
+  const result = await runCommand('git', ['status', '--porcelain=v1', '-z', '--untracked-files=normal'], root)
   if (result.code !== 0) return { files: [], failed: true }
   const files = parseStatus(result.stdout)
   return { files: files.slice(0, 200), total: files.length }

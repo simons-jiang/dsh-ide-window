@@ -572,8 +572,10 @@ function grabSource(name, file = '58-turn.js') {
     throw new Error('parseStatus not found')
   })()
   const parse = new Function(`${parseBody}\nreturn parseStatus`)()
-  const entries = parse(' M a/B.java\nA  c/D.java\nR  old/E.java -> new/E.java\n?? notes.md\n')
-  check(entries.length === 4, 'every line becomes an entry', String(entries.length))
+  // The route reads the NUL-separated form, so the fixture is that wire shape:
+  // a rename carries its original path as the field after the new one.
+  const entries = parse(' M a/B.java\0A  c/D.java\0R  new/E.java\0old/E.java\0?? notes.md\0')
+  check(entries.length === 4, 'every file becomes an entry', String(entries.length))
   check(entries[0].status === 'M' && entries[0].path === 'a/B.java', 'a modification keeps its code', JSON.stringify(entries[0]))
   check(entries[1].status === 'A', 'an addition keeps its code', JSON.stringify(entries[1]))
   check(entries[2].path === 'new/E.java', 'a rename reports the new path', JSON.stringify(entries[2]))
