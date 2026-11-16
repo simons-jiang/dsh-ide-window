@@ -836,6 +836,19 @@ const IDE_CSS = `
 }
 .iw-gesture-row:first-child { border-top: 0; }
 .iw-gesture-label { font-size: 12.5px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-gesture-right { display: inline-flex; align-items: center; gap: 6px; }
+.iw-gesture-keys {
+  min-width: 72px;
+  padding: 2px 8px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-base, rgba(255, 255, 255, 0.04));
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  font-size: 11.5px;
+  text-align: center;
+}
+.iw-gesture-keys.readonly { opacity: 0.75; }
+.iw-gesture-keys.recording { color: var(--dsw-alias-state-warning-primary, #d9a13b); }
 .iw-gesture-chips { display: inline-flex; gap: 6px; }
 .iw-gesture-chip {
   padding: 3px 10px;

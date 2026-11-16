@@ -104,21 +104,25 @@ window.__ModuleLoader__.load({
     "turnFoldLess": "Collapse",
     "turnChangesSingle": "1 changed file",
     "gestureSection": "Code workspace shortcuts",
-    "gestureSectionHint": "Every shortcut of this plugin; keyboard commands are edited in DSH's dialog, gestures here",
+    "gestureSectionHint": "Every shortcut of this plugin, viewable and editable here (kept out of DSH's own list)",
     "gestureEdit": "View",
     "gestureClose": "Close",
-    "gestureHint": "Keyboard commands are edited in DSH's shortcut dialog; pick gestures here; double Shift and ⌘P are fixed in-panel behaviours",
+    "gestureHint": "Click Change then press the new combination (Esc cancels); pick gestures; double Shift and ⌘P are fixed",
     "gestureDefinition": "Go to definition",
     "gestureUsages": "Show implementations / callers",
     "gestureDouble": "Double click",
     "gestureMeta": "⌘+click",
     "gestureAlt": "⌥+click",
-    "gestureConflict": "That gesture already belongs to the other action",
+    "gestureConflict": "Already taken",
     "gestureTaken": "Used by the other action",
     "shortcutSearchEverywhere": "Open search everywhere",
     "shortcutFileSearch": "Focus the file filter",
     "ksUnbound": "Unbound",
     "gestureEditInDsh": "Edit it in Settings → General → Edit shortcuts",
+    "ksRecording": "Press keys…",
+    "ksChange": "Change",
+    "ksReset": "Reset",
+    "ksCancel": "Cancel",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -216,21 +220,25 @@ window.__ModuleLoader__.load({
     "turnFoldLess": "收起",
     "turnChangesSingle": "代码改动 1 个文件",
     "gestureSection": "代码工作区快捷键",
-    "gestureSectionHint": "本插件的全部快捷键；键盘命令在 DSH「编辑快捷键」里改，手势在这里点选",
+    "gestureSectionHint": "本插件的全部快捷键，就在这里查看与修改（不占用 DSH 自己的快捷键列表）",
     "gestureEdit": "查看",
     "gestureClose": "关闭",
-    "gestureHint": "键盘命令在 DSH 的「编辑快捷键」里改；手势在这里点选；双击 Shift 与 ⌘P 为面板内固定行为",
+    "gestureHint": "键盘命令点「修改」后直接按新组合键（Esc 取消）；手势点选；双击 Shift 与 ⌘P 为面板内固定行为",
     "gestureDefinition": "转到定义",
     "gestureUsages": "查看实现 / 调用方",
     "gestureDouble": "双击",
     "gestureMeta": "⌘+单击",
     "gestureAlt": "⌥+单击",
-    "gestureConflict": "该手势已被另一个动作使用",
+    "gestureConflict": "该组合已被占用",
     "gestureTaken": "已被另一个动作占用",
     "shortcutSearchEverywhere": "打开搜索无处不在",
     "shortcutFileSearch": "定位文件搜索框",
     "ksUnbound": "未绑定",
     "gestureEditInDsh": "在 设置 → 通用设置 → 编辑快捷键 中修改",
+    "ksRecording": "请按键…",
+    "ksChange": "修改",
+    "ksReset": "恢复默认",
+    "ksCancel": "取消",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1072,6 +1080,19 @@ const IDE_CSS = `
 }
 .iw-gesture-row:first-child { border-top: 0; }
 .iw-gesture-label { font-size: 12.5px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-gesture-right { display: inline-flex; align-items: center; gap: 6px; }
+.iw-gesture-keys {
+  min-width: 72px;
+  padding: 2px 8px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-base, rgba(255, 255, 255, 0.04));
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  font-size: 11.5px;
+  text-align: center;
+}
+.iw-gesture-keys.readonly { opacity: 0.75; }
+.iw-gesture-keys.recording { color: var(--dsw-alias-state-warning-primary, #d9a13b); }
 .iw-gesture-chips { display: inline-flex; gap: 6px; }
 .iw-gesture-chip {
   padding: 3px 10px;
@@ -1337,20 +1358,23 @@ const IDE_SHORTCUTS = [
   },
   {
     id: 'code-workspace.search-everywhere',
-    kind: 'fixed',
+    kind: 'sequence',
     labelKey: 'shortcutSearchEverywhere',
-    // Read by the palette listener; the sequence is a click sequence, not a key.
-    sequence: { key: 'Shift', repeat: 2, windowMs: 400 },
-    keys: ['双击', 'Shift'],
+    // A double press of one key: the listener compares `event.key`, so ShiftLeft
+    // and ShiftRight both count and a user can pick any key.
+    defaults: { desktop: { key: 'Shift' }, web: { key: 'Shift' } },
+    windowMs: 400,
     action: 'palette',
   },
   {
     id: 'code-workspace.file-search',
-    kind: 'fixed',
+    kind: 'key',
     labelKey: 'shortcutFileSearch',
-    // Read by the tree listener: focus the filter box, which is a panel-local
-    // behaviour rather than a global command.
-    fixedBinding: { code: 'KeyP', modifiers: ['primary'] },
+    // Panel-local: it focuses the tree's filter box, so the tree dispatches it.
+    defaults: {
+      desktop: { code: 'KeyP', modifiers: ['primary'] },
+      web: { code: 'KeyP', modifiers: ['primary'] },
+    },
     action: 'focus-filter',
   },
   {
@@ -1384,6 +1408,28 @@ function ideBindingFromEvent(event, platform) {
   return { code, modifiers }
 }
 
+/**
+ * Whether a keyboard event is exactly this binding (no extra, no missing modifier).
+ *
+ * `primary` is resolved against the platform, so one stored binding works on macOS
+ * and on Windows/Linux alike.
+ */
+function ideBindingMatches(binding, event, platform) {
+  if (binding === null || typeof binding?.code !== 'string') return false
+  if (event.code !== binding.code) return false
+  const wanted = new Set(binding.modifiers.map((modifier) => (
+    modifier === 'primary' ? (platform === 'macos' ? 'meta' : 'control') : modifier
+  )))
+  const held = new Set()
+  if (event.metaKey === true) held.add('meta')
+  if (event.ctrlKey === true) held.add('control')
+  if (event.altKey === true) held.add('alt')
+  if (event.shiftKey === true) held.add('shift')
+  if (wanted.size !== held.size) return false
+  for (const modifier of wanted) if (!held.has(modifier)) return false
+  return true
+}
+
 /** One binding's keycaps, in the order the platform prints them. */
 function ideBindingKeys(binding, platform) {
   if (binding === null || typeof binding?.code !== 'string') return []
@@ -1403,6 +1449,41 @@ function ideBindingKeys(binding, platform) {
       : IDE_KEYCAPS[code] ?? code
   keys.push(label)
   return keys
+}
+
+/** Filled in by `apply()` so every fragment resolves defaults the same way. */
+const ideRuntimeContext = { platform: 'macos', runtime: 'desktop' }
+
+/** The shipped default for a key-press sequence on this runtime. */
+function ideSequenceDefault(command, runtime) {
+  const table = command?.defaults ?? {}
+  return (runtime === 'web' ? table.web : table.desktop) ?? table.desktop ?? { key: 'Shift' }
+}
+
+/** How a sequence is written in the UI: 「双击 Shift」. */
+function ideSequenceLabel(sequence, tr) {
+  const key = typeof sequence?.key === 'string' && sequence.key !== '' ? sequence.key : 'Shift'
+  return `${typeof tr === 'function' ? tr('gestureDouble') : '双击'} ${key}`
+}
+
+/**
+ * Advance the double-press state machine.
+ *
+ * @param last - previous `{ key, at }` (mutated by the caller with the result).
+ * @param event - the `keydown` event under test.
+ * @param sequence - the configured `{ key }`.
+ * @param windowMs - how close the two presses must be.
+ * @returns `{ hit, next }` — whether the sequence fired, and the state to keep.
+ */
+function ideSequenceHit(last, event, sequence, windowMs) {
+  if (event?.repeat === true) return { hit: false, next: last }
+  const key = typeof event?.key === 'string' ? event.key : ''
+  if (key === '') return { hit: false, next: last }
+  const now = Date.now()
+  if (sequence?.key === key && last?.key === key && now - last.at <= windowMs) {
+    return { hit: true, next: { key: '', at: 0 } }
+  }
+  return { hit: false, next: { key, at: now } }
 }
 
 /** The shipped default for one keyboard command on this runtime. */
@@ -1807,6 +1888,12 @@ function ideCreateStore(refs) {
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
     /**
+     * Keyboard bindings this plugin owns, keyed by registry id. A missing entry
+     * uses the shipped default; nothing is registered in DSH's catalog, so DSH's
+     * own 「编辑快捷键」 dialog never lists these.
+     */
+    shortcutBindings: { ...(prefs.shortcutBindings ?? {}) },
+    /**
      * Mouse gestures for the two navigation actions: `double` is a double click,
      * `meta` and `alt` are a single click with that modifier held.
      */
@@ -1818,6 +1905,8 @@ function ideCreateStore(refs) {
     gestureEditorOpen: false,
     /** Why the last gesture change was refused. */
     gestureIssue: '',
+    /** The command currently capturing keys, or ''. */
+    gestureRecording: '',
     /** Java index progress: `{ status, done, total }`. */
     indexInfo: { status: 'idle', done: 0, total: 0 },
     /**
@@ -2588,9 +2677,22 @@ function ideCreateStore(refs) {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })
     },
-    /** Open or close the gesture editor inside General settings. */
+    /** Store one keyboard binding, or `null` to fall back to the default. */
+    setShortcutBinding: (id, binding) => {
+      if (typeof id !== 'string' || id === '') return
+      const shortcutBindings = { ...state.shortcutBindings }
+      if (binding === null) delete shortcutBindings[id]
+      else shortcutBindings[id] = binding
+      ideWritePrefs({ shortcutBindings })
+      patch({ shortcutBindings })
+    },
+    /** Open or close the shortcut editor inside General settings. */
     setGestureEditor: (open) => {
       patch({ gestureEditorOpen: open === true, gestureIssue: '' })
+    },
+    /** Enter or leave key capture for one command. */
+    setGestureRecording: (id) => {
+      patch({ gestureRecording: typeof id === 'string' ? id : '' })
     },
     /** Explain a refused gesture change. */
     setGestureIssue: (issue) => {
@@ -2786,13 +2888,17 @@ function IdeTree({ store, state, tr }) {
 
   // ⌘P / Ctrl+P focuses the search box the way a file finder does; Escape
   // returns to the tree without touching the open tabs.
-  // The binding for the filter box comes from the shortcut registry.
-  const filterBinding = IDE_SHORTCUTS.find((entry) => entry.action === 'focus-filter')?.fixedBinding
-    ?? { code: 'KeyP', modifiers: ['primary'] }
+  // The binding for the filter box is user-configurable: read it at dispatch time so
+  // a rebind takes effect without remounting the tree.
+  const filterCommand = IDE_SHORTCUTS.find((entry) => entry.action === 'focus-filter')
   useEffect(() => {
     const onKey = (event) => {
-      const primary = event.metaKey === true || event.ctrlKey === true
-      if (primary && event.key.toLowerCase() === filterBinding.code.slice(3).toLowerCase()) {
+      const stored = store.getState().shortcutBindings?.[filterCommand?.id]
+      const binding = stored ?? (filterCommand === undefined
+        ? { code: 'KeyP', modifiers: ['primary'] }
+        : ideShortcutDefault(filterCommand, ideRuntimeContext.runtime))
+      if (!ideBindingMatches(binding, event, ideRuntimeContext.platform)) return
+      {
         event.preventDefault()
         inputRef.current?.focus()
         inputRef.current?.select()
@@ -4300,16 +4406,36 @@ function IdeGestureChips(props) {
 
 /** One generated row: label on the left, its control on the right. */
 function IdeShortcutRow(props) {
-  const { entry, tr, onPick } = props
+  const { entry, tr, onPick, onRecord, onReset, recording, busy } = props
+  const editable = entry.kind === 'key' || entry.kind === 'sequence'
   return h('div', { className: 'iw-gesture-row' }, [
     h('span', { key: 'l', className: 'iw-gesture-label' }, entry.label),
-    entry.kind === 'gesture'
-      ? h(IdeGestureChips, { key: 'c', entry, tr, onPick })
-      : h('span', {
-        key: 'k',
-        className: `iw-gesture-keys${entry.kind === 'fixed' ? ' readonly' : ''}`,
-        title: entry.kind === 'key' ? tr('gestureEditInDsh') : undefined,
-      }, entry.keys.length === 0 ? tr('ksUnbound') : entry.keys.join(' ')),
+    h('span', { key: 'right', className: 'iw-gesture-right' }, [
+      entry.kind === 'gesture'
+        ? h(IdeGestureChips, { key: 'c', entry, tr, onPick })
+        : h('span', {
+          key: 'k',
+          className: `iw-gesture-keys${recording ? ' recording' : ''}`,
+        }, recording ? tr('ksRecording') : entry.text),
+      editable
+        ? h('button', {
+          key: 'b',
+          type: 'button',
+          className: 'iw-gesture-chip',
+          disabled: busy === true,
+          onClick: () => onRecord(entry.id),
+        }, recording ? tr('ksCancel') : tr('ksChange'))
+        : null,
+      editable
+        ? h('button', {
+          key: 'r',
+          type: 'button',
+          className: 'iw-gesture-chip',
+          disabled: busy === true || entry.modified !== true,
+          onClick: () => onReset(entry.id),
+        }, tr('ksReset'))
+        : null,
+    ]),
   ])
 }
 
@@ -4320,13 +4446,12 @@ function IdeShortcutRow(props) {
  * so a dialog opened from here would be covered by it.
  */
 function IdeShortcutSettingsItem(props) {
-  const { translate, store, platform, runtime, catalog, onPick } = props
+  const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
-  const subscribeCatalog = useCallback((listener) => catalog.subscribe(listener), [catalog])
-  const catalogEntries = useSyncExternalStore(subscribeCatalog, catalog.getSnapshot, catalog.getSnapshot)
   const open = state.gestureEditorOpen === true
   const gestures = state.gestures ?? { definition: 'double', usages: 'meta' }
+  const bindings = state.shortcutBindings ?? {}
 
   // Generated: one row per registry entry, no per-shortcut code here.
   const rows = IDE_SHORTCUTS.map((command) => {
@@ -4340,15 +4465,25 @@ function IdeShortcutSettingsItem(props) {
         taken: gestures[command.action === 'definition' ? 'usages' : 'definition'],
       }
     }
-    // Keyboard commands show what DSH actually stored, so a rebind made in
-    // DSH's own dialog shows up here too.
-    const registered = Array.from(catalogEntries ?? []).find((entry) => entry.id === command.id)
-    const keys = command.kind === 'fixed'
-      ? (command.keys ?? ideBindingKeys(command.fixedBinding, platform))
-      : (Array.isArray(registered?.keys) && registered.keys.length > 0
-        ? registered.keys
-        : ideBindingKeys(ideShortcutDefault(command, runtime), platform))
-    return { id: command.id, kind: command.kind, label: tr(command.labelKey), keys }
+    if (command.kind === 'sequence') {
+      const sequence = bindings[command.id] ?? ideSequenceDefault(command, runtime)
+      return {
+        id: command.id,
+        kind: 'sequence',
+        label: tr(command.labelKey),
+        text: ideSequenceLabel(sequence, tr),
+        modified: bindings[command.id] != null,
+      }
+    }
+    const binding = bindings[command.id] ?? ideShortcutDefault(command, runtime)
+    const keys = ideBindingKeys(binding, platform)
+    return {
+      id: command.id,
+      kind: 'key',
+      label: tr(command.labelKey),
+      text: keys.length === 0 ? tr('ksUnbound') : keys.join(' '),
+      modified: bindings[command.id] != null,
+    }
   })
 
   return h(React.Fragment, null, [
@@ -4375,6 +4510,10 @@ function IdeShortcutSettingsItem(props) {
           entry,
           tr,
           onPick,
+          onRecord,
+          onReset,
+          recording: state.gestureRecording === entry.id,
+          busy: state.gestureBusy === true,
         }))),
       ])
       : null,
@@ -6039,6 +6178,139 @@ function apply(ctx) {
   }, IdeFooterAction)), 'dsh-ide-window: footer action')
 
   /**
+   * Keyboard commands and mouse gestures are owned by this plugin.
+   *
+   * They are deliberately **not** registered in DSH's shortcut catalog: that
+   * catalog is what DSH's own 「编辑快捷键」 dialog lists, and this plugin's
+   * shortcuts belong in their own General-settings section instead. Bindings live
+   * in this plugin's preferences, one capture-phase listener dispatches them, and
+   * the section below edits both kinds.
+   */
+  const shortcutPlatform = ctx.shortcuts?.platform === 'windows' || ctx.shortcuts?.platform === 'linux'
+    ? ctx.shortcuts.platform
+    : 'macos'
+  const shortcutRuntime = ctx.shortcuts?.runtime === 'web' ? 'web' : 'desktop'
+  ideRuntimeContext.platform = shortcutPlatform
+  ideRuntimeContext.runtime = shortcutRuntime
+
+  /** The binding in force for one registry command. */
+  const shortcutBindingOf = (command) => (
+    store.getState().shortcutBindings?.[command.id] ?? ideShortcutDefault(command, shortcutRuntime)
+  )
+
+  /** The registry entry behind a command id. */
+  const shortcutCommandOf = (id) => IDE_SHORTCUTS.find((entry) => entry.id === id)
+
+  /** Explain which DSH command already owns a combination, if any. */
+  const shortcutConflictOf = (binding) => {
+    if (typeof ctx.shortcuts?.describeBinding !== 'function') return ''
+    try {
+      const described = ctx.shortcuts.describeBinding(binding)
+      if (described.issue !== null) return String(described.issue)
+      if (described.conflicts.length > 0) return `${translate('gestureConflict')}: ${described.conflicts.join(', ')}`
+    } catch (error) {
+      return error?.message ?? 'invalid'
+    }
+    return ''
+  }
+
+  /** The double-press sequence in force for the palette command. */
+  const paletteSequence = () => {
+    const command = shortcutCommandOf('code-workspace.search-everywhere')
+    if (command === undefined) return { key: 'Shift' }
+    return store.getState().shortcutBindings?.[command.id] ?? ideSequenceDefault(command, shortcutRuntime)
+  }
+
+  /** Stop capturing keys. */
+  const stopShortcutRecord = () => {
+    store.setGestureRecording('')
+    void ctx.shortcuts?.recording?.(false)?.catch?.(() => undefined)
+  }
+
+  /** Capture the next combination (or the next key, for a sequence) for one command. */
+  const startShortcutRecord = (id) => {
+    const command = shortcutCommandOf(id)
+    if (command === undefined || (command.kind !== 'key' && command.kind !== 'sequence')) return
+    if (store.getState().gestureRecording === id) {
+      stopShortcutRecord()
+      return
+    }
+    store.setGestureRecording(id)
+    void ctx.shortcuts?.recording?.(true)?.catch?.(() => undefined)
+  }
+
+  /** Restore one command's shipped default. */
+  const resetShortcut = (id) => {
+    const command = shortcutCommandOf(id)
+    if (command === undefined) return
+    if (command.kind === 'gesture') store.setGesture(command.action, command.action === 'definition' ? 'double' : 'meta')
+    else store.setShortcutBinding(id, null)
+    store.setGestureIssue('')
+  }
+
+  /** Last key of the double-press sequence, with its timestamp. */
+  let lastSequenceKey = { key: '', at: 0 }
+
+  // One capture-phase listener owns key capture, the two keyboard commands and
+  // the two pointer gestures, so nothing here depends on DSH's own catalog.
+  if (typeof globalThis.addEventListener === 'function') {
+    globalThis.addEventListener('keydown', (event) => {
+      const recording = store.getState().gestureRecording
+      if (typeof recording === 'string' && recording !== '') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.key === 'Escape') {
+          stopShortcutRecord()
+          return
+        }
+        const recordingCommand = shortcutCommandOf(recording)
+        if (recordingCommand?.kind === 'sequence') {
+          // A sequence records the key itself, so modifiers (Shift, Control…) work.
+          if (typeof event.key !== 'string' || event.key === '') return
+          store.setShortcutBinding(recording, { key: event.key })
+          store.setGestureIssue('')
+          stopShortcutRecord()
+          return
+        }
+        const candidate = ideBindingFromEvent(event, shortcutPlatform)
+        if (candidate === undefined) return
+        const conflict = shortcutConflictOf(candidate)
+        if (conflict !== '') {
+          store.setGestureIssue(conflict)
+          return
+        }
+        store.setShortcutBinding(recording, candidate)
+        store.setGestureIssue('')
+        stopShortcutRecord()
+        return
+      }
+      const tag = event.target?.tagName ?? ''
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable === true
+
+      // Two presses of the same key in quick succession open Search Everywhere.
+      // The key and the window both come from the registry/user preference.
+      const paletteHit = ideSequenceHit(lastSequenceKey, event, paletteSequence(), 400)
+      lastSequenceKey = paletteHit.next
+      if (paletteHit.hit) {
+        event.preventDefault()
+        store.setPaletteOpen(true)
+        return
+      }
+
+      for (const command of IDE_SHORTCUTS) {
+        if (command.kind !== 'key') continue
+        if (!ideBindingMatches(shortcutBindingOf(command), event, shortcutPlatform)) continue
+        // 「返回对话」还要在输入框里可用，其余命令让输入框先处理。
+        if (editable && command.action !== 'back') return
+        event.preventDefault()
+        if (command.action === 'toggle') openPanel()
+        else if (command.action === 'back') selectPanel(null)
+        return
+      }
+    }, true)
+  }
+
+  /**
    * The code workspace's mouse gestures.
    *
    * Double click and ⌘+click are pointer gestures: DSH's shortcut catalog binds a
@@ -6054,11 +6326,9 @@ function apply(ctx) {
     inject: () => ({
       translate,
       store,
-      platform: ctx.shortcuts?.platform === 'windows' || ctx.shortcuts?.platform === 'linux'
-        ? ctx.shortcuts.platform
-        : 'macos',
-      runtime: ctx.shortcuts?.runtime === 'web' ? 'web' : 'desktop',
-      catalog: ctx.shortcuts?.catalog ?? { subscribe: () => () => {}, getSnapshot: () => [] },
+      bindings: store.getState().shortcutBindings ?? {},
+      platform: shortcutPlatform,
+      runtime: shortcutRuntime,
       onPick: (action, choice) => {
         if (!store.setGesture(action, choice)) {
           store.setGestureIssue(translate('gestureConflict'))
@@ -6066,6 +6336,8 @@ function apply(ctx) {
         }
         store.setGestureIssue('')
       },
+      onRecord: startShortcutRecord,
+      onReset: resetShortcut,
     }),
   }, IdeShortcutSettingsItem)), 'dsh-ide-window: shortcut settings')
 
@@ -6098,46 +6370,6 @@ function apply(ctx) {
     inject: () => ({ store }),
   }, IdeSessionTracker)), 'dsh-ide-window: session tracker')
 
-  /**
-   * Keyboard commands come straight from the registry: one `kind: 'key'` entry
-   * becomes one registered command here, so adding a shortcut there is enough.
-   */
-  if (ctx.shortcuts !== undefined && typeof ctx.shortcuts.register === 'function') {
-    for (const command of IDE_SHORTCUTS.filter((entry) => entry.kind === 'key')) {
-      try {
-        ctx.effect(() => ctx.shortcuts.register({
-          id: command.id,
-          label: () => translate(command.labelKey),
-          aliases: command.aliases ?? [],
-          defaults: {
-            'desktop:macos': command.defaults.desktop,
-            'desktop:windows': command.defaults.desktop,
-            'desktop:linux': command.defaults.desktop,
-            // No `web:linux` default on purpose: that profile is validated against
-            // a tiny whitelist (Slash/Comma/Period), so a letter there would reject
-            // the whole registration. Linux users can still bind it themselves.
-            'web:macos': command.defaults.web,
-            'web:windows': command.defaults.web,
-          },
-          regions: ['page', 'editable', 'terminal'],
-          modals: [],
-          // `back` must stay available while typing, so it passes in that region.
-          resolve: ({ region }) => (region === 'editable' && command.action === 'back'
-            ? { status: 'pass' }
-            : {
-              status: 'handled',
-              run: () => {
-                if (command.action === 'toggle') openPanel()
-                else if (command.action === 'back') selectPanel(null)
-              },
-            }),
-        }), `dsh-ide-window: shortcut ${command.id}`)
-      } catch (error) {
-        // A bad default must never take the rest of the plugin down with it.
-        void error
-      }
-    }
-  }
 
   /**
    * The right-Sidebar page type and its body.

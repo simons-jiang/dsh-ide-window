@@ -442,6 +442,139 @@ function apply(ctx) {
   }, IdeFooterAction)), 'dsh-ide-window: footer action')
 
   /**
+   * Keyboard commands and mouse gestures are owned by this plugin.
+   *
+   * They are deliberately **not** registered in DSH's shortcut catalog: that
+   * catalog is what DSH's own 「编辑快捷键」 dialog lists, and this plugin's
+   * shortcuts belong in their own General-settings section instead. Bindings live
+   * in this plugin's preferences, one capture-phase listener dispatches them, and
+   * the section below edits both kinds.
+   */
+  const shortcutPlatform = ctx.shortcuts?.platform === 'windows' || ctx.shortcuts?.platform === 'linux'
+    ? ctx.shortcuts.platform
+    : 'macos'
+  const shortcutRuntime = ctx.shortcuts?.runtime === 'web' ? 'web' : 'desktop'
+  ideRuntimeContext.platform = shortcutPlatform
+  ideRuntimeContext.runtime = shortcutRuntime
+
+  /** The binding in force for one registry command. */
+  const shortcutBindingOf = (command) => (
+    store.getState().shortcutBindings?.[command.id] ?? ideShortcutDefault(command, shortcutRuntime)
+  )
+
+  /** The registry entry behind a command id. */
+  const shortcutCommandOf = (id) => IDE_SHORTCUTS.find((entry) => entry.id === id)
+
+  /** Explain which DSH command already owns a combination, if any. */
+  const shortcutConflictOf = (binding) => {
+    if (typeof ctx.shortcuts?.describeBinding !== 'function') return ''
+    try {
+      const described = ctx.shortcuts.describeBinding(binding)
+      if (described.issue !== null) return String(described.issue)
+      if (described.conflicts.length > 0) return `${translate('gestureConflict')}: ${described.conflicts.join(', ')}`
+    } catch (error) {
+      return error?.message ?? 'invalid'
+    }
+    return ''
+  }
+
+  /** The double-press sequence in force for the palette command. */
+  const paletteSequence = () => {
+    const command = shortcutCommandOf('code-workspace.search-everywhere')
+    if (command === undefined) return { key: 'Shift' }
+    return store.getState().shortcutBindings?.[command.id] ?? ideSequenceDefault(command, shortcutRuntime)
+  }
+
+  /** Stop capturing keys. */
+  const stopShortcutRecord = () => {
+    store.setGestureRecording('')
+    void ctx.shortcuts?.recording?.(false)?.catch?.(() => undefined)
+  }
+
+  /** Capture the next combination (or the next key, for a sequence) for one command. */
+  const startShortcutRecord = (id) => {
+    const command = shortcutCommandOf(id)
+    if (command === undefined || (command.kind !== 'key' && command.kind !== 'sequence')) return
+    if (store.getState().gestureRecording === id) {
+      stopShortcutRecord()
+      return
+    }
+    store.setGestureRecording(id)
+    void ctx.shortcuts?.recording?.(true)?.catch?.(() => undefined)
+  }
+
+  /** Restore one command's shipped default. */
+  const resetShortcut = (id) => {
+    const command = shortcutCommandOf(id)
+    if (command === undefined) return
+    if (command.kind === 'gesture') store.setGesture(command.action, command.action === 'definition' ? 'double' : 'meta')
+    else store.setShortcutBinding(id, null)
+    store.setGestureIssue('')
+  }
+
+  /** Last key of the double-press sequence, with its timestamp. */
+  let lastSequenceKey = { key: '', at: 0 }
+
+  // One capture-phase listener owns key capture, the two keyboard commands and
+  // the two pointer gestures, so nothing here depends on DSH's own catalog.
+  if (typeof globalThis.addEventListener === 'function') {
+    globalThis.addEventListener('keydown', (event) => {
+      const recording = store.getState().gestureRecording
+      if (typeof recording === 'string' && recording !== '') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.key === 'Escape') {
+          stopShortcutRecord()
+          return
+        }
+        const recordingCommand = shortcutCommandOf(recording)
+        if (recordingCommand?.kind === 'sequence') {
+          // A sequence records the key itself, so modifiers (Shift, Control…) work.
+          if (typeof event.key !== 'string' || event.key === '') return
+          store.setShortcutBinding(recording, { key: event.key })
+          store.setGestureIssue('')
+          stopShortcutRecord()
+          return
+        }
+        const candidate = ideBindingFromEvent(event, shortcutPlatform)
+        if (candidate === undefined) return
+        const conflict = shortcutConflictOf(candidate)
+        if (conflict !== '') {
+          store.setGestureIssue(conflict)
+          return
+        }
+        store.setShortcutBinding(recording, candidate)
+        store.setGestureIssue('')
+        stopShortcutRecord()
+        return
+      }
+      const tag = event.target?.tagName ?? ''
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable === true
+
+      // Two presses of the same key in quick succession open Search Everywhere.
+      // The key and the window both come from the registry/user preference.
+      const paletteHit = ideSequenceHit(lastSequenceKey, event, paletteSequence(), 400)
+      lastSequenceKey = paletteHit.next
+      if (paletteHit.hit) {
+        event.preventDefault()
+        store.setPaletteOpen(true)
+        return
+      }
+
+      for (const command of IDE_SHORTCUTS) {
+        if (command.kind !== 'key') continue
+        if (!ideBindingMatches(shortcutBindingOf(command), event, shortcutPlatform)) continue
+        // 「返回对话」还要在输入框里可用，其余命令让输入框先处理。
+        if (editable && command.action !== 'back') return
+        event.preventDefault()
+        if (command.action === 'toggle') openPanel()
+        else if (command.action === 'back') selectPanel(null)
+        return
+      }
+    }, true)
+  }
+
+  /**
    * The code workspace's mouse gestures.
    *
    * Double click and ⌘+click are pointer gestures: DSH's shortcut catalog binds a
@@ -457,11 +590,9 @@ function apply(ctx) {
     inject: () => ({
       translate,
       store,
-      platform: ctx.shortcuts?.platform === 'windows' || ctx.shortcuts?.platform === 'linux'
-        ? ctx.shortcuts.platform
-        : 'macos',
-      runtime: ctx.shortcuts?.runtime === 'web' ? 'web' : 'desktop',
-      catalog: ctx.shortcuts?.catalog ?? { subscribe: () => () => {}, getSnapshot: () => [] },
+      bindings: store.getState().shortcutBindings ?? {},
+      platform: shortcutPlatform,
+      runtime: shortcutRuntime,
       onPick: (action, choice) => {
         if (!store.setGesture(action, choice)) {
           store.setGestureIssue(translate('gestureConflict'))
@@ -469,6 +600,8 @@ function apply(ctx) {
         }
         store.setGestureIssue('')
       },
+      onRecord: startShortcutRecord,
+      onReset: resetShortcut,
     }),
   }, IdeShortcutSettingsItem)), 'dsh-ide-window: shortcut settings')
 
@@ -501,46 +634,6 @@ function apply(ctx) {
     inject: () => ({ store }),
   }, IdeSessionTracker)), 'dsh-ide-window: session tracker')
 
-  /**
-   * Keyboard commands come straight from the registry: one `kind: 'key'` entry
-   * becomes one registered command here, so adding a shortcut there is enough.
-   */
-  if (ctx.shortcuts !== undefined && typeof ctx.shortcuts.register === 'function') {
-    for (const command of IDE_SHORTCUTS.filter((entry) => entry.kind === 'key')) {
-      try {
-        ctx.effect(() => ctx.shortcuts.register({
-          id: command.id,
-          label: () => translate(command.labelKey),
-          aliases: command.aliases ?? [],
-          defaults: {
-            'desktop:macos': command.defaults.desktop,
-            'desktop:windows': command.defaults.desktop,
-            'desktop:linux': command.defaults.desktop,
-            // No `web:linux` default on purpose: that profile is validated against
-            // a tiny whitelist (Slash/Comma/Period), so a letter there would reject
-            // the whole registration. Linux users can still bind it themselves.
-            'web:macos': command.defaults.web,
-            'web:windows': command.defaults.web,
-          },
-          regions: ['page', 'editable', 'terminal'],
-          modals: [],
-          // `back` must stay available while typing, so it passes in that region.
-          resolve: ({ region }) => (region === 'editable' && command.action === 'back'
-            ? { status: 'pass' }
-            : {
-              status: 'handled',
-              run: () => {
-                if (command.action === 'toggle') openPanel()
-                else if (command.action === 'back') selectPanel(null)
-              },
-            }),
-        }), `dsh-ide-window: shortcut ${command.id}`)
-      } catch (error) {
-        // A bad default must never take the rest of the plugin down with it.
-        void error
-      }
-    }
-  }
 
   /**
    * The right-Sidebar page type and its body.

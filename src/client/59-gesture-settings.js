@@ -40,16 +40,36 @@ function IdeGestureChips(props) {
 
 /** One generated row: label on the left, its control on the right. */
 function IdeShortcutRow(props) {
-  const { entry, tr, onPick } = props
+  const { entry, tr, onPick, onRecord, onReset, recording, busy } = props
+  const editable = entry.kind === 'key' || entry.kind === 'sequence'
   return h('div', { className: 'iw-gesture-row' }, [
     h('span', { key: 'l', className: 'iw-gesture-label' }, entry.label),
-    entry.kind === 'gesture'
-      ? h(IdeGestureChips, { key: 'c', entry, tr, onPick })
-      : h('span', {
-        key: 'k',
-        className: `iw-gesture-keys${entry.kind === 'fixed' ? ' readonly' : ''}`,
-        title: entry.kind === 'key' ? tr('gestureEditInDsh') : undefined,
-      }, entry.keys.length === 0 ? tr('ksUnbound') : entry.keys.join(' ')),
+    h('span', { key: 'right', className: 'iw-gesture-right' }, [
+      entry.kind === 'gesture'
+        ? h(IdeGestureChips, { key: 'c', entry, tr, onPick })
+        : h('span', {
+          key: 'k',
+          className: `iw-gesture-keys${recording ? ' recording' : ''}`,
+        }, recording ? tr('ksRecording') : entry.text),
+      editable
+        ? h('button', {
+          key: 'b',
+          type: 'button',
+          className: 'iw-gesture-chip',
+          disabled: busy === true,
+          onClick: () => onRecord(entry.id),
+        }, recording ? tr('ksCancel') : tr('ksChange'))
+        : null,
+      editable
+        ? h('button', {
+          key: 'r',
+          type: 'button',
+          className: 'iw-gesture-chip',
+          disabled: busy === true || entry.modified !== true,
+          onClick: () => onReset(entry.id),
+        }, tr('ksReset'))
+        : null,
+    ]),
   ])
 }
 
@@ -60,13 +80,12 @@ function IdeShortcutRow(props) {
  * so a dialog opened from here would be covered by it.
  */
 function IdeShortcutSettingsItem(props) {
-  const { translate, store, platform, runtime, catalog, onPick } = props
+  const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
-  const subscribeCatalog = useCallback((listener) => catalog.subscribe(listener), [catalog])
-  const catalogEntries = useSyncExternalStore(subscribeCatalog, catalog.getSnapshot, catalog.getSnapshot)
   const open = state.gestureEditorOpen === true
   const gestures = state.gestures ?? { definition: 'double', usages: 'meta' }
+  const bindings = state.shortcutBindings ?? {}
 
   // Generated: one row per registry entry, no per-shortcut code here.
   const rows = IDE_SHORTCUTS.map((command) => {
@@ -80,15 +99,25 @@ function IdeShortcutSettingsItem(props) {
         taken: gestures[command.action === 'definition' ? 'usages' : 'definition'],
       }
     }
-    // Keyboard commands show what DSH actually stored, so a rebind made in
-    // DSH's own dialog shows up here too.
-    const registered = Array.from(catalogEntries ?? []).find((entry) => entry.id === command.id)
-    const keys = command.kind === 'fixed'
-      ? (command.keys ?? ideBindingKeys(command.fixedBinding, platform))
-      : (Array.isArray(registered?.keys) && registered.keys.length > 0
-        ? registered.keys
-        : ideBindingKeys(ideShortcutDefault(command, runtime), platform))
-    return { id: command.id, kind: command.kind, label: tr(command.labelKey), keys }
+    if (command.kind === 'sequence') {
+      const sequence = bindings[command.id] ?? ideSequenceDefault(command, runtime)
+      return {
+        id: command.id,
+        kind: 'sequence',
+        label: tr(command.labelKey),
+        text: ideSequenceLabel(sequence, tr),
+        modified: bindings[command.id] != null,
+      }
+    }
+    const binding = bindings[command.id] ?? ideShortcutDefault(command, runtime)
+    const keys = ideBindingKeys(binding, platform)
+    return {
+      id: command.id,
+      kind: 'key',
+      label: tr(command.labelKey),
+      text: keys.length === 0 ? tr('ksUnbound') : keys.join(' '),
+      modified: bindings[command.id] != null,
+    }
   })
 
   return h(React.Fragment, null, [
@@ -115,6 +144,10 @@ function IdeShortcutSettingsItem(props) {
           entry,
           tr,
           onPick,
+          onRecord,
+          onReset,
+          recording: state.gestureRecording === entry.id,
+          busy: state.gestureBusy === true,
         }))),
       ])
       : null,

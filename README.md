@@ -64,12 +64,17 @@ IDEA 风格的代码工作区插件：把 DSH 的中央区域切成「文件树 
 - **依赖 jar 源码跳转**：目标类不在工作区、但 Maven 仓库里有 `-sources.jar` 时，双击直接打开**只读虚拟标签**并定位到字段/行。宿主路由 `/dsh-ide/jar` 自己解析 ZIP 中央目录（不调用 unzip），按 jar 修改时间从新到旧扫描，命中结果做进程内索引；纯二进制 jar 返回「该 jar 没有源码」
 - **Lombok 存取器兜底**：引擎解析不到 `getX`/`setX`/`isX` 时，先在本文件找字段；再判断调用形态——若是方法引用 `Type::getX`，直接去 `Type.java` 里找 `x` 的字段声明并跳过去（这条不依赖引擎，因为方法引用自带归属类名）
 - **对话改动列表（与代码工作区联动）**：注册进 `conversation.chat.turnTail`（列表槽、scope session），每轮末尾显示「代码改动 N +A -D」；点击某行 → 拉该文件 diff → 定位**第一个新增行** → 切到本插件主栏面板打开。数据来自 DSH 自带路由 `/api/changes.summary`、`/api/changes.diff`（与「已编辑 N 个文件」卡片同源，不解析消息、不改官方组件）。两个坑：① 摘要按 `workspace/changes` 事件序号取，不是 turn 结束序号（要从 `turn.data.get('deliverables').changes.seq` 读，用错会 404）；② **摘要在 Host 内存里**，DSH 重启后历史轮次没有摘要（官方卡片同样消失）——此时退回从 `useTrajectory` 已加载的事件窗口还原文件路径，覆盖不到的轮次就什么都不显示（不做宿主侧落盘，避免过重）
-- **入口与快捷键**：入口在会话表头左侧（`conversation.header.leading`），不在左侧栏。**所有快捷键集中登记在 `src/client/05-shortcut-registry.js` 的 `IDE_SHORTCUTS` 一张表里**，加一条就自动出现在 设置 → 通用设置 → 「代码工作区快捷键」里，不需要改设置 UI。三种 `kind`：
   - `key`：注册进 DSH 快捷键目录（也在 DSH「编辑快捷键」弹窗里，标签带 `代码工作区: ` 前缀，搜「代码工作区」可筛出），桌面默认 `⌘2` / `⌘1`，Web 默认 `⌥⌘I` / `⌥⌘U`
   - `gesture`：指针手势（双击 / ⌘+单击 / ⌥+单击），在插件这一行点选，两个动作互斥
   - `fixed`：DSH 目录表达不了的行为（`双击 Shift` 打开搜索无处不在、`⌘P` 定位文件搜索框），在设置里只读展示；其键位/时间窗也从同一张表读取，不在监听器里写魔法数字
 
   要点：① 插件导出必须声明 `inject: [... 'shortcuts']`，否则抛 `cannot get property "shortcuts" without inject`；② **不要声明 `web:linux` 默认值**（该 profile 只允许 Slash/Comma/Period 白名单，声明了整条注册会失败）；③ 设置行必须**内联**渲染，`shell.overlay` 层级低于设置弹窗，弹窗会被盖住；④ `resolve` 返回 `{status:'handled', run}` 而不是直接执行
+- **入口与快捷键**：入口在会话表头左侧（`conversation.header.leading`），不在左侧栏。**所有快捷键集中登记在 `src/client/05-shortcut-registry.js` 的 `IDE_SHORTCUTS`**，加一条就自动出现在 设置 → 通用设置 → 「代码工作区快捷键」，可看可改。三种 `kind`：
+  - `key`：键盘命令（`代码工作区: 打开 / 关闭` `⌘2`、`代码工作区: 返回对话` `⌘1`、`定位文件搜索框` `⌘P`；Web 默认 `⌥⌘I` / `⌥⌘U`）。**不注册进 DSH 快捷键目录**，绑定存在插件偏好里，由插件在 capture 阶段派发；点「修改」直接按新组合键，Esc 取消
+  - `gesture`：指针手势（双击 / ⌘+单击 / ⌥+单击），点选切换，两个动作互斥
+  - `sequence`：连按两次同一个键（默认 `双击 Shift` 打开搜索无处不在），点「修改」后按一下目标键即可，键名与 400ms 窗口都可配
+
+  要点：① 键盘命令不进 DSH 目录，所以官方「编辑快捷键」弹窗里不会出现本插件；② 设置行必须**内联**渲染，`shell.overlay` 层级低于设置弹窗，弹窗会被盖住；③ 改键前用 `ctx.shortcuts.describeBinding` 判非法组合与冲突
 - **语义代码导航**（走宿主 `ctx.lsp`，由真正的语言服务器回答）：
   - 手势：**单击不触发任何导航**（拖动选中/复制不会被误判）、**⌘/Ctrl + 单击**弹出「实现 / 调用方」、**双击**跳转到定义
   - `Ctrl`/`Cmd` + 点击标识符 → `goToDefinition`，无结果自动回落 `goToImplementation`；

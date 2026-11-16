@@ -59,20 +59,23 @@ const IDE_SHORTCUTS = [
   },
   {
     id: 'code-workspace.search-everywhere',
-    kind: 'fixed',
+    kind: 'sequence',
     labelKey: 'shortcutSearchEverywhere',
-    // Read by the palette listener; the sequence is a click sequence, not a key.
-    sequence: { key: 'Shift', repeat: 2, windowMs: 400 },
-    keys: ['双击', 'Shift'],
+    // A double press of one key: the listener compares `event.key`, so ShiftLeft
+    // and ShiftRight both count and a user can pick any key.
+    defaults: { desktop: { key: 'Shift' }, web: { key: 'Shift' } },
+    windowMs: 400,
     action: 'palette',
   },
   {
     id: 'code-workspace.file-search',
-    kind: 'fixed',
+    kind: 'key',
     labelKey: 'shortcutFileSearch',
-    // Read by the tree listener: focus the filter box, which is a panel-local
-    // behaviour rather than a global command.
-    fixedBinding: { code: 'KeyP', modifiers: ['primary'] },
+    // Panel-local: it focuses the tree's filter box, so the tree dispatches it.
+    defaults: {
+      desktop: { code: 'KeyP', modifiers: ['primary'] },
+      web: { code: 'KeyP', modifiers: ['primary'] },
+    },
     action: 'focus-filter',
   },
   {
@@ -106,6 +109,28 @@ function ideBindingFromEvent(event, platform) {
   return { code, modifiers }
 }
 
+/**
+ * Whether a keyboard event is exactly this binding (no extra, no missing modifier).
+ *
+ * `primary` is resolved against the platform, so one stored binding works on macOS
+ * and on Windows/Linux alike.
+ */
+function ideBindingMatches(binding, event, platform) {
+  if (binding === null || typeof binding?.code !== 'string') return false
+  if (event.code !== binding.code) return false
+  const wanted = new Set(binding.modifiers.map((modifier) => (
+    modifier === 'primary' ? (platform === 'macos' ? 'meta' : 'control') : modifier
+  )))
+  const held = new Set()
+  if (event.metaKey === true) held.add('meta')
+  if (event.ctrlKey === true) held.add('control')
+  if (event.altKey === true) held.add('alt')
+  if (event.shiftKey === true) held.add('shift')
+  if (wanted.size !== held.size) return false
+  for (const modifier of wanted) if (!held.has(modifier)) return false
+  return true
+}
+
 /** One binding's keycaps, in the order the platform prints them. */
 function ideBindingKeys(binding, platform) {
   if (binding === null || typeof binding?.code !== 'string') return []
@@ -125,6 +150,41 @@ function ideBindingKeys(binding, platform) {
       : IDE_KEYCAPS[code] ?? code
   keys.push(label)
   return keys
+}
+
+/** Filled in by `apply()` so every fragment resolves defaults the same way. */
+const ideRuntimeContext = { platform: 'macos', runtime: 'desktop' }
+
+/** The shipped default for a key-press sequence on this runtime. */
+function ideSequenceDefault(command, runtime) {
+  const table = command?.defaults ?? {}
+  return (runtime === 'web' ? table.web : table.desktop) ?? table.desktop ?? { key: 'Shift' }
+}
+
+/** How a sequence is written in the UI: 「双击 Shift」. */
+function ideSequenceLabel(sequence, tr) {
+  const key = typeof sequence?.key === 'string' && sequence.key !== '' ? sequence.key : 'Shift'
+  return `${typeof tr === 'function' ? tr('gestureDouble') : '双击'} ${key}`
+}
+
+/**
+ * Advance the double-press state machine.
+ *
+ * @param last - previous `{ key, at }` (mutated by the caller with the result).
+ * @param event - the `keydown` event under test.
+ * @param sequence - the configured `{ key }`.
+ * @param windowMs - how close the two presses must be.
+ * @returns `{ hit, next }` — whether the sequence fired, and the state to keep.
+ */
+function ideSequenceHit(last, event, sequence, windowMs) {
+  if (event?.repeat === true) return { hit: false, next: last }
+  const key = typeof event?.key === 'string' ? event.key : ''
+  if (key === '') return { hit: false, next: last }
+  const now = Date.now()
+  if (sequence?.key === key && last?.key === key && now - last.at <= windowMs) {
+    return { hit: true, next: { key: '', at: 0 } }
+  }
+  return { hit: false, next: { key, at: now } }
 }
 
 /** The shipped default for one keyboard command on this runtime. */

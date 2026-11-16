@@ -393,6 +393,12 @@ function ideCreateStore(refs) {
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
     /**
+     * Keyboard bindings this plugin owns, keyed by registry id. A missing entry
+     * uses the shipped default; nothing is registered in DSH's catalog, so DSH's
+     * own 「编辑快捷键」 dialog never lists these.
+     */
+    shortcutBindings: { ...(prefs.shortcutBindings ?? {}) },
+    /**
      * Mouse gestures for the two navigation actions: `double` is a double click,
      * `meta` and `alt` are a single click with that modifier held.
      */
@@ -404,6 +410,8 @@ function ideCreateStore(refs) {
     gestureEditorOpen: false,
     /** Why the last gesture change was refused. */
     gestureIssue: '',
+    /** The command currently capturing keys, or ''. */
+    gestureRecording: '',
     /** Java index progress: `{ status, done, total }`. */
     indexInfo: { status: 'idle', done: 0, total: 0 },
     /**
@@ -1174,9 +1182,22 @@ function ideCreateStore(refs) {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })
     },
-    /** Open or close the gesture editor inside General settings. */
+    /** Store one keyboard binding, or `null` to fall back to the default. */
+    setShortcutBinding: (id, binding) => {
+      if (typeof id !== 'string' || id === '') return
+      const shortcutBindings = { ...state.shortcutBindings }
+      if (binding === null) delete shortcutBindings[id]
+      else shortcutBindings[id] = binding
+      ideWritePrefs({ shortcutBindings })
+      patch({ shortcutBindings })
+    },
+    /** Open or close the shortcut editor inside General settings. */
     setGestureEditor: (open) => {
       patch({ gestureEditorOpen: open === true, gestureIssue: '' })
+    },
+    /** Enter or leave key capture for one command. */
+    setGestureRecording: (id) => {
+      patch({ gestureRecording: typeof id === 'string' ? id : '' })
     },
     /** Explain a refused gesture change. */
     setGestureIssue: (issue) => {

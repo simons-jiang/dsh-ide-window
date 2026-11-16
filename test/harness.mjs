@@ -697,24 +697,38 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
   check(Array.isArray(registry) && registry.length === 6, 'the registry holds every code-workspace shortcut', String(registry?.length))
   const kinds = registry.map((entry) => entry.kind)
-  check(kinds.filter((kind) => kind === 'key').length === 2, 'two commands are registered with DSH', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'key').length === 3, 'three keyboard commands (toggle, back, ⌘P)', kinds.join(','))
   check(kinds.filter((kind) => kind === 'gesture').length === 2, 'two are pointer gestures', kinds.join(','))
-  check(kinds.filter((kind) => kind === 'fixed').length === 2, 'two are fixed sequences (double Shift, ⌘P)', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'sequence').length === 1, 'one is a double-press sequence (double Shift)', kinds.join(','))
+  check(kinds.every((kind) => kind !== 'fixed'), 'every shortcut is editable', kinds.join(','))
 
   const ids = registry.map((entry) => entry.id)
   check(new Set(ids).size === ids.length, 'registry ids are unique', ids.join(','))
 
-  // 键盘命令确实被注册进 DSH，且只有它们
-  const registered = mode.record.shortcuts.map((entry) => entry.id).sort()
-  const expected = registry.filter((entry) => entry.kind === 'key').map((entry) => entry.id).sort()
-  check(registered.join(',') === expected.join(','), 'exactly the registry key commands reach DSH', registered.join(','))
+  // 全部命令都由插件自己持有：DSH 的「编辑快捷键」列表里一条都不出现
+  check(mode.record.shortcuts.length === 0, 'nothing is registered in DSH\'s catalog', JSON.stringify(mode.record.shortcuts.map((entry) => entry.id)))
 
-  // 双击 Shift 的窗口与键来自注册表，不是散落在监听器里的魔法数字
-  const sequence = registry.find((entry) => entry.action === 'palette')?.sequence
-  check(sequence?.key === 'Shift' && sequence?.repeat === 2 && sequence?.windowMs === 400, 'double Shift is declared in the registry', JSON.stringify(sequence))
+  // 双击 Shift：键与窗口来自注册表，用户可改
+  const sequence = registry.find((entry) => entry.action === 'palette')
+  check(sequence?.defaults?.desktop?.key === 'Shift' && sequence?.windowMs === 400,
+    'double Shift is declared in the registry', JSON.stringify(sequence?.defaults?.desktop))
+  check(sequence?.kind === 'sequence', 'double Shift is recordable', String(sequence?.kind))
 
-  const fileSearch = registry.find((entry) => entry.action === 'focus-filter')?.fixedBinding
-  check(fileSearch?.code === 'KeyP' && fileSearch?.modifiers?.[0] === 'primary', '⌘P is declared in the registry', JSON.stringify(fileSearch))
+  const fileSearch = registry.find((entry) => entry.action === 'focus-filter')
+  check(fileSearch?.kind === 'key' && fileSearch?.defaults?.desktop?.code === 'KeyP',
+    '⌘P is an editable binding', JSON.stringify(fileSearch?.defaults?.desktop))
+
+  const hit = new Function(`${grabSource('ideSequenceHit', '05-shortcut-registry.js')}\nreturn ideSequenceHit`)()
+  check(hit({ key: '', at: 0 }, { key: 'Shift' }, { key: 'Shift' }, 400).hit === false, 'one press does not fire the sequence')
+  const firstPress = hit({ key: '', at: 0 }, { key: 'Shift' }, { key: 'Shift' }, 400)
+  check(hit(firstPress.next, { key: 'Shift' }, { key: 'Shift' }, 400).hit === true, 'the second press fires it')
+  check(hit(firstPress.next, { key: 'Control' }, { key: 'Shift' }, 400).hit === false, 'a different key does not fire it')
+  check(hit(firstPress.next, { key: 'Shift', repeat: true }, { key: 'Shift' }, 400).hit === false, 'auto-repeat does not fire it')
+  check(hit(firstPress.next, { key: 'Shift' }, { key: 'Control' }, 400).hit === false, 'a rebound key no longer fires the old one')
+
+  const sequenceLabel = new Function(`${grabSource('ideSequenceLabel', '05-shortcut-registry.js')}\nreturn ideSequenceLabel`)()
+  check(sequenceLabel({ key: 'Shift' }) === '双击 Shift', 'a sequence is labelled 双击 <key>', sequenceLabel({ key: 'Shift' }))
+  check(sequenceLabel({ key: 'Control' }) === '双击 Control', 'a rebound sequence is labelled too', sequenceLabel({ key: 'Control' }))
 }
 
 // ---- mouse gestures -------------------------------------------------------
@@ -733,7 +747,23 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(row !== undefined, 'the gesture row is namespaced')
 
   const injected = row?.inject?.() ?? {}
+  const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
   check(injected.store?.getState().gestures.definition === 'double', 'double click goes to definition by default', JSON.stringify(injected.store?.getState().gestures))
+
+  // 键盘绑定由插件自己存：默认值来自注册表，改键写入偏好
+  const defaults = new Function(`${grabSource('ideShortcutDefault', '05-shortcut-registry.js')}\nreturn ideShortcutDefault`)()
+  const toggle = registry.find((entry) => entry.action === 'toggle')
+  check(defaults(toggle, 'desktop').code === 'Digit2', 'desktop default opens the workspace on 2', JSON.stringify(defaults(toggle, 'desktop')))
+  check(defaults(toggle, 'web').code === 'KeyI', 'web default avoids the browser digit rows', JSON.stringify(defaults(toggle, 'web')))
+  injected.store?.setShortcutBinding(toggle.id, { code: 'KeyJ', modifiers: ['primary'] })
+  check(injected.store?.getState().shortcutBindings?.[toggle.id]?.code === 'KeyJ', 'a rebound key is stored', JSON.stringify(injected.store?.getState().shortcutBindings))
+  injected.store?.setShortcutBinding(toggle.id, null)
+  check(injected.store?.getState().shortcutBindings?.[toggle.id] === undefined, 'resetting drops the override')
+
+  const matcher = new Function(`${grabSource('ideBindingMatches', '05-shortcut-registry.js')}\nreturn ideBindingMatches`)()
+  const digitTwo = { code: 'Digit2', modifiers: ['primary'] }
+  check(matcher(digitTwo, { code: 'Digit2', metaKey: true }, 'macos') === true, 'an exact combination matches')
+  check(matcher(digitTwo, { code: 'Digit2', metaKey: true, shiftKey: true }, 'macos') === false, 'an extra modifier does not match')
   check(injected.store?.getState().gestures.usages === 'meta', 'meta click lists usages by default')
   check(injected.store?.setGesture('definition', 'meta') === false, 'a gesture already in use is refused')
   check(injected.store?.setGesture('definition', 'alt') === true, 'a free gesture is accepted')
@@ -788,33 +818,22 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 }
 
 
-// ---- shortcut catalog ------------------------------------------------------
+// ---- shortcuts are the plugin's own -----------------------------------------
 {
-  const commands = mode.record.shortcuts
-  check(commands.length === 2, 'contributes two shortcuts', commands.map((entry) => entry.id).join(','))
-  const toggle = commands.find((entry) => entry.id === 'dsh-ide-window.toggle')
-  const back = commands.find((entry) => entry.id === 'dsh-ide-window.back-to-chat')
-  check(toggle !== undefined && back !== undefined, 'both command ids are stable')
-  check(toggle?.defaults?.['desktop:macos']?.code === 'Digit2', 'desktop default opens the workspace on 2', JSON.stringify(toggle?.defaults?.['desktop:macos']))
-  check(back?.defaults?.['desktop:macos']?.code === 'Digit1', 'desktop default returns on 1', JSON.stringify(back?.defaults?.['desktop:macos']))
-  check((toggle?.defaults?.['web:macos']?.modifiers ?? []).includes('alt'), 'web default carries alt, so the browser keeps its digits', JSON.stringify(toggle?.defaults?.['web:macos']))
-  check((toggle?.defaults?.['web:macos']?.modifiers ?? []).includes('primary'), 'web default still uses primary', JSON.stringify(toggle?.defaults?.['web:macos']))
-  check(typeof toggle?.label === 'function' && toggle.label() !== 'shortcutToggle', 'the label is localized', String(toggle?.label?.()))
-  // The web validator checks every declared profile against a tiny Linux
-  // whitelist; declaring web:linux at all is what rejected the registration.
-  check(toggle?.defaults?.['web:linux'] === undefined, 'no web:linux default is declared', JSON.stringify(toggle?.defaults?.['web:linux']))
-  check(back?.defaults?.['web:linux'] === undefined, 'no web:linux default on the back command', JSON.stringify(back?.defaults?.['web:linux']))
+  // 一条也不注册进 DSH 的目录：DSH 的「编辑快捷键」弹窗里不应出现本插件
+  check(mode.record.shortcuts.length === 0, 'no shortcut reaches DSH\'s catalog', String(mode.record.shortcuts.length))
 
-  // The resolver decides at input time: return-to-chat must not steal typing.
-  const editableBack = back?.resolve({ region: 'editable', modal: null, target: null })
-  check(editableBack?.status === 'pass', 'back-to-chat passes while typing', editableBack?.status)
-  const pageBack = back?.resolve({ region: 'page', modal: null, target: null })
-  check(pageBack?.status === 'handled', 'back-to-chat handles page input', pageBack?.status)
-  mode.record.selected = undefined
-  pageBack?.run()
-  check(mode.record.selected === null, 'the back command selects the conversation', String(mode.record.selected))
-  const pageToggle = toggle?.resolve({ region: 'page', modal: null, target: null })
-  check(pageToggle?.status === 'handled', 'the toggle handles page input', pageToggle?.status)
+  const names = mode.record.registrations.map((entry) => entry.name)
+  check(names.includes('settings.general.item'), 'the shortcuts live in a General-settings row', names.join(','))
+  const row = mode.record.registrations
+    .filter((entry) => entry.name === 'settings.general.item')
+    .find((entry) => String(entry.id ?? '').includes('dsh-ide-window'))
+  check(row !== undefined, 'the row is namespaced', String(row?.id))
+  const injected = row?.inject?.() ?? {}
+  check(typeof injected.onRecord === 'function' && typeof injected.onReset === 'function',
+    'the row can record and reset a binding')
+  check(injected.platform === 'macos' || injected.platform === 'windows' || injected.platform === 'linux',
+    'the row knows the platform', String(injected.platform))
 }
 
 check(!modeLog.some((entry) => entry[0] === 'openTab'), 'open never opens a right-column tab', JSON.stringify(modeLog.filter((entry) => entry[0] === 'openTab')))

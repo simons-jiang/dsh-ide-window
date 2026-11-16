@@ -145,13 +145,17 @@ function IdeTree({ store, state, tr }) {
 
   // ⌘P / Ctrl+P focuses the search box the way a file finder does; Escape
   // returns to the tree without touching the open tabs.
-  // The binding for the filter box comes from the shortcut registry.
-  const filterBinding = IDE_SHORTCUTS.find((entry) => entry.action === 'focus-filter')?.fixedBinding
-    ?? { code: 'KeyP', modifiers: ['primary'] }
+  // The binding for the filter box is user-configurable: read it at dispatch time so
+  // a rebind takes effect without remounting the tree.
+  const filterCommand = IDE_SHORTCUTS.find((entry) => entry.action === 'focus-filter')
   useEffect(() => {
     const onKey = (event) => {
-      const primary = event.metaKey === true || event.ctrlKey === true
-      if (primary && event.key.toLowerCase() === filterBinding.code.slice(3).toLowerCase()) {
+      const stored = store.getState().shortcutBindings?.[filterCommand?.id]
+      const binding = stored ?? (filterCommand === undefined
+        ? { code: 'KeyP', modifiers: ['primary'] }
+        : ideShortcutDefault(filterCommand, ideRuntimeContext.runtime))
+      if (!ideBindingMatches(binding, event, ideRuntimeContext.platform)) return
+      {
         event.preventDefault()
         inputRef.current?.focus()
         inputRef.current?.select()
