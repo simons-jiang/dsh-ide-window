@@ -151,6 +151,11 @@ function IdeToolbar({ store, state, tr, projects, onSelectProject, onToggleSideb
       onClick: () => store.refreshAll(),
     }, h(IdeRefreshIcon, { size: 15 })),
     h(IdeToolButton, {
+      key: 'search',
+      title: tr('paletteHint'),
+      onClick: () => store.setPaletteOpen(true),
+    }, h(IdeSearchIcon, { size: 15 })),
+    h(IdeToolButton, {
       key: 'jump',
       title: state.jumpEnabled === true ? tr('jumpOn') : tr('jumpOff'),
       on: state.jumpEnabled === true,

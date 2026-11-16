@@ -498,7 +498,8 @@ const IDE_CSS = `
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: rgba(0, 0, 0, 0.35);
+  /* DSH's popovers ride on their own surface, so the backdrop stays clear. */
+  background: transparent;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -509,41 +510,46 @@ const IDE_CSS = `
   max-height: 62vh;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-alias-bg-overlay, #23262b);
-  border: 1px solid var(--dsw-alias-border, #34383f);
-  border-radius: 10px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  /* Same surface, stroke and elevation tokens as DSH's own menus. */
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #23262b));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, none);
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+  border-radius: var(--dsw-radius-lg, 12px);
+  box-shadow: var(--dsw-elevation-prominent, 0 18px 48px rgba(0, 0, 0, 0.45));
+  color: var(--dsw-alias-label-primary, inherit);
   overflow: hidden;
 }
 .iw-palette-input {
   border: 0;
   outline: none;
-  padding: 12px 14px;
-  font-size: 15px;
+  padding: 9px 12px;
+  font-family: var(--dsw-font-family, inherit);
+  font-size: 13px;
   background: transparent;
-  color: var(--dsw-alias-label-primary, #e6e8ec);
-  border-bottom: 1px solid var(--dsw-specific-line-divider, #2c3038);
+  color: var(--dsw-alias-label-primary, inherit);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
+.iw-palette-input::placeholder { color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-palette-tabs {
   display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--dsw-specific-line-divider, #2c3038);
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
 .iw-palette-tab {
   border: 0;
   background: transparent;
-  color: var(--dsw-alias-label-secondary, #98a0ad);
+  color: var(--dsw-alias-label-secondary, inherit);
   font: inherit;
   font-size: 12px;
-  padding: 3px 9px;
-  border-radius: 5px;
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-md, 8px);
   cursor: pointer;
 }
-.iw-palette-tab:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-palette-tab:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.06)); }
 .iw-palette-tab.active {
-  background: var(--dsw-alias-bg-layer-2, #2a2e35);
-  color: var(--dsw-alias-label-primary, #e6e8ec);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08));
+  color: var(--dsw-alias-label-primary, inherit);
 }
 .iw-palette-list { flex: 1 1 auto; overflow: auto; padding: 4px; }
 .iw-palette-row {
@@ -551,23 +557,25 @@ const IDE_CSS = `
   align-items: baseline;
   gap: 8px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 5px 7px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-md, 8px);
   background: transparent;
-  color: var(--dsw-alias-label-primary, #e6e8ec);
+  color: var(--dsw-alias-label-primary, inherit);
   font: inherit;
+  font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
-.iw-palette-row.active { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-palette-row.active { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
 .iw-palette-kind {
   flex: 0 0 auto;
   font-size: 10px;
+  line-height: 14px;
   padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-2, #2a2e35);
-  color: var(--dsw-alias-label-secondary, #98a0ad);
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.06));
+  color: var(--dsw-alias-label-tertiary, inherit);
 }
 .iw-palette-label { flex: 0 0 auto; }
 .iw-palette-detail {
@@ -575,14 +583,14 @@ const IDE_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary, #98a0ad);
-  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 11.5px;
 }
 .iw-palette-hint {
   padding: 6px 10px;
-  border-top: 1px solid var(--dsw-specific-line-divider, #2c3038);
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
   font-size: 11px;
-  color: var(--dsw-alias-label-secondary, #98a0ad);
+  color: var(--dsw-alias-label-tertiary, inherit);
 }
 
 .iw-project-btn {

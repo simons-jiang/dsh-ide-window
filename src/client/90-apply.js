@@ -564,8 +564,9 @@ function apply(ctx) {
       for (const command of IDE_SHORTCUTS) {
         if (command.kind !== 'key') continue
         if (!ideBindingMatches(shortcutBindingOf(command), event, shortcutPlatform)) continue
-        // 「返回对话」还要在输入框里可用，其余命令让输入框先处理。
-        if (editable && command.action !== 'back') return
+        // 组合键（带 ⌘/Ctrl/⌥）在输入框里也生效；纯字母键让输入框先处理，避免抢打字。
+        const withModifier = event.metaKey === true || event.ctrlKey === true || event.altKey === true
+        if (editable && !withModifier && command.action !== 'back') return
         event.preventDefault()
         if (command.action === 'toggle') openPanel()
         else if (command.action === 'back') selectPanel(null)

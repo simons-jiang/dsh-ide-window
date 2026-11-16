@@ -742,7 +742,8 @@ const IDE_CSS = `
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: rgba(0, 0, 0, 0.35);
+  /* DSH's popovers ride on their own surface, so the backdrop stays clear. */
+  background: transparent;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -753,41 +754,46 @@ const IDE_CSS = `
   max-height: 62vh;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-alias-bg-overlay, #23262b);
-  border: 1px solid var(--dsw-alias-border, #34383f);
-  border-radius: 10px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  /* Same surface, stroke and elevation tokens as DSH's own menus. */
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #23262b));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, none);
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
+  border-radius: var(--dsw-radius-lg, 12px);
+  box-shadow: var(--dsw-elevation-prominent, 0 18px 48px rgba(0, 0, 0, 0.45));
+  color: var(--dsw-alias-label-primary, inherit);
   overflow: hidden;
 }
 .iw-palette-input {
   border: 0;
   outline: none;
-  padding: 12px 14px;
-  font-size: 15px;
+  padding: 9px 12px;
+  font-family: var(--dsw-font-family, inherit);
+  font-size: 13px;
   background: transparent;
-  color: var(--dsw-alias-label-primary, #e6e8ec);
-  border-bottom: 1px solid var(--dsw-specific-line-divider, #2c3038);
+  color: var(--dsw-alias-label-primary, inherit);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
+.iw-palette-input::placeholder { color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-palette-tabs {
   display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--dsw-specific-line-divider, #2c3038);
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
 .iw-palette-tab {
   border: 0;
   background: transparent;
-  color: var(--dsw-alias-label-secondary, #98a0ad);
+  color: var(--dsw-alias-label-secondary, inherit);
   font: inherit;
   font-size: 12px;
-  padding: 3px 9px;
-  border-radius: 5px;
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-md, 8px);
   cursor: pointer;
 }
-.iw-palette-tab:hover { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-palette-tab:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.06)); }
 .iw-palette-tab.active {
-  background: var(--dsw-alias-bg-layer-2, #2a2e35);
-  color: var(--dsw-alias-label-primary, #e6e8ec);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08));
+  color: var(--dsw-alias-label-primary, inherit);
 }
 .iw-palette-list { flex: 1 1 auto; overflow: auto; padding: 4px; }
 .iw-palette-row {
@@ -795,23 +801,25 @@ const IDE_CSS = `
   align-items: baseline;
   gap: 8px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 5px 7px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-md, 8px);
   background: transparent;
-  color: var(--dsw-alias-label-primary, #e6e8ec);
+  color: var(--dsw-alias-label-primary, inherit);
   font: inherit;
+  font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
-.iw-palette-row.active { background: var(--dsw-alias-bg-layer-2, #2a2e35); }
+.iw-palette-row.active { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
 .iw-palette-kind {
   flex: 0 0 auto;
   font-size: 10px;
+  line-height: 14px;
   padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-2, #2a2e35);
-  color: var(--dsw-alias-label-secondary, #98a0ad);
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.06));
+  color: var(--dsw-alias-label-tertiary, inherit);
 }
 .iw-palette-label { flex: 0 0 auto; }
 .iw-palette-detail {
@@ -819,14 +827,14 @@ const IDE_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary, #98a0ad);
-  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 11.5px;
 }
 .iw-palette-hint {
   padding: 6px 10px;
-  border-top: 1px solid var(--dsw-specific-line-divider, #2c3038);
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
   font-size: 11px;
-  color: var(--dsw-alias-label-secondary, #98a0ad);
+  color: var(--dsw-alias-label-tertiary, inherit);
 }
 
 .iw-project-btn {
@@ -1245,6 +1253,14 @@ function IdeLinkIcon({ size = 15 }) {
     h('path', { key: 'a', d: 'M6.4 9.6 9.6 6.4' }),
     h('path', { key: 'b', d: 'M7.1 4.6 8.5 3.2a2.6 2.6 0 0 1 3.7 3.7l-1.4 1.4' }),
     h('path', { key: 'c', d: 'M8.9 11.4 7.5 12.8a2.6 2.6 0 0 1-3.7-3.7l1.4-1.4' }),
+  ])
+}
+
+/** Search Everywhere: a magnifier. */
+function IdeSearchIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'c', cx: 7, cy: 7, r: 4.2 }),
+    h('path', { key: 'h', d: 'M10.2 10.2 13.5 13.5' }),
   ])
 }
 
@@ -3728,6 +3744,11 @@ function IdeToolbar({ store, state, tr, projects, onSelectProject, onToggleSideb
       title: tr('refreshTree'),
       onClick: () => store.refreshAll(),
     }, h(IdeRefreshIcon, { size: 15 })),
+    h(IdeToolButton, {
+      key: 'search',
+      title: tr('paletteHint'),
+      onClick: () => store.setPaletteOpen(true),
+    }, h(IdeSearchIcon, { size: 15 })),
     h(IdeToolButton, {
       key: 'jump',
       title: state.jumpEnabled === true ? tr('jumpOn') : tr('jumpOff'),
@@ -6300,8 +6321,9 @@ function apply(ctx) {
       for (const command of IDE_SHORTCUTS) {
         if (command.kind !== 'key') continue
         if (!ideBindingMatches(shortcutBindingOf(command), event, shortcutPlatform)) continue
-        // 「返回对话」还要在输入框里可用，其余命令让输入框先处理。
-        if (editable && command.action !== 'back') return
+        // 组合键（带 ⌘/Ctrl/⌥）在输入框里也生效；纯字母键让输入框先处理，避免抢打字。
+        const withModifier = event.metaKey === true || event.ctrlKey === true || event.altKey === true
+        if (editable && !withModifier && command.action !== 'back') return
         event.preventDefault()
         if (command.action === 'toggle') openPanel()
         else if (command.action === 'back') selectPanel(null)

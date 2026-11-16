@@ -128,6 +128,14 @@ function IdeLinkIcon({ size = 15 }) {
   ])
 }
 
+/** Search Everywhere: a magnifier. */
+function IdeSearchIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'c', cx: 7, cy: 7, r: 4.2 }),
+    h('path', { key: 'h', d: 'M10.2 10.2 13.5 13.5' }),
+  ])
+}
+
 /** Close a tab. */
 function IdeCloseIcon({ size = 10 }) {
   return ideSvg(size, [h('path', { key: 'a', d: 'M4 4l8 8M12 4l-8 8' })])
