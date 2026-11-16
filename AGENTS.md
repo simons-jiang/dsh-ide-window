@@ -37,7 +37,7 @@
 ### 3.1 两半：宿主 + 客户端
 
 ```
-index.js               宿主（Node ESM）：注册 6 条 HTTP 路由，转发到 DSH 服务
+index.js               宿主（Node ESM）：注册 8 条 HTTP 路由，转发到 DSH 服务
 client.js              客户端产物（build.mjs 生成，**必须提交**）
 src/client/*.js        客户端源码片段（构建时按文件名排序拼接）
 build.mjs              把 15 个片段 + locale 拼成 client.js
@@ -76,6 +76,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 | `/dsh-ide/status` | 工作区未提交文件 | `git status --porcelain=v1`，返回 `{path, status}` |
 | `/dsh-ide/blame` | 每行的最后提交人 | `git blame --line-porcelain`，返回 `{line, author, time}` |
 | `/dsh-ide/doctor` | 依赖自检 | `ctx.get('lsp')` 是否挂载，返回 `{lsp}`；引导页据此弹出 |
+| `/dsh-ide/kinds` | Java 声明类型（树图标） | 读文件头 8 KB 解析 `class/interface/enum/record/@interface`，一次最多 300 个路径 |
 
 ### 3.3 用到的 DSH 槽位
 
@@ -97,6 +98,8 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 
 ### 4.1 工作区与代码视图
 - 文件树：按需展开、筛选、拖宽、实时刷新、VCS 改动条
+- 文件图标：`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 徽标（宿主 `/dsh-ide/kinds` 读文件头，按目录批量、客户端缓存）；其他文件是文档图标 + 右下角类型首字母
+- 文件树工具栏：**定位到当前文件**（展开祖先目录、滚动并高亮）/ **展开全部**（逐层加载，上限 200 个目录，超限提示）/ **收起全部**
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
 - 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
 - 大文件保护：>60000 行或超字节上限时截断并提示
@@ -213,7 +216,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 3. **分享前待办**（用户已知，尚未做）：
    - 包名 `@local/dsh-ide-window` 建议改成唯一 scope（如 `@simons-jiang/dsh-ide-window`）
    - 补 `LICENSE`（package.json 已声明 MIT 但无文件）
-   - 加 `engines.dsh` 版本约束
+   - ~~加 `engines.dsh` 版本约束~~（已加，锁 `0.2.2-rc.3`）
 4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。
 5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。
 
@@ -222,7 +225,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 ## 九、文件地图（找东西用）
 
 ```
-index.js                      宿主：6 条路由 + jar ZIP 解析 + git 状态/差异/ blame
+index.js                      宿主：8 条路由 + jar ZIP 解析 + git 状态/差异/blame/kinds
 client.js                     构建产物（提交）
 build.mjs                     拼接 + 注入校验（禁止未声明的 ide* 辅助函数）
 cordis.patch.yml              profile 插入项

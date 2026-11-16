@@ -19,6 +19,8 @@ import { spawn } from 'node:child_process'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { open as openFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 
 export const name = 'dsh-ide-window'
@@ -34,6 +36,7 @@ const ROUTE_JAR = '/dsh-ide/jar'
 const ROUTE_STATUS = '/dsh-ide/status'
 const ROUTE_BLAME = '/dsh-ide/blame'
 const ROUTE_DOCTOR = '/dsh-ide/doctor'
+const ROUTE_KINDS = '/dsh-ide/kinds'
 
 /** Largest number of content matches returned by one grep. */
 const MAX_GREP_MATCHES = 200
@@ -597,6 +600,90 @@ async function query(ctx, payload) {
   return { kind: 'locations', locations }
 }
 
+/** Largest number of Java files one kind request may cover. */
+const MAX_KIND_PATHS = 300
+
+/** How much of a Java file is enough to see its declaration. */
+const KIND_HEAD_BYTES = 8192
+
+/**
+ * The declaration kind of a Java source head.
+ *
+ * Comments are stripped first, so a javadoc sentence ("this class does…") can
+ * never answer for the file; `@interface` wins over `interface` because both
+ * start at the same place and the earliest match is kept.
+ *
+ * @param text - the first few KB of a `.java` file.
+ * @returns `'class' | 'interface' | 'enum' | 'record' | 'annotation' | ''`.
+ */
+export function parseJavaKind(text) {
+  const source = String(text ?? '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ')
+  const shapes = [
+    ['annotation', /@\s*interface\b/],
+    // `.class` is a class literal, not a declaration.
+    ['class', /(?<!\.)\bclass\b/],
+    ['interface', /\binterface\b/],
+    ['enum', /\benum\b/],
+    ['record', /\brecord\b/],
+  ]
+  let kind = ''
+  let at = Number.POSITIVE_INFINITY
+  for (const [candidate, shape] of shapes) {
+    const match = shape.exec(source)
+    if (match !== null && match.index < at) {
+      at = match.index
+      kind = candidate
+    }
+  }
+  return kind
+}
+
+/** Read one file's head; a missing or unreadable file simply has no kind. */
+async function readJavaKind(filePath) {
+  let handle
+  try {
+    handle = await openFile(filePath, 'r')
+    const buffer = Buffer.alloc(KIND_HEAD_BYTES)
+    const { bytesRead } = await handle.read(buffer, 0, KIND_HEAD_BYTES, 0)
+    return parseJavaKind(buffer.toString('utf8', 0, bytesRead))
+  } catch (error) {
+    return ''
+  } finally {
+    if (handle !== undefined) await handle.close()
+  }
+}
+
+/**
+ * Declaration kinds for the Java files the tree is about to paint.
+ *
+ * One request per directory expansion: the client asks for the entries it has
+ * loaded but not identified yet, and the answer is a `path → kind` map so the
+ * letters can appear without another round trip.
+ */
+export async function kindsWorkspace(payload) {
+  const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
+  if (root === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot is required')
+  const wanted = []
+  for (const value of Array.isArray(payload?.paths) ? payload.paths : []) {
+    if (typeof value !== 'string' || !value.endsWith('.java')) continue
+    if (value.startsWith('/') || value.split('/').includes('..')) continue
+    wanted.push(value)
+  }
+  const unique = [...new Set(wanted)].slice(0, MAX_KIND_PATHS)
+  if (unique.length === 0) return { kinds: {} }
+  const kinds = {}
+  const queue = [...unique]
+  const workerCount = Math.min(8, queue.length)
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    for (let rel = queue.shift(); rel !== undefined; rel = queue.shift()) {
+      kinds[rel] = await readJavaKind(join(root, rel))
+    }
+  }))
+  return { kinds }
+}
+
 /**
  * Whether the LSP seam is mounted in this profile.
  *
@@ -625,7 +712,7 @@ function createHandler(ctx) {
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -642,6 +729,8 @@ function createHandler(ctx) {
                 ? await blameWorkspace(payload)
               : pathname === ROUTE_DOCTOR
                 ? doctorReport(ctx)
+              : pathname === ROUTE_KINDS
+                ? await kindsWorkspace(payload)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -689,4 +778,9 @@ export function apply(ctx) {
     path: ROUTE_DOCTOR,
     handler,
   }), 'dsh-ide-window: doctor route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_KINDS,
+    handler,
+  }), 'dsh-ide-window: kinds route')
 }

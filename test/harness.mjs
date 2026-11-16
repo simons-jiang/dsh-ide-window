@@ -738,6 +738,37 @@ function sourceFunction(name, file = undefined) {
   check(symbolRow?.detail === 'com.x.OrderService', 'a symbol row names its declaring class', String(symbolRow?.detail))
 }
 
+// ---- file icons: Java type letters and extension initials ------------------
+{
+  const source = [
+    sourceFunction('ideJavaLetter', '05-icons.js'),
+    sourceFunction('ideJavaTint', '05-icons.js'),
+    sourceFunction('ideFileLetter', '05-icons.js'),
+  ].join('\n')
+  const icons = new Function(`${source}\nreturn { ideJavaLetter, ideJavaTint, ideFileLetter }`)()
+  check(icons.ideJavaLetter('class') === 'C', 'a class shows C', icons.ideJavaLetter('class'))
+  check(icons.ideJavaLetter('interface') === 'I', 'an interface shows I', icons.ideJavaLetter('interface'))
+  check(icons.ideJavaLetter('enum') === 'E', 'an enum shows E', icons.ideJavaLetter('enum'))
+  check(icons.ideJavaLetter('annotation') === '@', 'an annotation shows @', icons.ideJavaLetter('annotation'))
+  check(icons.ideJavaLetter('record') === 'R', 'a record shows R', icons.ideJavaLetter('record'))
+  check(icons.ideJavaLetter('') === 'J', 'an unknown Java file falls back to J', icons.ideJavaLetter(''))
+  check(icons.ideJavaTint('interface') === '#7fb33f', 'an interface is green', icons.ideJavaTint('interface'))
+  check(icons.ideFileLetter('pom.xml') === 'X', 'the initial is the type, not the name', icons.ideFileLetter('pom.xml'))
+  check(icons.ideFileLetter('application.yml') === 'Y', 'a yaml file shows Y', icons.ideFileLetter('application.yml'))
+  check(icons.ideFileLetter('README') === 'R', 'a file without a dot uses its name', icons.ideFileLetter('README'))
+  check(icons.ideFileLetter('Dockerfile') === 'D', 'Dockerfile shows D', icons.ideFileLetter('Dockerfile'))
+  check(icons.ideFileLetter('.gitignore') === 'G', 'a dotfile uses the part after the dot', icons.ideFileLetter('.gitignore'))
+  check(icons.ideFileLetter('archive.tar.gz') === 'G', 'the last extension wins', icons.ideFileLetter('archive.tar.gz'))
+}
+
+// ---- tree tools: ancestor directories ---------------------------------------
+{
+  const fn = new Function(`${sourceFunction('ideAncestorDirs', '10-core.js')}\nreturn ideAncestorDirs`)()
+  check(JSON.stringify(fn('a/b/C.java')) === '["a","a/b"]', 'ancestors are shallowest first', JSON.stringify(fn('a/b/C.java')))
+  check(JSON.stringify(fn('C.java')) === '[]', 'a top-level file has no ancestors', JSON.stringify(fn('C.java')))
+  check(JSON.stringify(fn('a/b/c/D.java')) === '["a","a/b","a/b/c"]', 'every level is an ancestor', JSON.stringify(fn('a/b/c/D.java')))
+}
+
 // ---- Code Vision: method declarations and counts ---------------------------
 {
   const source = [
@@ -910,6 +941,15 @@ check(again?.reveal === 5, 'a second reference moves the highlight', String(agai
 // A path outside the workspace must be refused rather than guessed at.
 check(jumpStore.openAt('/etc/passwd', 1) === false, 'a path outside the workspace is refused')
 check(jumpStore.getState().activePath === 'Main.java', 'a refused path leaves the selection alone')
+
+// The tree tools: collapse everything, then reveal the active file again.
+jumpStore.openAt('/tmp/workspace-only/src/App.ts', 1)
+await tick()
+jumpStore.collapseAll()
+check(jumpStore.getState().expanded.length === 0, 'collapse all closes every directory')
+check(jumpStore.revealActive() === true, 'reveal accepts an open workspace file')
+check(jumpStore.getState().expanded.includes('src'), 'reveal expands the ancestors again')
+check(jumpStore.getState().revealFile?.path === 'src/App.ts', 'reveal signals the tree to scroll', JSON.stringify(jumpStore.getState().revealFile))
 jumpStore.dispose()
 
 // ---- live updates ---------------------------------------------------------

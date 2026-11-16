@@ -147,6 +147,20 @@ function ideSplitPath(path) {
   return index < 0 ? { dir: '', name: path } : { dir: path.slice(0, index + 1), name: path.slice(index + 1) }
 }
 
+/** Ancestors of a workspace path, shallowest first: `a/b/C.java` → `a`, `a/b`. */
+function ideAncestorDirs(path) {
+  const parts = String(path ?? '').split('/')
+  parts.pop()
+  const dirs = []
+  for (let index = 1; index <= parts.length; index += 1) {
+    dirs.push(parts.slice(0, index).join('/'))
+  }
+  return dirs
+}
+
+/** Most directories one "expand all" run may open. */
+const IDE_MAX_EXPANDED_DIRS = 200
+
 /** Directory of a workspace path (`` for a top-level entry). */
 function ideParent(path) {
   const index = path.lastIndexOf('/')
@@ -158,14 +172,6 @@ function ideBasename(path) {
   const trimmed = String(path ?? '').replace(/\/+$/, '')
   const index = trimmed.lastIndexOf('/')
   return index < 0 ? trimmed : trimmed.slice(index + 1)
-}
-
-/** Human byte size. */
-function ideBytes(size) {
-  if (typeof size !== 'number' || !Number.isFinite(size)) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 102.4) / 10} KB`
-  return `${Math.round(size / 104857.6) / 10} MB`
 }
 
 /** Extension → language id for the tokenizer and the status bar. */
@@ -394,6 +400,8 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    /** A file the tree should scroll to: `{ path, stamp }`, or null. */
+    revealFile: null,
     /** Files shown with Git annotate: `path → true`. */
     annotate: {},
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
@@ -833,6 +841,82 @@ function ideCreateStore(refs) {
     void loadDir(path, { force: true, cascade: true })
   }
 
+  /** Collapse every directory at once. */
+  function collapseAll() {
+    for (const path of state.expanded) unwatchDir(path)
+    patch({ expanded: [] })
+  }
+
+  /** Whether an "expand all" walk is already running. */
+  let expandingAll = false
+
+  /**
+   * Expand every directory, breadth first, within a budget.
+   *
+   * The tree is lazy, so a level has to be listed before its children exist;
+   * the walk patches after each level so rows appear while it runs, and stops
+   * at `IDE_MAX_EXPANDED_DIRS` so a huge workspace cannot lock the panel.
+   *
+   * @returns whether the budget capped the walk.
+   */
+  async function expandAll() {
+    if (expandingAll) return false
+    expandingAll = true
+    try {
+      const open = new Set(state.expanded)
+      let level = ['']
+      let capped = false
+      while (level.length > 0) {
+        const next = []
+        const added = []
+        for (const dir of level) {
+          if (dir !== '' && (dirOf(dir).status !== 'ready')) await loadDir(dir)
+          for (const entry of dirOf(dir).entries ?? []) {
+            if (entry.type !== 'directory') continue
+            if (open.has(entry.path)) {
+              next.push(entry.path)
+              continue
+            }
+            if (open.size >= IDE_MAX_EXPANDED_DIRS) {
+              capped = true
+              break
+            }
+            open.add(entry.path)
+            added.push(entry.path)
+            next.push(entry.path)
+            watchDir(entry.path)
+          }
+          if (capped) break
+        }
+        if (added.length > 0) patch({ expanded: [...state.expanded, ...added] })
+        if (capped) break
+        level = next
+      }
+      return capped
+    } finally {
+      expandingAll = false
+    }
+  }
+
+  /**
+   * Expand the active file's ancestors and ask the tree to scroll to it.
+   *
+   * @returns false when there is no workspace file to reveal (no tab, or a jar tab).
+   */
+  function revealActive() {
+    const path = state.activePath
+    if (path === '' || path.startsWith('#jar#')) return false
+    const ancestors = ideAncestorDirs(path)
+    const missing = ancestors.filter((dir) => !state.expanded.includes(dir))
+    for (const dir of missing) {
+      watchDir(dir)
+      void loadDir(dir)
+    }
+    if (missing.length > 0) patch({ expanded: [...state.expanded, ...missing] })
+    patch({ revealFile: { path, stamp: Date.now() } })
+    return true
+  }
+
   /** Reload the whole tree, keeping which directories are expanded. */
   /**
    * Open a class source that lives inside a Maven jar.
@@ -959,11 +1043,8 @@ function ideCreateStore(refs) {
 
   /** Expand every ancestor directory of a path, without blocking navigation. */
   function revealInTree(relative) {
-    const segments = relative.split('/')
-    let walked = ''
-    for (let index = 0; index < segments.length - 1; index += 1) {
-      walked = walked === '' ? segments[index] : `${walked}/${segments[index]}`
-      if (!state.expanded.includes(walked)) toggleDir(walked)
+    for (const dir of ideAncestorDirs(relative)) {
+      if (!state.expanded.includes(dir)) toggleDir(dir)
     }
   }
 
@@ -1310,6 +1391,9 @@ function ideCreateStore(refs) {
     /** Re-read everything the panel shows; the panel also re-resolves its target. */
     retryResolve: () => restart(),
     toggleDir,
+    expandAll,
+    collapseAll,
+    revealActive,
     refreshDir,
     refreshAll,
     refreshTabs,

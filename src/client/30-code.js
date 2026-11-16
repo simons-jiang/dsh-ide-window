@@ -46,7 +46,7 @@ function IdeChatTab({ onOpen, tr }) {
 }
 
 /** One file tab. */
-function IdeFileTab({ tab, active, store, tr }) {
+function IdeFileTab({ tab, kind, active, store, tr }) {
   return h('div', {
     className: `iw-tab${active ? ' active' : ''}`,
     title: tab.path,
@@ -64,7 +64,7 @@ function IdeFileTab({ tab, active, store, tr }) {
       store.setTabMenu({ path: tab.path, x: box.left, y: box.bottom + 2 })
     },
   }, [
-    h('span', { key: 'ic', style: { display: 'inline-flex' } }, h(IdeFileIcon, { lang: ideLangOf(tab.name), size: 13 })),
+    h('span', { key: 'ic', style: { display: 'inline-flex' } }, h(IdeEntryIcon, { name: tab.name, kind })),
     h('span', { key: 'lb', className: 'iw-tab-label' }, tab.name),
     h('button', {
       key: 'cl',
@@ -82,9 +82,22 @@ function IdeFileTab({ tab, active, store, tr }) {
 
 /** The tab strip, led by the conversation chip. */
 function IdeTabStrip({ store, state, tr, onBackToChat }) {
+  // A file opened from the palette never went through the tree, so the tabs ask
+  // for its Java kind themselves; the cache is shared, so this stays one request.
+  const [, setKindStamp] = useState(0)
+  useEffect(() => {
+    const root = state.rootPath
+    if (root === '') return undefined
+    let cancelled = false
+    ideRequestJavaKinds(root, state.tabs.map((tab) => tab.path), () => {
+      if (!cancelled) setKindStamp((value) => value + 1)
+    })
+    return () => { cancelled = true }
+  }, [state.tabs, state.rootPath])
   const tabs = state.tabs.map((tab) => h(IdeFileTab, {
     key: tab.path,
     tab,
+    kind: ideJavaKinds.get(`${state.rootPath}|${tab.path}`) ?? '',
     active: tab.path === state.activePath,
     store,
     tr,

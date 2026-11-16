@@ -161,6 +161,11 @@ window.__ModuleLoader__.load({
     "setupClose": "Close",
     "setupReady": "Code navigation is ready",
     "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml.",
+    "treeReveal": "Reveal current file",
+    "treeRevealNone": "No file is open",
+    "treeExpandAll": "Expand all",
+    "treeCollapseAll": "Collapse all",
+    "treeExpandLimit": "Stopped at the 200-directory limit",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -315,6 +320,11 @@ window.__ModuleLoader__.load({
     "setupClose": "关闭",
     "setupReady": "代码导航已就绪",
     "setupStill": "仍未检测到 LSP：看一下 DSH 启动日志和 profile 的 cordis.patch.yml。",
+    "treeReveal": "定位到当前文件",
+    "treeRevealNone": "没有打开的文件",
+    "treeExpandAll": "展开全部",
+    "treeCollapseAll": "收起全部",
+    "treeExpandLimit": "已展开到上限（200 个目录）",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -485,6 +495,33 @@ const IDE_CSS = `
   flex: 1 1 auto;
   overflow: auto;
   padding: 2px 0 10px;
+}
+.iw-tree-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 4px 8px 0;
+}
+.iw-tree-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  cursor: pointer;
+}
+.iw-tree-tool:hover {
+  background: var(--dsw-alias-bg-layer-2, #2a2e35);
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-row.flash { animation: iw-flash 1.2s ease-out; }
+@keyframes iw-flash {
+  from { background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 35%, transparent); }
+  to { background: transparent; }
 }
 .iw-row {
   display: flex;
@@ -1477,6 +1514,134 @@ function IdeFileIcon({ lang, size = 14 }) {
   ])
 }
 
+/** The letter IDEA paints on a Java type badge. */
+function ideJavaLetter(kind) {
+  if (kind === 'interface') return 'I'
+  if (kind === 'enum') return 'E'
+  if (kind === 'annotation') return '@'
+  if (kind === 'record') return 'R'
+  if (kind === 'class') return 'C'
+  return 'J'
+}
+
+/** The colour of a Java type badge. */
+function ideJavaTint(kind) {
+  if (kind === 'interface') return '#7fb33f'
+  if (kind === 'enum') return '#d9963f'
+  if (kind === 'annotation') return '#9aa4b2'
+  if (kind === 'record' || kind === 'class') return '#4f8fd8'
+  return '#8b95a5'
+}
+
+/** Java type badge: a filled circle carrying IDEA's type letter. */
+function IdeJavaIcon({ kind, size = 16 }) {
+  const tint = ideJavaTint(kind)
+  const letter = ideJavaLetter(kind)
+  return h('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 16 16',
+    'aria-hidden': 'true',
+    focusable: 'false',
+    style: { display: 'block' },
+  }, [
+    h('circle', { key: 'badge', cx: 8, cy: 8, r: 6.4, fill: tint }),
+    h('text', {
+      key: 'letter',
+      x: 8,
+      y: 10.7,
+      textAnchor: 'middle',
+      fontSize: letter === '@' ? 7.4 : 8.2,
+      fontWeight: 700,
+      fill: '#ffffff',
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+    }, letter),
+  ])
+}
+
+/** The corner letter of a file: the first letter of its type. */
+function ideFileLetter(name) {
+  const text = typeof name === 'string' ? name : ''
+  // A dotfile (`.gitignore`) has no name before its dot: treat the part after
+  // the leading dot as the type, the way an editor shows it.
+  const trimmed = text.startsWith('.') ? text.slice(1) : text
+  const dot = trimmed.lastIndexOf('.')
+  const stem = dot >= 0 && dot < trimmed.length - 1 ? trimmed.slice(dot + 1) : trimmed
+  const first = stem.trim().charAt(0)
+  return first === '' ? '?' : first.toUpperCase()
+}
+
+/** Document glyph with the type's initial in the corner. */
+function IdeFileBadgeIcon({ letter, tint, size = 16 }) {
+  return h('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 16 16',
+    'aria-hidden': 'true',
+    focusable: 'false',
+    style: { display: 'block' },
+  }, [
+    h('path', {
+      key: 'page',
+      d: 'M3.4 2.2h5.2l3.9 3.8v7.8c0 .4-.3.7-.7.7H3.4a.7.7 0 0 1-.7-.7V2.9c0-.4.3-.7.7-.7Z',
+      fill: tint,
+      opacity: 0.18,
+      stroke: tint,
+      strokeWidth: 1.1,
+    }),
+    h('path', { key: 'fold', d: 'M8.6 2.4v3.6h3.7', stroke: tint, strokeWidth: 1.1, opacity: 0.9 }),
+    h('text', {
+      key: 'badge',
+      x: 12.1,
+      y: 13.9,
+      textAnchor: 'end',
+      fontSize: 6.4,
+      fontWeight: 700,
+      fill: tint,
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+    }, letter),
+  ])
+}
+
+/**
+ * One icon size for every file-shaped glyph: the tree and the tabs must read as
+ * the same editor, so neither chooses its own.
+ */
+const IDE_ENTRY_ICON_SIZE = 21
+
+/**
+ * The icon for one file, by what it is: a Java type keeps its declaration
+ * letter, anything else is a document with the type's initial in the corner.
+ */
+function IdeEntryIcon({ name, kind = '', size = IDE_ENTRY_ICON_SIZE }) {
+  if (ideLangOf(name) === 'java') return h(IdeJavaIcon, { kind, size })
+  return h(IdeFileBadgeIcon, { letter: ideFileLetter(name), tint: ideTintOf(ideLangOf(name)), size })
+}
+
+/** Crosshair: reveal the active file in the tree. */
+function IdeLocateIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'c', cx: 8, cy: 8, r: 4.2 }),
+    h('path', { key: 'a', d: 'M8 1.6v3M8 11.4v3M1.6 8h3M11.4 8h3' }),
+  ])
+}
+
+/** Arrow down to a bar: expand every folder. */
+function IdeExpandAllIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M8 2.6v8.2M4.6 7.6 8 11l3.4-3.4' }),
+    h('path', { key: 'b', d: 'M3.2 13.4h9.6' }),
+  ])
+}
+
+/** Arrow up to a bar: collapse every folder. */
+function IdeCollapseAllIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M8 13.4V5.2M4.6 8.4 8 5l3.4 3.4' }),
+    h('path', { key: 'b', d: 'M3.2 2.6h9.6' }),
+  ])
+}
+
 /** Navigation-column toggle: the shell's left panel. */
 function IdeSidebarIcon({ size = 15 }) {
   return ideSvg(size, [
@@ -1979,6 +2144,20 @@ function ideSplitPath(path) {
   return index < 0 ? { dir: '', name: path } : { dir: path.slice(0, index + 1), name: path.slice(index + 1) }
 }
 
+/** Ancestors of a workspace path, shallowest first: `a/b/C.java` → `a`, `a/b`. */
+function ideAncestorDirs(path) {
+  const parts = String(path ?? '').split('/')
+  parts.pop()
+  const dirs = []
+  for (let index = 1; index <= parts.length; index += 1) {
+    dirs.push(parts.slice(0, index).join('/'))
+  }
+  return dirs
+}
+
+/** Most directories one "expand all" run may open. */
+const IDE_MAX_EXPANDED_DIRS = 200
+
 /** Directory of a workspace path (`` for a top-level entry). */
 function ideParent(path) {
   const index = path.lastIndexOf('/')
@@ -1990,14 +2169,6 @@ function ideBasename(path) {
   const trimmed = String(path ?? '').replace(/\/+$/, '')
   const index = trimmed.lastIndexOf('/')
   return index < 0 ? trimmed : trimmed.slice(index + 1)
-}
-
-/** Human byte size. */
-function ideBytes(size) {
-  if (typeof size !== 'number' || !Number.isFinite(size)) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 102.4) / 10} KB`
-  return `${Math.round(size / 104857.6) / 10} MB`
 }
 
 /** Extension → language id for the tokenizer and the status bar. */
@@ -2226,6 +2397,8 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    /** A file the tree should scroll to: `{ path, stamp }`, or null. */
+    revealFile: null,
     /** Files shown with Git annotate: `path → true`. */
     annotate: {},
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
@@ -2665,6 +2838,82 @@ function ideCreateStore(refs) {
     void loadDir(path, { force: true, cascade: true })
   }
 
+  /** Collapse every directory at once. */
+  function collapseAll() {
+    for (const path of state.expanded) unwatchDir(path)
+    patch({ expanded: [] })
+  }
+
+  /** Whether an "expand all" walk is already running. */
+  let expandingAll = false
+
+  /**
+   * Expand every directory, breadth first, within a budget.
+   *
+   * The tree is lazy, so a level has to be listed before its children exist;
+   * the walk patches after each level so rows appear while it runs, and stops
+   * at `IDE_MAX_EXPANDED_DIRS` so a huge workspace cannot lock the panel.
+   *
+   * @returns whether the budget capped the walk.
+   */
+  async function expandAll() {
+    if (expandingAll) return false
+    expandingAll = true
+    try {
+      const open = new Set(state.expanded)
+      let level = ['']
+      let capped = false
+      while (level.length > 0) {
+        const next = []
+        const added = []
+        for (const dir of level) {
+          if (dir !== '' && (dirOf(dir).status !== 'ready')) await loadDir(dir)
+          for (const entry of dirOf(dir).entries ?? []) {
+            if (entry.type !== 'directory') continue
+            if (open.has(entry.path)) {
+              next.push(entry.path)
+              continue
+            }
+            if (open.size >= IDE_MAX_EXPANDED_DIRS) {
+              capped = true
+              break
+            }
+            open.add(entry.path)
+            added.push(entry.path)
+            next.push(entry.path)
+            watchDir(entry.path)
+          }
+          if (capped) break
+        }
+        if (added.length > 0) patch({ expanded: [...state.expanded, ...added] })
+        if (capped) break
+        level = next
+      }
+      return capped
+    } finally {
+      expandingAll = false
+    }
+  }
+
+  /**
+   * Expand the active file's ancestors and ask the tree to scroll to it.
+   *
+   * @returns false when there is no workspace file to reveal (no tab, or a jar tab).
+   */
+  function revealActive() {
+    const path = state.activePath
+    if (path === '' || path.startsWith('#jar#')) return false
+    const ancestors = ideAncestorDirs(path)
+    const missing = ancestors.filter((dir) => !state.expanded.includes(dir))
+    for (const dir of missing) {
+      watchDir(dir)
+      void loadDir(dir)
+    }
+    if (missing.length > 0) patch({ expanded: [...state.expanded, ...missing] })
+    patch({ revealFile: { path, stamp: Date.now() } })
+    return true
+  }
+
   /** Reload the whole tree, keeping which directories are expanded. */
   /**
    * Open a class source that lives inside a Maven jar.
@@ -2791,11 +3040,8 @@ function ideCreateStore(refs) {
 
   /** Expand every ancestor directory of a path, without blocking navigation. */
   function revealInTree(relative) {
-    const segments = relative.split('/')
-    let walked = ''
-    for (let index = 0; index < segments.length - 1; index += 1) {
-      walked = walked === '' ? segments[index] : `${walked}/${segments[index]}`
-      if (!state.expanded.includes(walked)) toggleDir(walked)
+    for (const dir of ideAncestorDirs(relative)) {
+      if (!state.expanded.includes(dir)) toggleDir(dir)
     }
   }
 
@@ -3142,6 +3388,9 @@ function ideCreateStore(refs) {
     /** Re-read everything the panel shows; the panel also re-resolves its target. */
     retryResolve: () => restart(),
     toggleDir,
+    expandAll,
+    collapseAll,
+    revealActive,
     refreshDir,
     refreshAll,
     refreshTabs,
@@ -3190,17 +3439,51 @@ function ideCreateStore(refs) {
 /** Indentation per depth level, in px. */
 const IDE_INDENT = 14
 
+/**
+ * Java declaration kinds learned from the Host, keyed by `${root}|${path}`.
+ *
+ * The tree is file-based, but IDEA's Java badge says what the file declares;
+ * the Host reads the first few KB of each file, and this cache keeps a redraw
+ * from asking twice. `''` means "asked, no declaration found".
+ */
+const ideJavaKinds = new Map()
+
+/**
+ * Ask the Host for the Java kinds of `paths` that are not cached yet.
+ *
+ * Both the tree and the tab strip use this: the cache is shared, so a file the
+ * tree already identified costs the tabs nothing.
+ */
+function ideRequestJavaKinds(root, paths, done) {
+  const wanted = new Set()
+  for (const path of paths) {
+    if (typeof path !== 'string' || !path.endsWith('.java')) continue
+    if (ideJavaKinds.has(`${root}|${path}`)) continue
+    wanted.add(path)
+  }
+  if (wanted.size === 0) return
+  const missing = [...wanted]
+  void ideKindsQuery(root, missing).then((found) => {
+    if (found.ok !== true) return
+    for (const rel of missing) {
+      ideJavaKinds.set(`${root}|${rel}`, typeof found.kinds[rel] === 'string' ? found.kinds[rel] : '')
+    }
+    done()
+  })
+}
+
 /** One tree row. */
 function IdeTreeRow({ entry, depth, node, state, store, tr }) {
   const isDir = entry.type === 'directory'
   const open = isDir && state.expanded.includes(entry.path)
   const active = !isDir && state.activePath === entry.path
-  const lang = isDir ? '' : ideLangOf(entry.name)
+  const javaKind = isDir ? '' : ideJavaKinds.get(`${state.rootPath}|${entry.path}`) ?? ''
   const depthPx = 8 + depth * IDE_INDENT
   return h('div', {
     className: `iw-row${active ? ' active' : ''}${isDir && !open ? ' dim' : ''}`,
     style: { paddingLeft: `${depthPx}px` },
     role: 'treeitem',
+    'data-iw-path': entry.path,
     'aria-expanded': isDir ? (open ? 'true' : 'false') : undefined,
     'aria-selected': active ? 'true' : 'false',
     title: entry.path,
@@ -3210,9 +3493,10 @@ function IdeTreeRow({ entry, depth, node, state, store, tr }) {
     },
   }, [
     h('span', { key: 'tw', className: 'iw-twisty' }, isDir ? h(IdeChevron, { open, size: 12 }) : null),
-    h('span', { key: 'ic', className: 'iw-icon' }, isDir ? h(IdeFolderIcon, { open, size: 16 }) : h(IdeFileIcon, { lang, size: 16 })),
+    h('span', { key: 'ic', className: 'iw-icon' }, isDir
+      ? h(IdeFolderIcon, { open, size: IDE_ENTRY_ICON_SIZE })
+      : h(IdeEntryIcon, { name: entry.name, kind: javaKind })),
     h('span', { key: 'nm', className: 'iw-name' }, entry.name),
-    !isDir && entry.size !== undefined ? h('span', { key: 'sz', className: 'iw-note' }, ideBytes(entry.size)) : null,
   ])
 }
 
@@ -3321,6 +3605,48 @@ function IdeSearchRows({ store, state, tr }) {
 function IdeTree({ store, state, tr }) {
   const inputRef = useRef(null)
   const searching = state.filter.trim() !== ''
+  // Ask once per loaded directory for the Java kinds it does not know yet; the
+  // stamp re-paints the rows when answers arrive.
+  const [, setKindStamp] = useState(0)
+  useEffect(() => {
+    const root = state.rootPath
+    if (root === '') return undefined
+    const paths = []
+    for (const node of Object.values(state.dirs ?? {})) {
+      for (const entry of node?.entries ?? []) {
+        if (entry?.type === 'file') paths.push(entry.path)
+      }
+    }
+    let cancelled = false
+    ideRequestJavaKinds(root, paths, () => {
+      if (!cancelled) setKindStamp((value) => value + 1)
+    })
+    return () => { cancelled = true }
+  }, [state.dirs, state.rootPath])
+
+  // Reveal: scroll the row the store asked for. The effect also runs when a
+  // directory finishes loading, so it lands after the ancestors are painted.
+  const treeRef = useRef(null)
+  useEffect(() => {
+    const signal = state.revealFile
+    const container = treeRef.current
+    if (signal === null || signal === undefined || container === null) return undefined
+    let row
+    for (const candidate of container.querySelectorAll('[data-iw-path]')) {
+      if (candidate.getAttribute('data-iw-path') === signal.path) {
+        row = candidate
+        break
+      }
+    }
+    if (row === undefined) return undefined
+    row.scrollIntoView({ block: 'center' })
+    row.classList.add('flash')
+    const timer = setTimeout(() => row.classList.remove('flash'), 1200)
+    return () => {
+      clearTimeout(timer)
+      row.classList.remove('flash')
+    }
+  }, [state.revealFile, state.dirs])
 
   // ⌘P / Ctrl+P focuses the search box the way a file finder does; Escape
   // returns to the tree without touching the open tabs.
@@ -3354,10 +3680,43 @@ function IdeTree({ store, state, tr }) {
   }
   return h('div', {
     className: 'iw-tree',
+    ref: treeRef,
     style: { width: `${state.treeWidth}px` },
     role: 'tree',
     'aria-label': tr('files'),
   }, [
+    h('div', { key: 'tools', className: 'iw-tree-tools' }, [
+      h('button', {
+        key: 'reveal',
+        type: 'button',
+        className: 'iw-tree-tool',
+        title: tr('treeReveal'),
+        'aria-label': tr('treeReveal'),
+        onClick: () => {
+          if (!store.revealActive()) store.setNotice(tr('treeRevealNone'))
+        },
+      }, h(IdeLocateIcon, { size: 14 })),
+      h('button', {
+        key: 'expand',
+        type: 'button',
+        className: 'iw-tree-tool',
+        title: tr('treeExpandAll'),
+        'aria-label': tr('treeExpandAll'),
+        onClick: () => {
+          void store.expandAll().then((capped) => {
+            if (capped === true) store.setNotice(tr('treeExpandLimit'))
+          })
+        },
+      }, h(IdeExpandAllIcon, { size: 14 })),
+      h('button', {
+        key: 'collapse',
+        type: 'button',
+        className: 'iw-tree-tool',
+        title: tr('treeCollapseAll'),
+        'aria-label': tr('treeCollapseAll'),
+        onClick: () => store.collapseAll(),
+      }, h(IdeCollapseAllIcon, { size: 14 })),
+    ]),
     h('div', { key: 'search', className: 'iw-search' }, [
       h('input', {
         key: 'input',
@@ -3455,7 +3814,7 @@ function IdeChatTab({ onOpen, tr }) {
 }
 
 /** One file tab. */
-function IdeFileTab({ tab, active, store, tr }) {
+function IdeFileTab({ tab, kind, active, store, tr }) {
   return h('div', {
     className: `iw-tab${active ? ' active' : ''}`,
     title: tab.path,
@@ -3473,7 +3832,7 @@ function IdeFileTab({ tab, active, store, tr }) {
       store.setTabMenu({ path: tab.path, x: box.left, y: box.bottom + 2 })
     },
   }, [
-    h('span', { key: 'ic', style: { display: 'inline-flex' } }, h(IdeFileIcon, { lang: ideLangOf(tab.name), size: 13 })),
+    h('span', { key: 'ic', style: { display: 'inline-flex' } }, h(IdeEntryIcon, { name: tab.name, kind })),
     h('span', { key: 'lb', className: 'iw-tab-label' }, tab.name),
     h('button', {
       key: 'cl',
@@ -3491,9 +3850,22 @@ function IdeFileTab({ tab, active, store, tr }) {
 
 /** The tab strip, led by the conversation chip. */
 function IdeTabStrip({ store, state, tr, onBackToChat }) {
+  // A file opened from the palette never went through the tree, so the tabs ask
+  // for its Java kind themselves; the cache is shared, so this stays one request.
+  const [, setKindStamp] = useState(0)
+  useEffect(() => {
+    const root = state.rootPath
+    if (root === '') return undefined
+    let cancelled = false
+    ideRequestJavaKinds(root, state.tabs.map((tab) => tab.path), () => {
+      if (!cancelled) setKindStamp((value) => value + 1)
+    })
+    return () => { cancelled = true }
+  }, [state.tabs, state.rootPath])
   const tabs = state.tabs.map((tab) => h(IdeFileTab, {
     key: tab.path,
     tab,
+    kind: ideJavaKinds.get(`${state.rootPath}|${tab.path}`) ?? '',
     active: tab.path === state.activePath,
     store,
     tr,
@@ -6733,6 +7105,36 @@ async function ideDoctorQuery() {
   if (parsed === null) return { ok: false, error: `http-${response.status}` }
   if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'doctor-failed' }
   return { ok: true, lsp: parsed.value?.lsp === true }
+}
+
+/** The Java-kind route, resolved against the page base. */
+function ideKindsUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/kinds', base).href
+}
+
+/**
+ * Ask the Host for the Java declaration kind of a handful of files.
+ *
+ * @returns `{ ok: true, kinds }` (a `path → kind` map) or `{ ok: false, error }`.
+ */
+async function ideKindsQuery(root, paths) {
+  let response
+  try {
+    response = await fetch(ideKindsUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot: root, paths }),
+    })
+  } catch (error) {
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'kinds-failed' }
+  return { ok: true, kinds: parsed.value?.kinds ?? {} }
 }
 
 /** The jar-source route, resolved against the page base. */

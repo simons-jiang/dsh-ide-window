@@ -166,6 +166,33 @@ const IDE_CSS = `
   overflow: auto;
   padding: 2px 0 10px;
 }
+.iw-tree-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 4px 8px 0;
+}
+.iw-tree-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  cursor: pointer;
+}
+.iw-tree-tool:hover {
+  background: var(--dsw-alias-bg-layer-2, #2a2e35);
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-row.flash { animation: iw-flash 1.2s ease-out; }
+@keyframes iw-flash {
+  from { background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 35%, transparent); }
+  to { background: transparent; }
+}
 .iw-row {
   display: flex;
   align-items: center;

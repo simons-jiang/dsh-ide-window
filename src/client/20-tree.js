@@ -11,17 +11,51 @@
 /** Indentation per depth level, in px. */
 const IDE_INDENT = 14
 
+/**
+ * Java declaration kinds learned from the Host, keyed by `${root}|${path}`.
+ *
+ * The tree is file-based, but IDEA's Java badge says what the file declares;
+ * the Host reads the first few KB of each file, and this cache keeps a redraw
+ * from asking twice. `''` means "asked, no declaration found".
+ */
+const ideJavaKinds = new Map()
+
+/**
+ * Ask the Host for the Java kinds of `paths` that are not cached yet.
+ *
+ * Both the tree and the tab strip use this: the cache is shared, so a file the
+ * tree already identified costs the tabs nothing.
+ */
+function ideRequestJavaKinds(root, paths, done) {
+  const wanted = new Set()
+  for (const path of paths) {
+    if (typeof path !== 'string' || !path.endsWith('.java')) continue
+    if (ideJavaKinds.has(`${root}|${path}`)) continue
+    wanted.add(path)
+  }
+  if (wanted.size === 0) return
+  const missing = [...wanted]
+  void ideKindsQuery(root, missing).then((found) => {
+    if (found.ok !== true) return
+    for (const rel of missing) {
+      ideJavaKinds.set(`${root}|${rel}`, typeof found.kinds[rel] === 'string' ? found.kinds[rel] : '')
+    }
+    done()
+  })
+}
+
 /** One tree row. */
 function IdeTreeRow({ entry, depth, node, state, store, tr }) {
   const isDir = entry.type === 'directory'
   const open = isDir && state.expanded.includes(entry.path)
   const active = !isDir && state.activePath === entry.path
-  const lang = isDir ? '' : ideLangOf(entry.name)
+  const javaKind = isDir ? '' : ideJavaKinds.get(`${state.rootPath}|${entry.path}`) ?? ''
   const depthPx = 8 + depth * IDE_INDENT
   return h('div', {
     className: `iw-row${active ? ' active' : ''}${isDir && !open ? ' dim' : ''}`,
     style: { paddingLeft: `${depthPx}px` },
     role: 'treeitem',
+    'data-iw-path': entry.path,
     'aria-expanded': isDir ? (open ? 'true' : 'false') : undefined,
     'aria-selected': active ? 'true' : 'false',
     title: entry.path,
@@ -31,9 +65,10 @@ function IdeTreeRow({ entry, depth, node, state, store, tr }) {
     },
   }, [
     h('span', { key: 'tw', className: 'iw-twisty' }, isDir ? h(IdeChevron, { open, size: 12 }) : null),
-    h('span', { key: 'ic', className: 'iw-icon' }, isDir ? h(IdeFolderIcon, { open, size: 16 }) : h(IdeFileIcon, { lang, size: 16 })),
+    h('span', { key: 'ic', className: 'iw-icon' }, isDir
+      ? h(IdeFolderIcon, { open, size: IDE_ENTRY_ICON_SIZE })
+      : h(IdeEntryIcon, { name: entry.name, kind: javaKind })),
     h('span', { key: 'nm', className: 'iw-name' }, entry.name),
-    !isDir && entry.size !== undefined ? h('span', { key: 'sz', className: 'iw-note' }, ideBytes(entry.size)) : null,
   ])
 }
 
@@ -142,6 +177,48 @@ function IdeSearchRows({ store, state, tr }) {
 function IdeTree({ store, state, tr }) {
   const inputRef = useRef(null)
   const searching = state.filter.trim() !== ''
+  // Ask once per loaded directory for the Java kinds it does not know yet; the
+  // stamp re-paints the rows when answers arrive.
+  const [, setKindStamp] = useState(0)
+  useEffect(() => {
+    const root = state.rootPath
+    if (root === '') return undefined
+    const paths = []
+    for (const node of Object.values(state.dirs ?? {})) {
+      for (const entry of node?.entries ?? []) {
+        if (entry?.type === 'file') paths.push(entry.path)
+      }
+    }
+    let cancelled = false
+    ideRequestJavaKinds(root, paths, () => {
+      if (!cancelled) setKindStamp((value) => value + 1)
+    })
+    return () => { cancelled = true }
+  }, [state.dirs, state.rootPath])
+
+  // Reveal: scroll the row the store asked for. The effect also runs when a
+  // directory finishes loading, so it lands after the ancestors are painted.
+  const treeRef = useRef(null)
+  useEffect(() => {
+    const signal = state.revealFile
+    const container = treeRef.current
+    if (signal === null || signal === undefined || container === null) return undefined
+    let row
+    for (const candidate of container.querySelectorAll('[data-iw-path]')) {
+      if (candidate.getAttribute('data-iw-path') === signal.path) {
+        row = candidate
+        break
+      }
+    }
+    if (row === undefined) return undefined
+    row.scrollIntoView({ block: 'center' })
+    row.classList.add('flash')
+    const timer = setTimeout(() => row.classList.remove('flash'), 1200)
+    return () => {
+      clearTimeout(timer)
+      row.classList.remove('flash')
+    }
+  }, [state.revealFile, state.dirs])
 
   // ⌘P / Ctrl+P focuses the search box the way a file finder does; Escape
   // returns to the tree without touching the open tabs.
@@ -175,10 +252,43 @@ function IdeTree({ store, state, tr }) {
   }
   return h('div', {
     className: 'iw-tree',
+    ref: treeRef,
     style: { width: `${state.treeWidth}px` },
     role: 'tree',
     'aria-label': tr('files'),
   }, [
+    h('div', { key: 'tools', className: 'iw-tree-tools' }, [
+      h('button', {
+        key: 'reveal',
+        type: 'button',
+        className: 'iw-tree-tool',
+        title: tr('treeReveal'),
+        'aria-label': tr('treeReveal'),
+        onClick: () => {
+          if (!store.revealActive()) store.setNotice(tr('treeRevealNone'))
+        },
+      }, h(IdeLocateIcon, { size: 14 })),
+      h('button', {
+        key: 'expand',
+        type: 'button',
+        className: 'iw-tree-tool',
+        title: tr('treeExpandAll'),
+        'aria-label': tr('treeExpandAll'),
+        onClick: () => {
+          void store.expandAll().then((capped) => {
+            if (capped === true) store.setNotice(tr('treeExpandLimit'))
+          })
+        },
+      }, h(IdeExpandAllIcon, { size: 14 })),
+      h('button', {
+        key: 'collapse',
+        type: 'button',
+        className: 'iw-tree-tool',
+        title: tr('treeCollapseAll'),
+        'aria-label': tr('treeCollapseAll'),
+        onClick: () => store.collapseAll(),
+      }, h(IdeCollapseAllIcon, { size: 14 })),
+    ]),
     h('div', { key: 'search', className: 'iw-search' }, [
       h('input', {
         key: 'input',

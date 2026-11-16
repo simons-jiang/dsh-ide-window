@@ -10,7 +10,7 @@
  * These fixtures are the exact shapes `git status --porcelain=v1 -z` prints,
  * including the rename/copy pair whose second field has no status prefix.
  */
-import { parseStatus, parseBlame, doctorReport } from '../index.js'
+import { parseStatus, parseBlame, doctorReport, parseJavaKind } from '../index.js'
 
 let failures = 0
 const ok = (name) => console.log(`  ✓ ${name}`)
@@ -111,6 +111,22 @@ const nul = (fields) => fields.map((field) => `${field}\0`).join('')
   check(doctorReport({ get: () => undefined }).lsp === false, 'no LSP seam means not ready')
   check(doctorReport({ get: () => ({}) }).lsp === true, 'a mounted LSP seam means ready')
   check(doctorReport({ get: () => { throw new Error('no inject') } }).lsp === false, 'a throwing ctx is not ready')
+}
+
+// ---- Java declaration kinds ------------------------------------------------
+{
+  check(parseJavaKind('package a;\npublic class Foo {}') === 'class', 'a class is a class', parseJavaKind('package a;\npublic class Foo {}'))
+  check(parseJavaKind('public interface Bar {}') === 'interface', 'an interface is an interface', parseJavaKind('public interface Bar {}'))
+  check(parseJavaKind('public enum Baz { A }') === 'enum', 'an enum is an enum', parseJavaKind('public enum Baz { A }'))
+  check(parseJavaKind('public @interface Qux {}') === 'annotation', 'an annotation is an annotation', parseJavaKind('public @interface Qux {}'))
+  check(parseJavaKind('public record Rec(int a) {}') === 'record', 'a record is a record', parseJavaKind('public record Rec(int a) {}'))
+  check(parseJavaKind('/** this class explains things */\npublic interface Real {}') === 'interface', 'javadoc cannot answer for the file', parseJavaKind('/** this class explains things */\npublic interface Real {}'))
+  check(parseJavaKind('// class Fake\npublic enum Real { A }') === 'enum', 'a line comment cannot answer for the file', parseJavaKind('// class Fake\npublic enum Real { A }'))
+  check(parseJavaKind('package a;\nimport java.util.List;') === '', 'no declaration means no kind', parseJavaKind('package a;\nimport java.util.List;'))
+  check(parseJavaKind('') === '', 'an empty head means no kind', parseJavaKind(''))
+  check(parseJavaKind('@interface Tight {}') === 'annotation', 'no space still reads as an annotation', parseJavaKind('@interface Tight {}'))
+  check(parseJavaKind('@Constraint(validatedBy = X.class)\npublic @interface A {}') === 'annotation', 'a class literal does not answer for the file', parseJavaKind('@Constraint(validatedBy = X.class)\npublic @interface A {}'))
+  check(parseJavaKind('Foo.class\npublic class Bar {}') === 'class', 'a class literal before a class still reads as a class', parseJavaKind('Foo.class\npublic class Bar {}'))
 }
 
 console.log(failures === 0 ? '\nall status checks passed' : `\n${failures} status check(s) failed`)

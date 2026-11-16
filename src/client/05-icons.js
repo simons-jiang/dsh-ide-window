@@ -87,6 +87,134 @@ function IdeFileIcon({ lang, size = 14 }) {
   ])
 }
 
+/** The letter IDEA paints on a Java type badge. */
+function ideJavaLetter(kind) {
+  if (kind === 'interface') return 'I'
+  if (kind === 'enum') return 'E'
+  if (kind === 'annotation') return '@'
+  if (kind === 'record') return 'R'
+  if (kind === 'class') return 'C'
+  return 'J'
+}
+
+/** The colour of a Java type badge. */
+function ideJavaTint(kind) {
+  if (kind === 'interface') return '#7fb33f'
+  if (kind === 'enum') return '#d9963f'
+  if (kind === 'annotation') return '#9aa4b2'
+  if (kind === 'record' || kind === 'class') return '#4f8fd8'
+  return '#8b95a5'
+}
+
+/** Java type badge: a filled circle carrying IDEA's type letter. */
+function IdeJavaIcon({ kind, size = 16 }) {
+  const tint = ideJavaTint(kind)
+  const letter = ideJavaLetter(kind)
+  return h('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 16 16',
+    'aria-hidden': 'true',
+    focusable: 'false',
+    style: { display: 'block' },
+  }, [
+    h('circle', { key: 'badge', cx: 8, cy: 8, r: 6.4, fill: tint }),
+    h('text', {
+      key: 'letter',
+      x: 8,
+      y: 10.7,
+      textAnchor: 'middle',
+      fontSize: letter === '@' ? 7.4 : 8.2,
+      fontWeight: 700,
+      fill: '#ffffff',
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+    }, letter),
+  ])
+}
+
+/** The corner letter of a file: the first letter of its type. */
+function ideFileLetter(name) {
+  const text = typeof name === 'string' ? name : ''
+  // A dotfile (`.gitignore`) has no name before its dot: treat the part after
+  // the leading dot as the type, the way an editor shows it.
+  const trimmed = text.startsWith('.') ? text.slice(1) : text
+  const dot = trimmed.lastIndexOf('.')
+  const stem = dot >= 0 && dot < trimmed.length - 1 ? trimmed.slice(dot + 1) : trimmed
+  const first = stem.trim().charAt(0)
+  return first === '' ? '?' : first.toUpperCase()
+}
+
+/** Document glyph with the type's initial in the corner. */
+function IdeFileBadgeIcon({ letter, tint, size = 16 }) {
+  return h('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 16 16',
+    'aria-hidden': 'true',
+    focusable: 'false',
+    style: { display: 'block' },
+  }, [
+    h('path', {
+      key: 'page',
+      d: 'M3.4 2.2h5.2l3.9 3.8v7.8c0 .4-.3.7-.7.7H3.4a.7.7 0 0 1-.7-.7V2.9c0-.4.3-.7.7-.7Z',
+      fill: tint,
+      opacity: 0.18,
+      stroke: tint,
+      strokeWidth: 1.1,
+    }),
+    h('path', { key: 'fold', d: 'M8.6 2.4v3.6h3.7', stroke: tint, strokeWidth: 1.1, opacity: 0.9 }),
+    h('text', {
+      key: 'badge',
+      x: 12.1,
+      y: 13.9,
+      textAnchor: 'end',
+      fontSize: 6.4,
+      fontWeight: 700,
+      fill: tint,
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+    }, letter),
+  ])
+}
+
+/**
+ * One icon size for every file-shaped glyph: the tree and the tabs must read as
+ * the same editor, so neither chooses its own.
+ */
+const IDE_ENTRY_ICON_SIZE = 21
+
+/**
+ * The icon for one file, by what it is: a Java type keeps its declaration
+ * letter, anything else is a document with the type's initial in the corner.
+ */
+function IdeEntryIcon({ name, kind = '', size = IDE_ENTRY_ICON_SIZE }) {
+  if (ideLangOf(name) === 'java') return h(IdeJavaIcon, { kind, size })
+  return h(IdeFileBadgeIcon, { letter: ideFileLetter(name), tint: ideTintOf(ideLangOf(name)), size })
+}
+
+/** Crosshair: reveal the active file in the tree. */
+function IdeLocateIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('circle', { key: 'c', cx: 8, cy: 8, r: 4.2 }),
+    h('path', { key: 'a', d: 'M8 1.6v3M8 11.4v3M1.6 8h3M11.4 8h3' }),
+  ])
+}
+
+/** Arrow down to a bar: expand every folder. */
+function IdeExpandAllIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M8 2.6v8.2M4.6 7.6 8 11l3.4-3.4' }),
+    h('path', { key: 'b', d: 'M3.2 13.4h9.6' }),
+  ])
+}
+
+/** Arrow up to a bar: collapse every folder. */
+function IdeCollapseAllIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M8 13.4V5.2M4.6 8.4 8 5l3.4 3.4' }),
+    h('path', { key: 'b', d: 'M3.2 2.6h9.6' }),
+  ])
+}
+
 /** Navigation-column toggle: the shell's left panel. */
 function IdeSidebarIcon({ size = 15 }) {
   return ideSvg(size, [

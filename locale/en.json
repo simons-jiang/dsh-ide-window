@@ -154,5 +154,10 @@
   "setupChecking": "Checking…",
   "setupClose": "Close",
   "setupReady": "Code navigation is ready",
-  "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml."
+  "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml.",
+  "treeReveal": "Reveal current file",
+  "treeRevealNone": "No file is open",
+  "treeExpandAll": "Expand all",
+  "treeCollapseAll": "Collapse all",
+  "treeExpandLimit": "Stopped at the 200-directory limit"
 }

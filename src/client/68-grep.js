@@ -148,6 +148,36 @@ async function ideDoctorQuery() {
   return { ok: true, lsp: parsed.value?.lsp === true }
 }
 
+/** The Java-kind route, resolved against the page base. */
+function ideKindsUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/kinds', base).href
+}
+
+/**
+ * Ask the Host for the Java declaration kind of a handful of files.
+ *
+ * @returns `{ ok: true, kinds }` (a `path → kind` map) or `{ ok: false, error }`.
+ */
+async function ideKindsQuery(root, paths) {
+  let response
+  try {
+    response = await fetch(ideKindsUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot: root, paths }),
+    })
+  } catch (error) {
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'kinds-failed' }
+  return { ok: true, kinds: parsed.value?.kinds ?? {} }
+}
+
 /** The jar-source route, resolved against the page base. */
 function ideJarUrl() {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
