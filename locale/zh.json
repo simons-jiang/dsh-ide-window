@@ -118,5 +118,12 @@
   "ksReset": "恢复默认",
   "ksCancel": "取消",
   "turnShellOnly": "本轮通过 shell 修改了文件，DSH 未记录改动清单",
-  "turnShellHint": "文件是用 bash 命令（git / sed / 重定向 / python -c 等）改的，DSH 只统计编辑工具，所以没有逐文件清单"
+  "turnShellHint": "文件是用 bash 命令（git / sed / 重定向 / python -c 等）改的，DSH 只统计编辑工具，所以没有逐文件清单",
+  "turnWorkspaceDirty": "工作区未提交",
+  "settingsTitle": "代码工作区设置",
+  "settingsHint": "快捷键、字号等本插件设置，都在这里",
+  "settingsBasic": "基础设置",
+  "settingsFont": "字号",
+  "settingsCodeFont": "代码字号",
+  "settingsTreeFont": "文件树字号"
 }

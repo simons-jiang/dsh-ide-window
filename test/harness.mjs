@@ -556,6 +556,32 @@ function grabSource(name, file = '58-turn.js') {
   throw new Error(`unbalanced ${name}`)
 }
 
+// ---- git status parsing ----------------------------------------------------
+{
+  const hostSource = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  const parseBody = (() => {
+    const start = hostSource.indexOf('function parseStatus(')
+    let depth = 0
+    for (let index = hostSource.indexOf('{', start); index < hostSource.length; index += 1) {
+      if (hostSource[index] === '{') depth += 1
+      else if (hostSource[index] === '}') {
+        depth -= 1
+        if (depth === 0) return hostSource.slice(start, index + 1)
+      }
+    }
+    throw new Error('parseStatus not found')
+  })()
+  const parse = new Function(`${parseBody}\nreturn parseStatus`)()
+  const entries = parse(' M a/B.java\nA  c/D.java\nR  old/E.java -> new/E.java\n?? notes.md\n')
+  check(entries.length === 4, 'every line becomes an entry', String(entries.length))
+  check(entries[0].status === 'M' && entries[0].path === 'a/B.java', 'a modification keeps its code', JSON.stringify(entries[0]))
+  check(entries[1].status === 'A', 'an addition keeps its code', JSON.stringify(entries[1]))
+  check(entries[2].path === 'new/E.java', 'a rename reports the new path', JSON.stringify(entries[2]))
+  check(entries[3].status === '??', 'an untracked file is reported as such', JSON.stringify(entries[3]))
+  check(parse('').length === 0, 'empty output yields nothing')
+
+}
+
 // ---- shell-only Turns are explained, not silent -----------------------------
 {
   const touched = new Function(

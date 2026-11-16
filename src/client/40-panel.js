@@ -369,7 +369,18 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     ? null
     : h('div', { key: 'banner', className: 'iw-banner' }, state.liveNotice)
 
-  return h('div', { className: 'iw-root' }, [
+  const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
+  const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  return h('div', {
+    className: 'iw-root',
+    // The editor and the tree share one typographic scale, set in Settings.
+    style: {
+      '--iw-code-font-size': `${codeSize}px`,
+      '--iw-code-line-height': `${Math.round(codeSize * 1.6)}px`,
+      '--iw-tree-font-size': `${treeSize}px`,
+      '--iw-row-height': `${Math.round(treeSize * 1.86)}px`,
+    },
+  }, [
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,

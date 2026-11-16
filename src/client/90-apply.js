@@ -604,7 +604,7 @@ function apply(ctx) {
       onRecord: startShortcutRecord,
       onReset: resetShortcut,
     }),
-  }, IdeShortcutSettingsItem)), 'dsh-ide-window: shortcut settings')
+  }, IdeWorkspaceSettingsItem)), 'dsh-ide-window: workspace settings')
 
   // The Turn's changed files, in the Turn's own tail: clicking one opens this
   // panel at the first changed line. `seq` and `sessionId` come from the slot's

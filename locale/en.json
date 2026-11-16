@@ -118,5 +118,12 @@
   "ksReset": "Reset",
   "ksCancel": "Cancel",
   "turnShellOnly": "This turn changed files through the shell; DSH keeps no file list for it",
-  "turnShellHint": "The files were written by bash commands (git / sed / redirect / python -c), which the Host cannot summarise per file"
+  "turnShellHint": "The files were written by bash commands (git / sed / redirect / python -c), which the Host cannot summarise per file",
+  "turnWorkspaceDirty": "Uncommitted in workspace",
+  "settingsTitle": "Code workspace settings",
+  "settingsHint": "Shortcuts, font sizes and the rest of this plugin",
+  "settingsBasic": "Basics",
+  "settingsFont": "Font size",
+  "settingsCodeFont": "Editor",
+  "settingsTreeFont": "File tree"
 }

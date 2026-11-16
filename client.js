@@ -125,6 +125,13 @@ window.__ModuleLoader__.load({
     "ksCancel": "Cancel",
     "turnShellOnly": "This turn changed files through the shell; DSH keeps no file list for it",
     "turnShellHint": "The files were written by bash commands (git / sed / redirect / python -c), which the Host cannot summarise per file",
+    "turnWorkspaceDirty": "Uncommitted in workspace",
+    "settingsTitle": "Code workspace settings",
+    "settingsHint": "Shortcuts, font sizes and the rest of this plugin",
+    "settingsBasic": "Basics",
+    "settingsFont": "Font size",
+    "settingsCodeFont": "Editor",
+    "settingsTreeFont": "File tree",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -243,6 +250,13 @@ window.__ModuleLoader__.load({
     "ksCancel": "取消",
     "turnShellOnly": "本轮通过 shell 修改了文件，DSH 未记录改动清单",
     "turnShellHint": "文件是用 bash 命令（git / sed / 重定向 / python -c 等）改的，DSH 只统计编辑工具，所以没有逐文件清单",
+    "turnWorkspaceDirty": "工作区未提交",
+    "settingsTitle": "代码工作区设置",
+    "settingsHint": "快捷键、字号等本插件设置，都在这里",
+    "settingsBasic": "基础设置",
+    "settingsFont": "字号",
+    "settingsCodeFont": "代码字号",
+    "settingsTreeFont": "文件树字号",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -418,8 +432,8 @@ const IDE_CSS = `
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 27px;
-  font-size: 14.5px;
+  height: var(--iw-row-height, 27px);
+  font-size: var(--iw-tree-font-size, 14.5px);
   padding-right: 8px;
   white-space: nowrap;
   cursor: pointer;
@@ -558,8 +572,8 @@ const IDE_CSS = `
   min-height: 0;
   overflow: auto;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12.5px;
-  line-height: 20px;
+  font-size: var(--iw-code-font-size, 12.5px);
+  line-height: var(--iw-code-line-height, 20px);
   tab-size: 4;
 }
 .iw-code-inner { min-width: 100%; }
@@ -1128,6 +1142,41 @@ const IDE_CSS = `
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary, inherit);
+}
+
+.iw-turn-status {
+  flex: none;
+  font-family: var(--ds-font-family-code, ui-monospace, monospace);
+  font-size: 10px;
+  line-height: 14px;
+  min-width: 12px;
+  text-align: center;
+  border-radius: var(--dsw-radius-sm, 4px);
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+.iw-turn-status.s-m { color: var(--dsw-alias-state-warning-primary, #d9a13b); }
+.iw-turn-status.s-a { color: var(--dsw-alias-state-success-primary, #3fa55a); }
+.iw-turn-status.s-d { color: var(--dsw-alias-state-error-primary, #c95c5c); }
+.iw-turn-status.s-\? { color: var(--dsw-alias-label-tertiary, inherit); }
+
+.iw-settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+}
+.iw-settings-item:first-child { border-top: 0; }
+.iw-settings-item-label { font-size: 12.5px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-settings-group {
+  margin: 10px 0 2px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+.iw-settings-body {
+  padding: 4px 0 8px 10px;
+  border-left: 1.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
 }
 `
 
@@ -1912,6 +1961,9 @@ function ideCreateStore(refs) {
     rootPath: '',
     /** True once the `workspaceFiles` Remote face is reachable. */
     remoteReady: false,
+    /** Editor and tree font sizes, in px, shared by the whole workspace. */
+    codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
+    treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
     /**
@@ -2700,6 +2752,18 @@ function ideCreateStore(refs) {
     setIndexInfo: (indexInfo) => patch({ indexInfo }),
     markRemoteReady: () => patch({ remoteReady: true }),
     /** Turn reference interception on or off (persisted). */
+    /** Change the editor font size, clamped to a readable range. */
+    setCodeFontSize: (size) => {
+      const codeFontSize = Math.min(24, Math.max(10, Math.round(size * 2) / 2))
+      ideWritePrefs({ codeFontSize })
+      patch({ codeFontSize })
+    },
+    /** Change the file tree font size, clamped to a readable range. */
+    setTreeFontSize: (size) => {
+      const treeFontSize = Math.min(24, Math.max(10, Math.round(size * 2) / 2))
+      ideWritePrefs({ treeFontSize })
+      patch({ treeFontSize })
+    },
     setJumpEnabled: (jumpEnabled) => {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })
@@ -4037,7 +4101,18 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     ? null
     : h('div', { key: 'banner', className: 'iw-banner' }, state.liveNotice)
 
-  return h('div', { className: 'iw-root' }, [
+  const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
+  const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  return h('div', {
+    className: 'iw-root',
+    // The editor and the tree share one typographic scale, set in Settings.
+    style: {
+      '--iw-code-font-size': `${codeSize}px`,
+      '--iw-code-line-height': `${Math.round(codeSize * 1.6)}px`,
+      '--iw-tree-font-size': `${treeSize}px`,
+      '--iw-row-height': `${Math.round(treeSize * 1.86)}px`,
+    },
+  }, [
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
@@ -4158,6 +4233,15 @@ const IDE_TURN_ROWS = 4
 /** Summaries with a request in flight, so concurrent mounts ask only once. */
 const ideSummaryRequests = new Set()
 
+/**
+ * Last rendered state per Turn.
+ *
+ * Switching to the code workspace unmounts the conversation, so a component-local
+ * state would be lost and the card would re-query on the way back — and disappear
+ * whenever that query cannot answer. Keeping the result here redraws instantly.
+ */
+const ideTurnStates = new Map()
+
 /** Shell commands that write files, which never reach the edit tools. */
 const IDE_SHELL_WRITES = /(?:^|[\s;&|])(?:git\s+(?:apply|add|commit|checkout|restore|reset|rebase|merge|cherry-pick|stash|clean|mv|rm)\b|sed\s+-i|tee\b|cp\b|mv\b|rm\b)|>{1,2}\s*[^\s|]|python3?\s+-c|node\s+-e/
 
@@ -4193,6 +4277,38 @@ function ideTurnTouchedShell(trajectory, turnNumber) {
     if (IDE_SHELL_WRITES.test(command)) return true
   }
   return false
+}
+
+/** Route the Host serves the workspace's uncommitted files from. */
+const IDE_STATUS = 'dsh-ide/status'
+
+/**
+ * Ask the Host for the files this workspace has not committed.
+ *
+ * A Turn that rewrote files through the shell produces no change summary, so the
+ * only honest list left is the workspace's own uncommitted set. It is labelled as
+ * such — never presented as「this Turn changed」.
+ *
+ * @returns `{ ok: true, files }` or a failure code.
+ */
+async function ideWorkspaceStatus(workspaceRoot, signal) {
+  if (typeof workspaceRoot !== 'string' || workspaceRoot === '') return { ok: false, error: 'no-root' }
+  let response
+  try {
+    response = await fetch(ideApiUrl(IDE_STATUS, {}), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot }),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null || parsed.ok !== true) return { ok: false, error: `http-${response.status}` }
+  const files = Array.isArray(parsed.value?.files) ? parsed.value.files : []
+  return { ok: true, files }
 }
 
 /** A browser-relative route, resolved against the page's base so a sub-path mount works. */
@@ -4338,7 +4454,13 @@ function ideTurnEditedPaths(trajectory, turnNumber) {
 function IdeTurnChanges(props) {
   const { sessionId, seq, turn, store, translate, openPanel, useTrajectory } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
-  const [state, setState] = useState({ files: [], total: 0, added: 0, deleted: 0, failed: false, fromLog: false })
+  const cacheKey = `${sessionId}:${turn?.turn ?? seq}`
+  const [state, setStateRaw] = useState(() => ideTurnStates.get(cacheKey)
+    ?? { files: [], total: 0, added: 0, deleted: 0, failed: false, fromLog: false })
+  const setState = (next) => {
+    ideTurnStates.set(cacheKey, next)
+    setStateRaw(next)
+  }
   // Hooks must run during render: read the Trajectory snapshot here and let the
   // async path below close over it, instead of calling the hook in a callback.
   const trajectory = typeof useTrajectory === 'function' ? useTrajectory((snapshot) => snapshot) : undefined
@@ -4356,35 +4478,56 @@ function IdeTurnChanges(props) {
   const recorded = typeof turn?.data?.get === 'function' ? turn.data.get('deliverables') : undefined
   const changesSeq = Number.isFinite(recorded?.changes?.seq) ? recorded.changes.seq : undefined
 
-  useEffect(() => {
-    if (typeof sessionId !== 'string') return undefined
-    if (!Number.isFinite(changesSeq)) {
-      // No recorded summary: no request. Best effort is the Session's own tool
-      // calls, which only cover a Turn still inside the loaded history window.
-      const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+  /**
+   * What to show when the Host has no summary for this Turn.
+   *
+   * Order: the Turn's own tool calls from the loaded window, then the workspace's
+   * uncommitted files (which is what a shell-driven Turn leaves behind), and only
+   * then a one-line explanation.
+   */
+  const applyFallback = async (signal) => {
+    const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+    if (recovered.length > 0) {
       setState({
         files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
         total: recovered.length,
         added: 0,
         deleted: 0,
-        failed: recovered.length === 0,
+        failed: false,
         fromLog: true,
-        fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
+        fromShell: false,
+        fromWorkspace: false,
       })
+      return
+    }
+    const root = store.getState().rootPath
+    const status = await ideWorkspaceStatus(root, signal).catch(() => ({ ok: false }))
+    const files = status.ok === true ? status.files : []
+    setState({
+      files: files.map((file) => ({ path: file.path, display: file.path, status: file.status, added: 0, deleted: 0 })),
+      total: files.length,
+      added: 0,
+      deleted: 0,
+      failed: files.length === 0,
+      fromLog: true,
+      fromWorkspace: files.length > 0,
+      fromShell: files.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
+    })
+  }
+
+  useEffect(() => {
+    if (typeof sessionId !== 'string') return undefined
+    if ((ideTurnStates.get(cacheKey)?.files ?? []).length > 0) return undefined
+    if (!Number.isFinite(changesSeq)) {
+      // No recorded summary: no request. Best effort is the Turn's own tool calls,
+      // then the workspace's uncommitted files.
+      void applyFallback(undefined)
       return undefined
     }
     const summaryKey = `${sessionId}:${changesSeq}`
     if (ideSummaryRequests.has(summaryKey)) {
       // Another mount already asked for this Turn; show the same fallback.
-      const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
-      setState({
-        files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
-        total: recovered.length,
-        added: 0,
-        deleted: 0,
-        failed: recovered.length === 0,
-        fromLog: true,
-      })
+      void applyFallback(undefined)
       return undefined
     }
     ideSummaryRequests.add(summaryKey)
@@ -4393,19 +4536,8 @@ function IdeTurnChanges(props) {
       .then(async (result) => {
         if (result.ok !== true) {
           // The Host keeps change summaries in memory only, so a Turn whose Host
-          // restarted has none. Its tool calls stay in the Session log, so the
-          // list is recovered from the loaded Trajectory window when it reaches
-          // back far enough.
-          const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
-          setState({
-            files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
-            total: recovered.length,
-            added: 0,
-            deleted: 0,
-            failed: recovered.length === 0,
-            fromLog: true,
-            fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
-          })
+          // restarted has none: recover what this Session still knows.
+          await applyFallback(controller.signal)
           return
         }
         const { files, total, added, deleted } = result.summary
@@ -4443,7 +4575,7 @@ function IdeTurnChanges(props) {
     if (busy !== '') return
     setBusy(file.path)
     let line = 0
-    if (!state.fromLog) {
+    if (!state.fromLog && state.fromWorkspace !== true) {
       const fetched = await ideChangesDiff(sessionId, changesSeq, index)
       if (fetched.ok === true) line = ideFirstChangedLine(fetched.diff)
     }
@@ -4473,7 +4605,9 @@ function IdeTurnChanges(props) {
         h('span', { key: 'tile', className: 'iw-turn-tile' }, h(IdeFileIcon, { key: 'ic', lang: '', size: 20 })),
         h('span', { key: 'titles', className: 'iw-turn-titles' }, [
           h('span', { key: 't', className: 'iw-turn-title' },
-            state.total === 1 ? tr('turnChangesSingle') : `${tr('turnChanges')} ${state.total}`),
+            state.fromWorkspace === true
+              ? `${tr('turnWorkspaceDirty')} (${state.total})`
+              : (state.total === 1 ? tr('turnChangesSingle') : `${tr('turnChanges')} ${state.total}`)),
         ]),
         state.fromLog
           ? null
@@ -4489,6 +4623,9 @@ function IdeTurnChanges(props) {
         title: `${file.display ?? file.path}  ${tr('turnJumpHint')}`,
         onClick: () => void jump(file, index),
       }, [
+        file.status === undefined
+          ? null
+          : h('span', { key: 's', className: `iw-turn-status s-${file.status.toLowerCase()}` }, file.status),
         h('span', { key: 'p', className: 'iw-turn-path' }, file.display ?? file.path),
         state.fromLog
           ? null
@@ -4591,11 +4728,13 @@ function IdeShortcutRow(props) {
  * Inline rather than a dialog: `shell.overlay` renders below the settings dialog,
  * so a dialog opened from here would be covered by it.
  */
-function IdeShortcutSettingsItem(props) {
+function IdeWorkspaceSettingsItem(props) {
   const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const open = state.gestureEditorOpen === true
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
+  const [fontsOpen, setFontsOpen] = React.useState(false)
   const gestures = state.gestures ?? { definition: 'double', usages: 'meta' }
   const bindings = state.shortcutBindings ?? {}
 
@@ -4632,12 +4771,40 @@ function IdeShortcutSettingsItem(props) {
     }
   })
 
+  const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
+  const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  const stepper = (key, label, value, set) => h('div', { key, className: 'iw-gesture-row' }, [
+    h('span', { key: 'l', className: 'iw-gesture-label' }, label),
+    h('span', { key: 's', className: 'iw-gesture-right' }, [
+      h('button', {
+        key: 'minus',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        onClick: () => set(value - 0.5),
+      }, '−'),
+      h('span', { key: 'v', className: 'iw-gesture-keys' }, `${value} px`),
+      h('button', {
+        key: 'plus',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        onClick: () => set(value + 0.5),
+      }, '+'),
+      h('button', {
+        key: 'reset',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        disabled: key === 'code' ? codeSize === 12.5 : treeSize === 14.5,
+        onClick: () => set(key === 'code' ? 12.5 : 14.5),
+      }, tr('ksReset')),
+    ]),
+  ])
+
   return h(React.Fragment, null, [
     h(IdeStyles, { key: 'style' }),
     h('div', { key: 'row', className: 'iw-gesture-item' }, [
       h('div', { key: 'text', className: 'iw-gesture-item-text' }, [
-        h('span', { key: 't', className: 'iw-gesture-item-title' }, tr('gestureSection')),
-        h('span', { key: 'h', className: 'iw-gesture-item-hint' }, tr('gestureSectionHint')),
+        h('span', { key: 't', className: 'iw-gesture-item-title' }, tr('settingsTitle')),
+        h('span', { key: 'h', className: 'iw-gesture-item-hint' }, tr('settingsHint')),
       ]),
       h('button', {
         key: 'b',
@@ -4645,22 +4812,52 @@ function IdeShortcutSettingsItem(props) {
         className: 'iw-gesture-btn',
         'aria-expanded': open ? 'true' : 'false',
         onClick: () => store.setGestureEditor(!open),
-      }, open ? tr('gestureClose') : `${tr('gestureEdit')} (${rows.length})`),
+      }, open ? tr('gestureClose') : tr('gestureEdit')),
     ]),
     open
       ? h('div', { key: 'panel', className: 'iw-gesture-panel' }, [
-        h('div', { key: 'hint', className: 'iw-gesture-hint' }, tr('gestureHint')),
-        state.gestureIssue === '' ? null : h('div', { key: 'issue', className: 'iw-gesture-issue' }, state.gestureIssue),
-        h('div', { key: 'rows', className: 'iw-gesture-rows' }, rows.map((entry) => h(IdeShortcutRow, {
-          key: entry.id,
-          entry,
-          tr,
-          onPick,
-          onRecord,
-          onReset,
-          recording: state.gestureRecording === entry.id,
-          busy: state.gestureBusy === true,
-        }))),
+        // Shortcuts: a sub-item, so the section keeps room for more settings.
+        h('div', { key: 'sc', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('gestureSection')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            onClick: () => setShortcutsOpen(!shortcutsOpen),
+          }, shortcutsOpen ? tr('gestureClose') : `${tr('gestureEdit')} (${rows.length})`),
+        ]),
+        shortcutsOpen
+          ? h('div', { key: 'sclist', className: 'iw-settings-body' }, [
+            h('div', { key: 'hint', className: 'iw-gesture-hint' }, tr('gestureHint')),
+            state.gestureIssue === '' ? null : h('div', { key: 'issue', className: 'iw-gesture-issue' }, state.gestureIssue),
+            h('div', { key: 'rows', className: 'iw-gesture-rows' }, rows.map((entry) => h(IdeShortcutRow, {
+              key: entry.id,
+              entry,
+              tr,
+              onPick,
+              onRecord,
+              onReset,
+              recording: state.gestureRecording === entry.id,
+              busy: state.gestureBusy === true,
+            }))),
+          ])
+          : null,
+        h('div', { key: 'basic', className: 'iw-settings-group' }, tr('settingsBasic')),
+        h('div', { key: 'font', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            onClick: () => setFontsOpen(!fontsOpen),
+          }, fontsOpen ? tr('gestureClose') : `${codeSize} / ${treeSize} px`),
+        ]),
+        fontsOpen
+          ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
+            stepper('code', tr('settingsCodeFont'), codeSize, (next) => store.setCodeFontSize(next)),
+            stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
+          ])
+          : null,
       ])
       : null,
   ])
@@ -6541,7 +6738,7 @@ function apply(ctx) {
       onRecord: startShortcutRecord,
       onReset: resetShortcut,
     }),
-  }, IdeShortcutSettingsItem)), 'dsh-ide-window: shortcut settings')
+  }, IdeWorkspaceSettingsItem)), 'dsh-ide-window: workspace settings')
 
   // The Turn's changed files, in the Turn's own tail: clicking one opens this
   // panel at the first changed line. `seq` and `sessionId` come from the slot's

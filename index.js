@@ -31,6 +31,7 @@ const ROUTE_LSP = '/dsh-ide/lsp'
 const ROUTE_GREP = '/dsh-ide/grep'
 const ROUTE_DIFF = '/dsh-ide/diff'
 const ROUTE_JAR = '/dsh-ide/jar'
+const ROUTE_STATUS = '/dsh-ide/status'
 
 /** Largest number of content matches returned by one grep. */
 const MAX_GREP_MATCHES = 200
@@ -245,6 +246,39 @@ const MAX_DIFF_HUNKS = 4000
  * file, which is what a change bar needs to paint. A file git does not track is
  * reported as wholly added, the way an editor shows a new file.
  */
+/**
+ * Parse `git status --porcelain=v1` output into the files it lists.
+ *
+ * The status codes come straight from git so the card can say「M」/「A」/「?」
+ * without inventing anything; a rename keeps both of its paths.
+ *
+ * @param text - porcelain output, one line per file.
+ * @returns `{ path, status }` entries in git's own order.
+ */
+function parseStatus(text) {
+  const entries = []
+  for (const line of String(text ?? '').split('\n')) {
+    if (line.length < 4) continue
+    const status = line.slice(0, 2).trim() || '?'
+    const rest = line.slice(3).trim()
+    if (rest === '') continue
+    // A rename reads `R  old -> new`; the new path is the one that exists.
+    const path = rest.includes(' -> ') ? rest.split(' -> ').pop() : rest
+    entries.push({ path, status })
+  }
+  return entries
+}
+
+/** List the files a workspace has not committed yet. */
+async function statusWorkspace(payload) {
+  const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
+  if (root === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot is required')
+  const result = await runCommand('git', ['status', '--porcelain=v1', '--untracked-files=normal'], root)
+  if (result.code !== 0) return { files: [], failed: true }
+  const files = parseStatus(result.stdout)
+  return { files: files.slice(0, 200), total: files.length }
+}
+
 async function diffWorkspace(payload) {
   const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
   const rel = typeof payload?.path === 'string' ? payload.path.trim() : ''
@@ -473,7 +507,7 @@ function createHandler(ctx) {
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -484,6 +518,8 @@ function createHandler(ctx) {
           ? await diffWorkspace(payload)
           : pathname === ROUTE_JAR
             ? jarSource(payload)
+            : pathname === ROUTE_STATUS
+              ? await statusWorkspace(payload)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -516,4 +552,9 @@ export function apply(ctx) {
     path: ROUTE_JAR,
     handler,
   }), 'dsh-ide-window: jar source route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_STATUS,
+    handler,
+  }), 'dsh-ide-window: workspace status route')
 }

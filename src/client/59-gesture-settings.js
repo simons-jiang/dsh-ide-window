@@ -79,11 +79,13 @@ function IdeShortcutRow(props) {
  * Inline rather than a dialog: `shell.overlay` renders below the settings dialog,
  * so a dialog opened from here would be covered by it.
  */
-function IdeShortcutSettingsItem(props) {
+function IdeWorkspaceSettingsItem(props) {
   const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const open = state.gestureEditorOpen === true
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
+  const [fontsOpen, setFontsOpen] = React.useState(false)
   const gestures = state.gestures ?? { definition: 'double', usages: 'meta' }
   const bindings = state.shortcutBindings ?? {}
 
@@ -120,12 +122,40 @@ function IdeShortcutSettingsItem(props) {
     }
   })
 
+  const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
+  const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  const stepper = (key, label, value, set) => h('div', { key, className: 'iw-gesture-row' }, [
+    h('span', { key: 'l', className: 'iw-gesture-label' }, label),
+    h('span', { key: 's', className: 'iw-gesture-right' }, [
+      h('button', {
+        key: 'minus',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        onClick: () => set(value - 0.5),
+      }, '−'),
+      h('span', { key: 'v', className: 'iw-gesture-keys' }, `${value} px`),
+      h('button', {
+        key: 'plus',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        onClick: () => set(value + 0.5),
+      }, '+'),
+      h('button', {
+        key: 'reset',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        disabled: key === 'code' ? codeSize === 12.5 : treeSize === 14.5,
+        onClick: () => set(key === 'code' ? 12.5 : 14.5),
+      }, tr('ksReset')),
+    ]),
+  ])
+
   return h(React.Fragment, null, [
     h(IdeStyles, { key: 'style' }),
     h('div', { key: 'row', className: 'iw-gesture-item' }, [
       h('div', { key: 'text', className: 'iw-gesture-item-text' }, [
-        h('span', { key: 't', className: 'iw-gesture-item-title' }, tr('gestureSection')),
-        h('span', { key: 'h', className: 'iw-gesture-item-hint' }, tr('gestureSectionHint')),
+        h('span', { key: 't', className: 'iw-gesture-item-title' }, tr('settingsTitle')),
+        h('span', { key: 'h', className: 'iw-gesture-item-hint' }, tr('settingsHint')),
       ]),
       h('button', {
         key: 'b',
@@ -133,22 +163,52 @@ function IdeShortcutSettingsItem(props) {
         className: 'iw-gesture-btn',
         'aria-expanded': open ? 'true' : 'false',
         onClick: () => store.setGestureEditor(!open),
-      }, open ? tr('gestureClose') : `${tr('gestureEdit')} (${rows.length})`),
+      }, open ? tr('gestureClose') : tr('gestureEdit')),
     ]),
     open
       ? h('div', { key: 'panel', className: 'iw-gesture-panel' }, [
-        h('div', { key: 'hint', className: 'iw-gesture-hint' }, tr('gestureHint')),
-        state.gestureIssue === '' ? null : h('div', { key: 'issue', className: 'iw-gesture-issue' }, state.gestureIssue),
-        h('div', { key: 'rows', className: 'iw-gesture-rows' }, rows.map((entry) => h(IdeShortcutRow, {
-          key: entry.id,
-          entry,
-          tr,
-          onPick,
-          onRecord,
-          onReset,
-          recording: state.gestureRecording === entry.id,
-          busy: state.gestureBusy === true,
-        }))),
+        // Shortcuts: a sub-item, so the section keeps room for more settings.
+        h('div', { key: 'sc', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('gestureSection')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            onClick: () => setShortcutsOpen(!shortcutsOpen),
+          }, shortcutsOpen ? tr('gestureClose') : `${tr('gestureEdit')} (${rows.length})`),
+        ]),
+        shortcutsOpen
+          ? h('div', { key: 'sclist', className: 'iw-settings-body' }, [
+            h('div', { key: 'hint', className: 'iw-gesture-hint' }, tr('gestureHint')),
+            state.gestureIssue === '' ? null : h('div', { key: 'issue', className: 'iw-gesture-issue' }, state.gestureIssue),
+            h('div', { key: 'rows', className: 'iw-gesture-rows' }, rows.map((entry) => h(IdeShortcutRow, {
+              key: entry.id,
+              entry,
+              tr,
+              onPick,
+              onRecord,
+              onReset,
+              recording: state.gestureRecording === entry.id,
+              busy: state.gestureBusy === true,
+            }))),
+          ])
+          : null,
+        h('div', { key: 'basic', className: 'iw-settings-group' }, tr('settingsBasic')),
+        h('div', { key: 'font', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            onClick: () => setFontsOpen(!fontsOpen),
+          }, fontsOpen ? tr('gestureClose') : `${codeSize} / ${treeSize} px`),
+        ]),
+        fontsOpen
+          ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
+            stepper('code', tr('settingsCodeFont'), codeSize, (next) => store.setCodeFontSize(next)),
+            stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
+          ])
+          : null,
       ])
       : null,
   ])

@@ -390,6 +390,9 @@ function ideCreateStore(refs) {
     rootPath: '',
     /** True once the `workspaceFiles` Remote face is reachable. */
     remoteReady: false,
+    /** Editor and tree font sizes, in px, shared by the whole workspace. */
+    codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
+    treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
     /**
@@ -1178,6 +1181,18 @@ function ideCreateStore(refs) {
     setIndexInfo: (indexInfo) => patch({ indexInfo }),
     markRemoteReady: () => patch({ remoteReady: true }),
     /** Turn reference interception on or off (persisted). */
+    /** Change the editor font size, clamped to a readable range. */
+    setCodeFontSize: (size) => {
+      const codeFontSize = Math.min(24, Math.max(10, Math.round(size * 2) / 2))
+      ideWritePrefs({ codeFontSize })
+      patch({ codeFontSize })
+    },
+    /** Change the file tree font size, clamped to a readable range. */
+    setTreeFontSize: (size) => {
+      const treeFontSize = Math.min(24, Math.max(10, Math.round(size * 2) / 2))
+      ideWritePrefs({ treeFontSize })
+      patch({ treeFontSize })
+    },
     setJumpEnabled: (jumpEnabled) => {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })

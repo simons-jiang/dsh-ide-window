@@ -20,6 +20,15 @@ const IDE_TURN_ROWS = 4
 /** Summaries with a request in flight, so concurrent mounts ask only once. */
 const ideSummaryRequests = new Set()
 
+/**
+ * Last rendered state per Turn.
+ *
+ * Switching to the code workspace unmounts the conversation, so a component-local
+ * state would be lost and the card would re-query on the way back — and disappear
+ * whenever that query cannot answer. Keeping the result here redraws instantly.
+ */
+const ideTurnStates = new Map()
+
 /** Shell commands that write files, which never reach the edit tools. */
 const IDE_SHELL_WRITES = /(?:^|[\s;&|])(?:git\s+(?:apply|add|commit|checkout|restore|reset|rebase|merge|cherry-pick|stash|clean|mv|rm)\b|sed\s+-i|tee\b|cp\b|mv\b|rm\b)|>{1,2}\s*[^\s|]|python3?\s+-c|node\s+-e/
 
@@ -55,6 +64,38 @@ function ideTurnTouchedShell(trajectory, turnNumber) {
     if (IDE_SHELL_WRITES.test(command)) return true
   }
   return false
+}
+
+/** Route the Host serves the workspace's uncommitted files from. */
+const IDE_STATUS = 'dsh-ide/status'
+
+/**
+ * Ask the Host for the files this workspace has not committed.
+ *
+ * A Turn that rewrote files through the shell produces no change summary, so the
+ * only honest list left is the workspace's own uncommitted set. It is labelled as
+ * such — never presented as「this Turn changed」.
+ *
+ * @returns `{ ok: true, files }` or a failure code.
+ */
+async function ideWorkspaceStatus(workspaceRoot, signal) {
+  if (typeof workspaceRoot !== 'string' || workspaceRoot === '') return { ok: false, error: 'no-root' }
+  let response
+  try {
+    response = await fetch(ideApiUrl(IDE_STATUS, {}), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot }),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null || parsed.ok !== true) return { ok: false, error: `http-${response.status}` }
+  const files = Array.isArray(parsed.value?.files) ? parsed.value.files : []
+  return { ok: true, files }
 }
 
 /** A browser-relative route, resolved against the page's base so a sub-path mount works. */
@@ -200,7 +241,13 @@ function ideTurnEditedPaths(trajectory, turnNumber) {
 function IdeTurnChanges(props) {
   const { sessionId, seq, turn, store, translate, openPanel, useTrajectory } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
-  const [state, setState] = useState({ files: [], total: 0, added: 0, deleted: 0, failed: false, fromLog: false })
+  const cacheKey = `${sessionId}:${turn?.turn ?? seq}`
+  const [state, setStateRaw] = useState(() => ideTurnStates.get(cacheKey)
+    ?? { files: [], total: 0, added: 0, deleted: 0, failed: false, fromLog: false })
+  const setState = (next) => {
+    ideTurnStates.set(cacheKey, next)
+    setStateRaw(next)
+  }
   // Hooks must run during render: read the Trajectory snapshot here and let the
   // async path below close over it, instead of calling the hook in a callback.
   const trajectory = typeof useTrajectory === 'function' ? useTrajectory((snapshot) => snapshot) : undefined
@@ -218,35 +265,56 @@ function IdeTurnChanges(props) {
   const recorded = typeof turn?.data?.get === 'function' ? turn.data.get('deliverables') : undefined
   const changesSeq = Number.isFinite(recorded?.changes?.seq) ? recorded.changes.seq : undefined
 
-  useEffect(() => {
-    if (typeof sessionId !== 'string') return undefined
-    if (!Number.isFinite(changesSeq)) {
-      // No recorded summary: no request. Best effort is the Session's own tool
-      // calls, which only cover a Turn still inside the loaded history window.
-      const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+  /**
+   * What to show when the Host has no summary for this Turn.
+   *
+   * Order: the Turn's own tool calls from the loaded window, then the workspace's
+   * uncommitted files (which is what a shell-driven Turn leaves behind), and only
+   * then a one-line explanation.
+   */
+  const applyFallback = async (signal) => {
+    const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+    if (recovered.length > 0) {
       setState({
         files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
         total: recovered.length,
         added: 0,
         deleted: 0,
-        failed: recovered.length === 0,
+        failed: false,
         fromLog: true,
-        fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
+        fromShell: false,
+        fromWorkspace: false,
       })
+      return
+    }
+    const root = store.getState().rootPath
+    const status = await ideWorkspaceStatus(root, signal).catch(() => ({ ok: false }))
+    const files = status.ok === true ? status.files : []
+    setState({
+      files: files.map((file) => ({ path: file.path, display: file.path, status: file.status, added: 0, deleted: 0 })),
+      total: files.length,
+      added: 0,
+      deleted: 0,
+      failed: files.length === 0,
+      fromLog: true,
+      fromWorkspace: files.length > 0,
+      fromShell: files.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
+    })
+  }
+
+  useEffect(() => {
+    if (typeof sessionId !== 'string') return undefined
+    if ((ideTurnStates.get(cacheKey)?.files ?? []).length > 0) return undefined
+    if (!Number.isFinite(changesSeq)) {
+      // No recorded summary: no request. Best effort is the Turn's own tool calls,
+      // then the workspace's uncommitted files.
+      void applyFallback(undefined)
       return undefined
     }
     const summaryKey = `${sessionId}:${changesSeq}`
     if (ideSummaryRequests.has(summaryKey)) {
       // Another mount already asked for this Turn; show the same fallback.
-      const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
-      setState({
-        files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
-        total: recovered.length,
-        added: 0,
-        deleted: 0,
-        failed: recovered.length === 0,
-        fromLog: true,
-      })
+      void applyFallback(undefined)
       return undefined
     }
     ideSummaryRequests.add(summaryKey)
@@ -255,19 +323,8 @@ function IdeTurnChanges(props) {
       .then(async (result) => {
         if (result.ok !== true) {
           // The Host keeps change summaries in memory only, so a Turn whose Host
-          // restarted has none. Its tool calls stay in the Session log, so the
-          // list is recovered from the loaded Trajectory window when it reaches
-          // back far enough.
-          const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
-          setState({
-            files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
-            total: recovered.length,
-            added: 0,
-            deleted: 0,
-            failed: recovered.length === 0,
-            fromLog: true,
-            fromShell: recovered.length === 0 && ideTurnTouchedShell(trajectory, turn?.turn),
-          })
+          // restarted has none: recover what this Session still knows.
+          await applyFallback(controller.signal)
           return
         }
         const { files, total, added, deleted } = result.summary
@@ -305,7 +362,7 @@ function IdeTurnChanges(props) {
     if (busy !== '') return
     setBusy(file.path)
     let line = 0
-    if (!state.fromLog) {
+    if (!state.fromLog && state.fromWorkspace !== true) {
       const fetched = await ideChangesDiff(sessionId, changesSeq, index)
       if (fetched.ok === true) line = ideFirstChangedLine(fetched.diff)
     }
@@ -335,7 +392,9 @@ function IdeTurnChanges(props) {
         h('span', { key: 'tile', className: 'iw-turn-tile' }, h(IdeFileIcon, { key: 'ic', lang: '', size: 20 })),
         h('span', { key: 'titles', className: 'iw-turn-titles' }, [
           h('span', { key: 't', className: 'iw-turn-title' },
-            state.total === 1 ? tr('turnChangesSingle') : `${tr('turnChanges')} ${state.total}`),
+            state.fromWorkspace === true
+              ? `${tr('turnWorkspaceDirty')} (${state.total})`
+              : (state.total === 1 ? tr('turnChangesSingle') : `${tr('turnChanges')} ${state.total}`)),
         ]),
         state.fromLog
           ? null
@@ -351,6 +410,9 @@ function IdeTurnChanges(props) {
         title: `${file.display ?? file.path}  ${tr('turnJumpHint')}`,
         onClick: () => void jump(file, index),
       }, [
+        file.status === undefined
+          ? null
+          : h('span', { key: 's', className: `iw-turn-status s-${file.status.toLowerCase()}` }, file.status),
         h('span', { key: 'p', className: 'iw-turn-path' }, file.display ?? file.path),
         state.fromLog
           ? null
