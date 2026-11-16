@@ -534,7 +534,9 @@ function grabSource(name, file = '58-turn.js') {
         started = true
       } else if (char === ']' || char === '}' || char === ')') {
         depth -= 1
-        if (started && depth === 0) return source.slice(constant, index + 1)
+        // Only a body/array/object close ends the literal: returning on the
+        // parameter list's `)` would cut an arrow function in half.
+        if (started && depth === 0 && (char === '}' || char === ']')) return source.slice(constant, index + 1)
       } else if (char === '\n' && !started) {
         return source.slice(constant, index)
       }
@@ -691,6 +693,62 @@ await tick()
 // surface, unmounting the panel and leaving the cover-overlay bug behind.
 footerInject.openPanel()
 check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code panel in the main column', String(mode.record.selected))
+
+// ---- jumping to a definition (the suspended path) --------------------------
+{
+  // 这段逻辑是组件内的闭包，之前没有用例真正跑过它，所以 `outcome is not defined`
+  // 这类引用错误只在真实跳转时炸出来。这里把函数体取出来，用桩跑一遍。
+  const source = grabSource('jumpToDefinition', '30-code.js')
+  const build = (navigate, opened) => {
+    const notices = []
+    const popups = []
+    const factory = new Function(
+      'store', 'tab', 'tr', 'navigate', 'setPopup', 'openFromJar', 'popupAt', 'ideBasename',
+      `${source}
+      return { jump: jumpToDefinition }`,
+    )
+    const store = {
+      setNotice: (text) => notices.push(text),
+      openAt: () => opened,
+      getState: () => ({ lastLoadMs: 7 }),
+    }
+    const api = factory(
+      store,
+      { path: 'pkg/B.java' },
+      (key) => key,
+      navigate,
+      (popup) => popups.push(popup),
+      async () => false,
+      () => ({ x: 1, y: 2 }),
+      (path) => path.split('/').pop(),
+    )
+    return { api, notices, popups }
+  }
+
+  const single = build({ definition: async () => ({ locations: [{ path: 'pkg/B.java', line: 12 }], ms: 5 }) }, true)
+  await single.api.jump('periodTime', { line: 3, character: 4 }, { clientX: 10, clientY: 10 })
+  check(single.notices.includes(''), 'a successful jump clears the banner', JSON.stringify(single.notices))
+  check(single.notices.some((text) => typeof text === 'string' && text.includes('B.java:12')),
+    'the banner says where the jump went', JSON.stringify(single.notices.slice(-1)))
+
+  const many = build({ definition: async () => ({ locations: [
+    { path: 'pkg/A.java', line: 1 },
+    { path: 'pkg/B.java', line: 2 },
+  ], ms: 9 }) }, true)
+  await many.api.jump('periodTime', { line: 3, character: 4 }, { clientX: 10, clientY: 10 })
+  check(many.popups.length === 1, 'several destinations open the popup instead', String(many.popups.length))
+  check(many.popups[0]?.ms === 9, 'the popup carries the query time', String(many.popups[0]?.ms))
+
+  const failing = build({ definition: async () => { throw Object.assign(new Error('boom'), { code: 'lsp-error' }) } }, true)
+  await failing.api.jump('periodTime', { line: 3, character: 4 }, { clientX: 10, clientY: 10 })
+  check(failing.notices.some((text) => typeof text === 'string' && text.includes('noDefinition')),
+    'a symbol no server knows reports「未找到定义」', JSON.stringify(failing.notices.slice(-1)))
+
+  const refused = build({ definition: async () => ({ locations: [{ path: 'pkg/B.java', line: 12 }], ms: 5 }) }, false)
+  await refused.api.jump('periodTime', { line: 3, character: 4 }, { clientX: 10, clientY: 10 })
+  check(refused.notices.some((text) => typeof text === 'string' && text.includes('jumpFailed')),
+    'a panel that cannot open the file says so', JSON.stringify(refused.notices.slice(-1)))
+}
 
 // ---- the single shortcut registry ------------------------------------------
 {

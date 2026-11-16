@@ -3291,15 +3291,18 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     // banner is the only signal this read-only view can give without blocking.
     store.setNotice(tr('querying'))
     try {
-      let locations = []
+      let outcome
       try {
-        locations = (await navigate.definition(tab.path, position, name)).locations
+        outcome = await navigate.definition(tab.path, position, name)
       } catch (error) {
         // No language server, or it failed: dependency jars are still readable,
         // so fall through instead of stopping at the error.
         void error
-        locations = []
+        outcome = undefined
       }
+      const locations = outcome?.locations ?? []
+      // The query time is only a hint in the banner; a missing value is fine.
+      const queryMs = typeof outcome?.ms === 'number' ? outcome.ms : undefined
       if (locations.length === 0) {
         // Not in this workspace: the class may live in a dependency jar, whose
         // source is still readable when the artifact ships `-sources`.
@@ -3315,13 +3318,13 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         const opened = store.openAt(locations[0].path, locations[0].line)
         const loadMs = store.getState().lastLoadMs
         store.setNotice(opened
-          ? `\u2192 ${ideBasename(locations[0].path)}:${locations[0].line} \u00b7 \u67e5\u8be2 ${outcome.ms}ms \u00b7 \u8f7d\u5165 ${loadMs ?? '?'}ms`
+          ? `\u2192 ${ideBasename(locations[0].path)}:${locations[0].line} \u00b7 \u67e5\u8be2 ${queryMs ?? '?'}ms \u00b7 \u8f7d\u5165 ${loadMs ?? '?'}ms`
           : `${tr('jumpFailed')}: ${locations[0].path}`)
         return
       }
       setPopup({
         name,
-        ms: outcome.ms,
+        ms: queryMs,
         sections: [{ key: 'impl', title: `${tr('tabDeclaration')} (${locations.length})`, rows: locations.slice(0, 8) }],
         ...popupAt(event),
       })
