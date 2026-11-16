@@ -17,6 +17,9 @@ const IDE_CHANGES_DIFF = 'api/changes.diff'
 /** Rows shown before the list folds, matching the shipped card's height. */
 const IDE_TURN_ROWS = 4
 
+/** Summaries with a request in flight, so concurrent mounts ask only once. */
+const ideSummaryRequests = new Set()
+
 /** A browser-relative route, resolved against the page's base so a sub-path mount works. */
 function ideApiUrl(path, params) {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
@@ -37,13 +40,15 @@ async function ideChangesSummary(sessionId, seq, signal) {
     response = await fetch(ideApiUrl(IDE_CHANGES_SUMMARY, { sessionId, seq }), { signal })
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw error
-    return { ok: false, error: 'network' }
+    return { ok: false, error: 'network', status: 0 }
   }
   const parsed = await response.json().catch(() => null)
-  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed === null) return { ok: false, error: `http-${response.status}`, status: response.status }
   const summary = parsed.value ?? parsed
   if (summary === null || typeof summary !== 'object' || !Array.isArray(summary.files)) {
-    return { ok: false, error: parsed.error?.code ?? 'shape' }
+    // The Host answers 404 with an error body, so the status is what tells a
+    // vanished summary apart from an unreadable one.
+    return { ok: false, error: parsed.error?.code ?? 'shape', status: response.status }
   }
   return { ok: true, summary }
 }
@@ -166,15 +171,47 @@ function IdeTurnChanges(props) {
   const [busy, setBusy] = useState('')
 
   // The summary is served under the `workspace/changes` event's sequence, not the
-  // Turn's closing one: the shipped deliverables node records it on the Turn, so
-  // read it from there and only fall back to the slot's own sequence.
+  // Turn's closing one, and the shipped deliverables node records it on the Turn.
+  //
+  // When that record is absent the Host has nothing to serve — it keeps summaries
+  // in memory only, so every Turn before a restart lost its own. Fetching anyway
+  // would only produce a 404 per Turn in the console, so this deliberately does
+  // not fall back to the slot's sequence: without a recorded summary there is no
+  // request and the list is recovered from the Session's tool calls instead.
   const recorded = typeof turn?.data?.get === 'function' ? turn.data.get('deliverables') : undefined
-  const changesSeq = Number.isFinite(recorded?.changes?.seq)
-    ? recorded.changes.seq
-    : (Number.isFinite(seq) ? seq : undefined)
+  const changesSeq = Number.isFinite(recorded?.changes?.seq) ? recorded.changes.seq : undefined
 
   useEffect(() => {
-    if (typeof sessionId !== 'string' || !Number.isFinite(changesSeq)) return undefined
+    if (typeof sessionId !== 'string') return undefined
+    if (!Number.isFinite(changesSeq)) {
+      // No recorded summary: no request. Best effort is the Session's own tool
+      // calls, which only cover a Turn still inside the loaded history window.
+      const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+      setState({
+        files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
+        total: recovered.length,
+        added: 0,
+        deleted: 0,
+        failed: recovered.length === 0,
+        fromLog: true,
+      })
+      return undefined
+    }
+    const summaryKey = `${sessionId}:${changesSeq}`
+    if (ideSummaryRequests.has(summaryKey)) {
+      // Another mount already asked for this Turn; show the same fallback.
+      const recovered = ideTurnEditedPaths(trajectory, turn?.turn)
+      setState({
+        files: recovered.map((path) => ({ path, display: path, added: 0, deleted: 0 })),
+        total: recovered.length,
+        added: 0,
+        deleted: 0,
+        failed: recovered.length === 0,
+        fromLog: true,
+      })
+      return undefined
+    }
+    ideSummaryRequests.add(summaryKey)
     const controller = new AbortController()
     void ideChangesSummary(sessionId, changesSeq, controller.signal)
       .then(async (result) => {

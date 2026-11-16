@@ -15,6 +15,17 @@ const IDE_LINE_HEIGHT = 20
 const IDE_TAB_COLUMNS = 4
 
 /** The pinned conversation chip at the head of the tab strip. */
+/**
+ * The modifier class of a pointer event: `meta` (⌘ on macOS, Ctrl elsewhere),
+ * `alt`, `shift`, or `plain` when nothing is held.
+ */
+function ideGestureOf(event) {
+  if (event.metaKey === true || (event.ctrlKey === true && event.metaKey !== true)) return 'meta'
+  if (event.altKey === true) return 'alt'
+  if (event.shiftKey === true) return 'shift'
+  return 'plain'
+}
+
 function IdeChatTab({ onOpen, tr }) {
   return h('div', {
     className: 'iw-tab chat',
@@ -516,21 +527,35 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     ref: scrollRef,
     tabIndex: 0,
     onClick: (event) => {
-      // A plain click deliberately does nothing. Selecting and copying source is
-      // a more frequent gesture than navigating, and a drag that ends on an
-      // identifier must not be mistaken for a navigation request.
-      if (event.metaKey !== true && event.ctrlKey !== true) return
+      // A plain click deliberately does nothing unless the user assigns it one.
+      // Selecting and copying source is a more frequent gesture than navigating,
+      // and a drag that ends on an identifier must not be mistaken for a request.
+      const gesture = ideGestureOf(event)
+      if (gesture === 'plain' || gesture === 'shift') return
+      const actions = store.getState().gestures
+      const action = actions.definition === gesture ? 'definition'
+        : actions.usages === gesture ? 'usages'
+          : ''
+      if (action === '') return
       const hit = resolveSymbolAt(event)
       if (hit === undefined) return
       event.preventDefault()
-      void showUsages(hit.name, hit.position, event)
+      if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
+      else void showUsages(hit.name, hit.position, event)
     },
     onDoubleClick: (event) => {
-      // ⌘/Ctrl + double click already opened the usage list; do not also jump.
-      if (event.metaKey === true || event.ctrlKey === true) return
+      // A double click with a modifier belongs to the single-click gestures above.
+      if (ideGestureOf(event) !== 'plain') return
+      const actions = store.getState().gestures
       const hit = resolveSymbolAt(event)
       if (hit === undefined) return
-      void jumpToDefinition(hit.name, hit.position, event)
+      const action = actions.definition === 'double' ? 'definition'
+        : actions.usages === 'double' ? 'usages'
+          : ''
+      if (action === '') return
+      event.preventDefault()
+      if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
+      else void showUsages(hit.name, hit.position, event)
     },
     onKeyDown: (event) => {
       if (event.key === 'Escape') closePopup()

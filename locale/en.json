@@ -96,5 +96,21 @@
   "turnJumpFailed": "Cannot open",
   "turnFoldMore": "Show",
   "turnFoldLess": "Collapse",
-  "turnChangesSingle": "1 changed file"
+  "turnChangesSingle": "1 changed file",
+  "gestureSection": "Code workspace shortcuts",
+  "gestureSectionHint": "Every shortcut of this plugin; keyboard commands are edited in DSH's dialog, gestures here",
+  "gestureEdit": "View",
+  "gestureClose": "Close",
+  "gestureHint": "Keyboard commands are edited in DSH's shortcut dialog; pick gestures here; double Shift and ⌘P are fixed in-panel behaviours",
+  "gestureDefinition": "Go to definition",
+  "gestureUsages": "Show implementations / callers",
+  "gestureDouble": "Double click",
+  "gestureMeta": "⌘+click",
+  "gestureAlt": "⌥+click",
+  "gestureConflict": "That gesture already belongs to the other action",
+  "gestureTaken": "Used by the other action",
+  "shortcutSearchEverywhere": "Open search everywhere",
+  "shortcutFileSearch": "Focus the file filter",
+  "ksUnbound": "Unbound",
+  "gestureEditInDsh": "Edit it in Settings → General → Edit shortcuts"
 }

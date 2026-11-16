@@ -791,6 +791,68 @@ const IDE_CSS = `
 }
 .iw-turn-fold:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.05)); }
 
+
+/* Mouse-gesture settings, kept in its own General-settings row. */
+.iw-gesture-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  width: 100%;
+}
+.iw-gesture-item-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.iw-gesture-item-title { font-size: 13px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-gesture-item-hint { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+.iw-gesture-btn {
+  padding: 4px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-md, 8px);
+  background: var(--dsw-alias-card-fill, transparent);
+  color: var(--dsw-alias-label-primary, inherit);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.iw-gesture-btn:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.06)); }
+.iw-gesture-panel {
+  margin: 2px 0 10px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-md, 8px);
+  background: var(--dsw-alias-bg-layer-1, transparent);
+}
+.iw-gesture-hint { margin: 0 0 8px; font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+.iw-gesture-issue { margin-bottom: 8px; font-size: 12px; color: var(--dsw-alias-state-error-primary, #c95c5c); }
+.iw-gesture-rows { display: flex; flex-direction: column; }
+.iw-gesture-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+}
+.iw-gesture-row:first-child { border-top: 0; }
+.iw-gesture-label { font-size: 12.5px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-gesture-chips { display: inline-flex; gap: 6px; }
+.iw-gesture-chip {
+  padding: 3px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.iw-gesture-chip:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.05)); }
+.iw-gesture-chip.active {
+  border-color: var(--dsw-alias-state-business-primary, #4a7dff);
+  color: var(--dsw-alias-state-business-primary, #4a7dff);
+}
+.iw-gesture-chip.taken { opacity: 0.35; cursor: not-allowed; }
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

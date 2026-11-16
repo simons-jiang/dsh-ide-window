@@ -392,6 +392,18 @@ function ideCreateStore(refs) {
     remoteReady: false,
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
+    /**
+     * Mouse gestures for the two navigation actions: `double` is a double click,
+     * `meta` and `alt` are a single click with that modifier held.
+     */
+    gestures: {
+      definition: prefs.gestures?.definition ?? 'double',
+      usages: prefs.gestures?.usages ?? 'meta',
+    },
+    /** Whether the gesture editor inside General settings is expanded. */
+    gestureEditorOpen: false,
+    /** Why the last gesture change was refused. */
+    gestureIssue: '',
     /** Java index progress: `{ status, done, total }`. */
     indexInfo: { status: 'idle', done: 0, total: 0 },
     /**
@@ -1161,6 +1173,25 @@ function ideCreateStore(refs) {
     setJumpEnabled: (jumpEnabled) => {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })
+    },
+    /** Open or close the gesture editor inside General settings. */
+    setGestureEditor: (open) => {
+      patch({ gestureEditorOpen: open === true, gestureIssue: '' })
+    },
+    /** Explain a refused gesture change. */
+    setGestureIssue: (issue) => {
+      patch({ gestureIssue: typeof issue === 'string' ? issue : '' })
+    },
+    /** Change one navigation gesture; the two actions must stay distinct. */
+    setGesture: (which, value) => {
+      if (which !== 'definition' && which !== 'usages') return false
+      if (!['double', 'meta', 'alt'].includes(value)) return false
+      const other = which === 'definition' ? state.gestures.usages : state.gestures.definition
+      if (value === other) return false
+      const gestures = { ...state.gestures, [which]: value }
+      ideWritePrefs({ gestures })
+      patch({ gestures })
+      return true
     },
     /** Put a line in the panel's notice banner (empty clears it). */
     setNotice: (liveNotice) => patch({ liveNotice }),

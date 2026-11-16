@@ -96,5 +96,21 @@
   "turnJumpFailed": "打开失败",
   "turnFoldMore": "展开其余",
   "turnFoldLess": "收起",
-  "turnChangesSingle": "代码改动 1 个文件"
+  "turnChangesSingle": "代码改动 1 个文件",
+  "gestureSection": "代码工作区快捷键",
+  "gestureSectionHint": "本插件的全部快捷键；键盘命令在 DSH「编辑快捷键」里改，手势在这里点选",
+  "gestureEdit": "查看",
+  "gestureClose": "关闭",
+  "gestureHint": "键盘命令在 DSH 的「编辑快捷键」里改；手势在这里点选；双击 Shift 与 ⌘P 为面板内固定行为",
+  "gestureDefinition": "转到定义",
+  "gestureUsages": "查看实现 / 调用方",
+  "gestureDouble": "双击",
+  "gestureMeta": "⌘+单击",
+  "gestureAlt": "⌥+单击",
+  "gestureConflict": "该手势已被另一个动作使用",
+  "gestureTaken": "已被另一个动作占用",
+  "shortcutSearchEverywhere": "打开搜索无处不在",
+  "shortcutFileSearch": "定位文件搜索框",
+  "ksUnbound": "未绑定",
+  "gestureEditInDsh": "在 设置 → 通用设置 → 编辑快捷键 中修改"
 }

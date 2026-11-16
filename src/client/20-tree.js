@@ -145,9 +145,13 @@ function IdeTree({ store, state, tr }) {
 
   // ⌘P / Ctrl+P focuses the search box the way a file finder does; Escape
   // returns to the tree without touching the open tabs.
+  // The binding for the filter box comes from the shortcut registry.
+  const filterBinding = IDE_SHORTCUTS.find((entry) => entry.action === 'focus-filter')?.fixedBinding
+    ?? { code: 'KeyP', modifiers: ['primary'] }
   useEffect(() => {
     const onKey = (event) => {
-      if ((event.metaKey === true || event.ctrlKey === true) && event.key.toLowerCase() === 'p') {
+      const primary = event.metaKey === true || event.ctrlKey === true
+      if (primary && event.key.toLowerCase() === filterBinding.code.slice(3).toLowerCase()) {
         event.preventDefault()
         inputRef.current?.focus()
         inputRef.current?.select()

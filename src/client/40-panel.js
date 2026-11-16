@@ -181,11 +181,14 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
   const actions = paletteActions ?? []
 
   // IDEA's gesture: two Shift presses in quick succession open Search Everywhere.
+  // The key and the window come from the shortcut registry, not from here.
+  const sequence = IDE_SHORTCUTS.find((entry) => entry.action === 'palette')?.sequence
+    ?? { key: 'Shift', repeat: 2, windowMs: 400 }
   useEffect(() => {
-    const DOUBLE_SHIFT_MS = 400
+    const DOUBLE_SHIFT_MS = sequence.windowMs
     let lastShift = 0
     const onKey = (event) => {
-      if (event.key !== 'Shift' || event.repeat === true) return
+      if (event.key !== sequence.key || event.repeat === true) return
       const now = Date.now()
       if (lastShift !== 0 && now - lastShift <= DOUBLE_SHIFT_MS) {
         lastShift = 0

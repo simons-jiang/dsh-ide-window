@@ -517,12 +517,29 @@ check((navStore.getState().historyForward ?? []).length === 0, 'a fresh jump cle
 
 
 /** Extract one top-level function's source from a client fragment, for unit checks. */
-function grabSource(name) {
-  const source = readFileSync(new URL('../src/client/58-turn.js', import.meta.url), 'utf8')
+function grabSource(name, file = '58-turn.js') {
+  const source = readFileSync(new URL(`../src/client/${file}`, import.meta.url), 'utf8')
   const constant = source.indexOf(`const ${name} = `)
   if (constant >= 0 && source.indexOf(`function ${name}(`) < 0) {
-    const end = source.indexOf('\n', constant)
-    return source.slice(constant, end)
+    // A regex literal has no brackets to balance: take the whole line.
+    const afterEquals = source.slice(source.indexOf('=', constant) + 1).trimStart()
+    if (afterEquals.startsWith('/')) return source.slice(constant, source.indexOf('\n', constant))
+    // Multi-line literals: stop where the brackets opened by the initializer close.
+    let depth = 0
+    let started = false
+    for (let index = source.indexOf('=', constant); index < source.length; index += 1) {
+      const char = source[index]
+      if (char === '[' || char === '{' || char === '(') {
+        depth += 1
+        started = true
+      } else if (char === ']' || char === '}' || char === ')') {
+        depth -= 1
+        if (started && depth === 0) return source.slice(constant, index + 1)
+      } else if (char === '\n' && !started) {
+        return source.slice(constant, index)
+      }
+    }
+    return source.slice(constant)
   }
   const start = source.indexOf(`function ${name}(`)
   if (start < 0) throw new Error(`missing ${name}`)
@@ -535,6 +552,22 @@ function grabSource(name) {
     }
   }
   throw new Error(`unbalanced ${name}`)
+}
+
+// ---- the changes card never asks for a summary the Host cannot serve --------
+{
+  const source = readFileSync(new URL('../src/client/58-turn.js', import.meta.url), 'utf8')
+  // 曾经用 slot 的 seq 兜底；那会让每个历史轮次都发一次必然 404 的请求。
+  check(/Number\.isFinite\(recorded\?\.changes\?\.seq\) \? recorded\.changes\.seq : undefined/.test(source),
+    'the sequence comes only from the recorded deliverables node')
+  check(!/recorded\.changes\.seq\s*\n?\s*:\s*\(Number\.isFinite\(seq\)/.test(source),
+    'the slot sequence is no longer used as a fallback')
+  check(/if \(!Number\.isFinite\(changesSeq\)\) \{/.test(source),
+    'a Turn without a recorded summary skips the request entirely')
+  // 只防并发重复，不再缓存 404：把临时故障固化下来不值得
+  check(/ideSummaryRequests\.has\(summaryKey\)/.test(source), 'a Turn with a request in flight is not asked twice')
+  check(!/localStorage/.test(source), 'no 404 result is cached', 'still has localStorage')
+
 }
 
 // ---- jar sources -----------------------------------------------------------
@@ -658,6 +691,61 @@ await tick()
 // surface, unmounting the panel and leaving the cover-overlay bug behind.
 footerInject.openPanel()
 check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code panel in the main column', String(mode.record.selected))
+
+// ---- the single shortcut registry ------------------------------------------
+{
+  const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
+  check(Array.isArray(registry) && registry.length === 6, 'the registry holds every code-workspace shortcut', String(registry?.length))
+  const kinds = registry.map((entry) => entry.kind)
+  check(kinds.filter((kind) => kind === 'key').length === 2, 'two commands are registered with DSH', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'gesture').length === 2, 'two are pointer gestures', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'fixed').length === 2, 'two are fixed sequences (double Shift, ⌘P)', kinds.join(','))
+
+  const ids = registry.map((entry) => entry.id)
+  check(new Set(ids).size === ids.length, 'registry ids are unique', ids.join(','))
+
+  // 键盘命令确实被注册进 DSH，且只有它们
+  const registered = mode.record.shortcuts.map((entry) => entry.id).sort()
+  const expected = registry.filter((entry) => entry.kind === 'key').map((entry) => entry.id).sort()
+  check(registered.join(',') === expected.join(','), 'exactly the registry key commands reach DSH', registered.join(','))
+
+  // 双击 Shift 的窗口与键来自注册表，不是散落在监听器里的魔法数字
+  const sequence = registry.find((entry) => entry.action === 'palette')?.sequence
+  check(sequence?.key === 'Shift' && sequence?.repeat === 2 && sequence?.windowMs === 400, 'double Shift is declared in the registry', JSON.stringify(sequence))
+
+  const fileSearch = registry.find((entry) => entry.action === 'focus-filter')?.fixedBinding
+  check(fileSearch?.code === 'KeyP' && fileSearch?.modifiers?.[0] === 'primary', '⌘P is declared in the registry', JSON.stringify(fileSearch))
+}
+
+// ---- mouse gestures -------------------------------------------------------
+{
+  const choices = grabSource('IDE_GESTURE_CHOICES', '05-shortcut-registry.js')
+  const ring = grabSource('ideNextGesture', '59-gesture-settings.js')
+  const next = new Function(`${choices}\n${ring}\nreturn ideNextGesture`)()
+  check(next('double', 'meta') === 'alt', 'the gesture ring skips the one already taken', next('double', 'meta'))
+  check(next('alt', 'double') === 'meta', 'the ring wraps around', next('alt', 'double'))
+
+  const names = mode.record.registrations.map((entry) => entry.name)
+  check(names.includes('settings.general.item'), 'registers the gesture settings row', names.join(','))
+  const row = mode.record.registrations
+    .filter((entry) => entry.name === 'settings.general.item')
+    .find((entry) => String(entry.id ?? '').includes(':gestures'))
+  check(row !== undefined, 'the gesture row is namespaced')
+
+  const injected = row?.inject?.() ?? {}
+  check(injected.store?.getState().gestures.definition === 'double', 'double click goes to definition by default', JSON.stringify(injected.store?.getState().gestures))
+  check(injected.store?.getState().gestures.usages === 'meta', 'meta click lists usages by default')
+  check(injected.store?.setGesture('definition', 'meta') === false, 'a gesture already in use is refused')
+  check(injected.store?.setGesture('definition', 'alt') === true, 'a free gesture is accepted')
+  check(injected.store?.getState().gestures.definition === 'alt', 'the accepted gesture is stored', injected.store?.getState().gestures.definition)
+  check(injected.store?.setGesture('definition', 'double') === true, 'it can be put back')
+
+  const gestureOf = new Function(`${grabSource('ideGestureOf', '30-code.js')}\nreturn ideGestureOf`)()
+  check(gestureOf({ metaKey: true }) === 'meta', '⌘ maps to the meta gesture')
+  check(gestureOf({ ctrlKey: true }) === 'meta', 'Ctrl maps to the same gesture')
+  check(gestureOf({ altKey: true }) === 'alt', '⌥ maps to the alt gesture')
+  check(gestureOf({}) === 'plain', 'a bare click is plain')
+}
 
 // ---- turn changes ----------------------------------------------------------
 {
