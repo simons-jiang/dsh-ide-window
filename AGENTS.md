@@ -1,0 +1,247 @@
+# dsh-ide-window 项目上下文（给新会话用）
+
+> 这份文件是**接手这个项目时该知道的一切**：约定、架构、功能、踩过的坑。
+> 在这个目录下新建 DSH 会话时会被自动注入；也可以在别的会话里手动 `@AGENTS.md`。
+
+---
+
+## 一、一句话说清项目
+
+给 **DeepSeek Harness（DSH）** 写的一个客户端插件：把中央区域做成 **IDEA 风格的代码工作区**——
+左侧文件树 + 编辑标签页 + 实时源码，进入时自动收起 DSH 自己的左侧导航栏，
+对话仍然可达（`⌘1` 返回对话 / `⌘2` 打开代码工作区）。
+
+- 仓库：`https://github.com/simons-jiang/dsh-ide-window`（分支 `main`）
+- 包名：`@local/dsh-ide-window`（以 `link:` 方式装进 DSH 的 profile）
+- 目标 DSH 版本：`0.2.2-rc.3`（桌面应用 + Web profile 都要能跑）
+- 语言栈：宿主 `index.js`（Node ESM）+ 客户端 `src/client/*.js`（无构建链，手写 `h()`）
+
+---
+
+## 二、硬约束（**违反就不算完成**）
+
+| # | 约定 | 说明 |
+|---|---|---|
+| 1 | **绝不修改 DSH 本体** | `/Applications/DeepSeek Harness.app` 只读。所有对 DSH 源码/类型定义的访问都是 `read-only`（用 `ELECTRON_RUN_AS_NODE=1` 读 `app.asar`）。任何写操作只能落在 `~/.dsh/profiles`、`~/.dsh/sessions`、`~/.dsh/lsp-*`、插件自身目录 |
+| 2 | **每次改完必须自证** | 跑 `npm test`；`./check-dsh-untouched.sh` 必须输出「DSH 本体未被改动 ✓」；涉及 UI 的改动要用浏览器实测（见第六节） |
+| 3 | **没有明确指令不提交** | 只有用户说「提交」「推送」「提交并推送」才动 git。只改代码时交付「改动清单 + 建议 commit message + 验证结果」 |
+| 4 | **提交信息规范** | `<type>: <中文描述>`（feat/fix/refactor/style/chore/docs）；**不要**加 `Co-Authored-By` |
+| 5 | **编译/测试失败禁止推送** | 先报告失败原因 |
+| 6 | **UI 必须与 DSH 一致** | 一律用 DSH 的设计 token（`--dsw-alias-*`、`--dsw-specific-menu`、`--dsw-elevation-prominent`、`--dsw-radius-*`），不自己造色值 |
+| 7 | **诚实报告** | 做不到就说做不到，不假装实现（例如 DSH 没有「插入对话草稿」的插件 API，就不要假装能一键加进上下文） |
+
+---
+
+## 三、架构
+
+### 3.1 两半：宿主 + 客户端
+
+```
+index.js               宿主（Node ESM）：注册 5 条 HTTP 路由，转发到 DSH 服务
+client.js              客户端产物（build.mjs 生成，**必须提交**）
+src/client/*.js        客户端源码片段（构建时按文件名排序拼接）
+build.mjs              把 15 个片段 + locale 拼成 client.js
+cordis.patch.yml       bundle patch：把插件插入 profile（id: dsh-ide-window）
+locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里读标题/描述
+```
+
+**为什么有切片 + 构建**：浏览器模块加载器每个包只吃**一个**文件，所以源码必须合并成一个 factory body。片段前缀数字 = 拼接顺序。
+
+| 片段 | 职责 |
+|---|---|
+| `00-css.js` | 全部 `.iw-*` 样式（单文件注入 `<style>`） |
+| `05-icons.js` | 内联 SVG 图标（`ideSvg` 统一 16 网格） |
+| `05-shortcut-registry.js` | **所有快捷键的唯一登记处** `IDE_SHORTCUTS` |
+| `10-core.js` | store（`useSyncExternalStore` 订阅）、偏好持久化、标签页/历史/视图状态 |
+| `20-tree.js` | 文件树（展开、筛选、拖宽、`⌘P` 定位） |
+| `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
+| `40-panel.js` | 面板骨架（工具栏、横幅、布局、字号 CSS 变量） |
+| `45-tracker.js` | 会话追踪（面板与当前会话/工作区绑定） |
+| `58-turn.js` | 对话改动的「代码改动」卡片 |
+| `59-gesture-settings.js` | 设置分区（快捷键 / 字号）+ 标签页右键菜单组件 |
+| `60-jump.js` | 文件地址声明与跳转拦截（`dsh-resource://file/session/**`） |
+| `65-lsp.js` | LSP 语义辅助（符号消歧、注解属性、bean 字段推断） |
+| `68-grep.js` | 工作区搜索 + jar 源码查询客户端 |
+| `70-palette.js` | Search Everywhere（所有/文件/文本/操作） |
+| `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
+
+### 3.2 宿主路由（`index.js`）
+
+| 路由 | 作用 | 关键实现 |
+|---|---|---|
+| `/dsh-ide/lsp` | 转发 `ctx.lsp`（definition/references/implementation/hover） | 0 基 UTF-16 位置 |
+| `/dsh-ide/grep` | 工作区文本搜索 | 走 DSH workspaceFiles |
+| `/dsh-ide/diff` | 单文件 VCS 改动块 | `git diff -U0`，解析成行区间 |
+| `/dsh-ide/jar` | 依赖源码 | 扫 `~/.m2/repository/**/*-sources.jar`（1900+ 个，按 mtime 新→旧，单次预算 600），**进程内解析 ZIP 中央目录**，不反编译、不复制、不落盘 |
+| `/dsh-ide/status` | 工作区未提交文件 | `git status --porcelain=v1`，返回 `{path, status}` |
+
+### 3.3 用到的 DSH 槽位
+
+| 槽 | 用途 |
+|---|---|
+| `main`（keyed `dsh-ide-window:code`） | 面板占中栏 |
+| `conversation.header.leading` | 会话表头左侧的入口按钮 |
+| `conversation.chat.turnTail`（list, scope session） | 每轮末尾的「代码改动」卡片 |
+| `settings.general.item` | 设置 → 通用设置里的「代码工作区设置」 |
+| `shell.overlay`（list） | 面板内浮层（用法弹层等） |
+| `sidebar.right.pane.tab` | 仅用于文件地址认领（body 不渲染） |
+| `sidebar.footer.action` | 左下角入口 |
+
+> `shell.bottom` 是**单例槽**，已被 git 插件占用，**不要抢**。
+
+---
+
+## 四、功能清单（都已实现并自测）
+
+### 4.1 工作区与代码视图
+- 文件树：按需展开、筛选、拖宽、实时刷新、VCS 改动条
+- 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
+- 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
+- 大文件保护：>60000 行或超字节上限时截断并提示
+
+### 4.2 语义导航（IntelliJ LSP）
+- **双击** → 转到定义；**⌘+单击** → 实现 / 调用方弹层（手势可在设置里改）
+- 跳转成功后横幅显示 `→ 文件:行 · 查询 xms · 载入 yms`
+- 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明
+- 定义在依赖 jar 内时 → 自动去 sources jar 找源码（含「跳过 javadoc 里的 `{@link #x()}`」判定）
+- 兜底链：LSP → 注解属性 → import FQN → jar 源码 → 文本提示
+
+### 4.3 搜索
+- **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，四分类（所有 / 文件 / 文本 / 操作）
+- 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
+
+### 4.4 与对话联动
+- 「代码改动」卡片：本轮改动文件 + `+A/−D`，点击跳到第一个改动行
+- 摘要丢失时回退：本轮工具调用 → **工作区未提交文件**（带 M/A/?? 标记）→ 一行说明
+- 卡片状态按「会话+轮次」缓存，切面板不丢
+
+### 4.5 设置（设置 → 通用设置 → 代码工作区设置）
+- **快捷键**（6 条，全部可改，点「修改」直接按新键）
+- **基础设置 → 字号**：代码字号（默认 12.5）、文件树字号（默认 14.5），10–24px 步进 0.5，行高按比例联动
+
+### 4.6 快捷键（唯一登记处 `IDE_SHORTCUTS`）
+
+| id | 类型 | 默认 |
+|---|---|---|
+| `dsh-ide-window.toggle` | key | 桌面 `⌘2` / Web `⌥⌘I` |
+| `dsh-ide-window.back-to-chat` | key | 桌面 `⌘1` / Web `⌥⌘U` |
+| `code-workspace.search-everywhere` | sequence | 双击 `Shift`（窗口 400ms） |
+| `code-workspace.file-search` | key | `⌘P` |
+| `code-workspace.gesture-definition` | gesture | 双击 / ⌘+单击 / ⌥+单击 |
+| `code-workspace.gesture-usages` | gesture | 同上（互斥） |
+
+**加一条新快捷键**：只在 `05-shortcut-registry.js` 加一条，设置页自动出现；`key`/`sequence` 由 `90-apply.js` 的派发器处理。
+
+---
+
+## 五、关键设计决策（为什么这么做）
+
+1. **面板占中栏 `main`，不占右侧栏**。
+   右侧栏方案试过两次都失败：面板被卸载、蒙版盖住输入框。**不要再试**。
+2. **不注册进 DSH 快捷键目录**。
+   那条目录就是官方「编辑快捷键」弹窗的内容，注册进去必然和 DSH 命令混在一起；用户要求「独立分类 + 可改键」，所以绑定由插件自己存（`prefs.shortcutBindings`），派发用 capture 阶段监听器。
+   `ctx.shortcuts` 只用来读平台/运行时、以及 `describeBinding` 判冲突。
+3. **`⌘W` 不绑**。它是 DSH 的「关闭窗口」，菜单里不写快捷键提示，避免误导。
+4. **jar 源码只读**：不反编译、不复制、不落盘；进程内只缓存 `类名 → jar 路径`。
+5. **卡片只报「本轮」改动**；DSH 只统计编辑工具（edit/write），shell（git/sed/重定向/python -c）改的文件它不知道 → 回退列「工作区未提交」并明确标注语义。
+6. **状态放 store、结果缓存到模块级**。切到代码工作区会卸载对话组件，`useState` 会丢；`ideTurnStates` / `ideSummaryRequests` 是为此存在的。
+7. **设置项内联展开，不弹窗**。`shell.overlay` 的层级低于设置弹窗，弹窗会被盖住。
+
+---
+
+## 六、怎么开发与验证
+
+```bash
+cd ~/dev/dsh-ide-window
+
+# 改完源码后必须构建（client.js 要一起提交，别人安装时不会跑构建）
+node build.mjs && node --check client.js
+
+# 全量测试（三段：VM 夹具 212 项 + 归属推断 + 真实 ~/.m2 jar）
+npm test
+
+# 本体完整性（签名 + app.asar 哈希基线 + 可疑新文件）
+./check-dsh-untouched.sh
+```
+
+### 浏览器自测（用户明确要求「每次改一个功能就自己去测」）
+
+```bash
+# 起一个独立实例（用 web profile，不污染桌面端）
+cd <某个仓库> && dsh --profile web --port 0 --no-open
+# 日志里会打印 http://127.0.0.1:PORT/?token=...
+```
+
+- 用浏览器自动化（bsk 工具）打开该 URL 操作；`evaluate` 可以派发 `contextmenu` 等合成事件
+- **改完客户端代码后**：桌面窗口必须 `⌘R` 刷新；只改宿主路由要**完全退出 DSH 再打开**
+- 判断是否生效：设置里能不能看到新条目 / 控制台有没有 `client.js 404`
+
+### 装/重装
+
+```bash
+dsh plugin --profile desktop add link:~/dev/dsh-ide-window
+```
+
+---
+
+## 七、坑与教训（都踩过）
+
+| 症状 | 根因 | 正确做法 |
+|---|---|---|
+| `cannot get property "shortcuts" without inject` | 插件导出没声明该服务 | `build.mjs` 里 `inject: ['slots','locale','shortcuts']` |
+| 快捷键注册整条失败 | 声明了 `web:linux` 默认值（该 profile 只允许 Slash/Comma/Period） | **不要**声明 `web:linux` |
+| `getBaseCurrency` 找不到定义 | 泛型接收者没解析出基类 | `ideChainBase` / `ideGenericArgument` 要容忍 `org.mockito.ArgumentCaptor<T>` |
+| 改动卡片不出现、网络里 `changes.summary 404` | 用了 turn 结束序号，而摘要按 `workspace/changes` 事件序号 | 从 `turn.data.get('deliverables').changes.seq` 取 |
+| 跳转成功却报 `outcome is not defined` | 解构时只取 `locations`，后面又用 `outcome.ms` | 接住整个返回值；**这类错误测不到，必须给跳转逻辑写桩测试** |
+| 注解点不动 | 分词把 `@X` 当成一个 `iw-ann` 运行，只有普通标识符可点击 | `ideSymbolOfRun()` 去 `@`、取简单名、算列偏移 |
+| 切到代码工作区再回来卡片消失 | 组件卸载丢 `useState` | 结果缓存到模块级 Map |
+| `plugins/...client.js?jsrev=… 404` | 我重建了 bundle，已开窗口拿的是旧 rev | 让用户 `⌘R` 或重启；批量 URL 里一个过期整批 404（连官方包也被连坐） |
+| 设置页弹窗看不见 | `shell.overlay` 层级低于设置弹窗 | 内联展开 |
+| 测试提取器截断箭头函数 | 在参数表 `)` 处就判定结束 | 只在 `}`/`]` 收尾 |
+
+---
+
+## 八、已知限制 / 待办
+
+1. **DSH 重启后历史轮次没有改动摘要**（Host 内存态）——只能回退到「工作区未提交」，不会伪造。
+2. **「添加到智能体上下文」是降级实现**：复制 `@相对路径` 并提示粘贴；DSH 未开放插件的对话草稿插入 API。
+3. **分享前待办**（用户已知，尚未做）：
+   - 包名 `@local/dsh-ide-window` 建议改成唯一 scope（如 `@simons-jiang/dsh-ide-window`）
+   - 补 `LICENSE`（package.json 已声明 MIT 但无文件）
+   - 加 `engines.dsh` 版本约束
+4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。
+5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。
+
+---
+
+## 九、文件地图（找东西用）
+
+```
+index.js                      宿主：5 条路由 + jar ZIP 解析 + git 状态/差异
+client.js                     构建产物（提交）
+build.mjs                     拼接 + 注入校验（禁止未声明的 ide* 辅助函数）
+cordis.patch.yml              profile 插入项
+locale/zh.json, en.json       UI 文案（134 键）+ 插件展示信息
+src/client/05-shortcut-registry.js   ★ 快捷键唯一登记处
+src/client/10-core.js         store / 偏好 / 标签页 / 视图持久化
+src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
+src/client/58-turn.js         「代码改动」卡片（含回退与缓存）
+src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
+src/client/90-apply.js        全部注册 + 入口
+test/harness.mjs              VM 夹具测试（当前 212 项断言）
+test/inference.mjs            归属推断（bean 字段）
+test/maven.mjs                真实 ~/.m2 jar 端到端
+check-dsh-untouched.sh        本体完整性自检
+restore-profile.sh            恢复 profile 到可用状态
+README.md                     面向使用者的说明（功能/手势/安装）
+```
+
+---
+
+## 十、跟用户协作时的偏好（重要）
+
+- 每次回复**开头先说「你好，simon」**。
+- 一次只做**一件明确的事**，做完给「改了什么 / 怎么验证的 / 还差什么」。
+- **不要**自行提交、不要自行改无关模块。
+- 用户会指出「这个 UI 很突兀」「按道理应该有…」——这类反馈意味着要**对齐既有设计语言**或**补齐预期行为**，不要辩解。
+- 交付前自查：`npm test` 全绿 + `./check-dsh-untouched.sh` 通过 + UI 截图/实测，缺一项就不算完成。
