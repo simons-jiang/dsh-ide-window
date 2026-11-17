@@ -475,6 +475,18 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    h(IdeTreeMenu, {
+      key: 'treemenu',
+      store,
+      state,
+      tr,
+    }),
+    h(IdeTreePopup, {
+      key: 'treepopup',
+      store,
+      state,
+      tr,
+    }),
     h(IdeGutterMenu, {
       key: 'guttermenu',
       store,

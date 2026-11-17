@@ -150,7 +150,7 @@ window.__ModuleLoader__.load({
     "setupClose": "Close",
     "setupReady": "Code navigation is ready",
     "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml.",
-    "treeReveal": "Reveal current file",
+    "treeReveal": "Reveal in Finder",
     "treeRevealNone": "No file is open",
     "treeExpandAll": "Expand all",
     "treeCollapseAll": "Collapse all",
@@ -163,6 +163,33 @@ window.__ModuleLoader__.load({
     "chainNone": "No callers found (this may be an entry point)",
     "chainHint": "Click a node to jump to it",
     "chainRule": "Upper nodes call the ones below them; the ← line is where that call happens",
+    "treeMenuLabel": "File menu",
+    "treeOpen": "Open in Code Workspace",
+    "treeTerminal": "Open in Terminal",
+    "treeCopyContent": "Copy File Contents",
+    "treeCopyPath": "Copy Absolute Path",
+    "treeCopyRelative": "Copy Repository Path",
+    "treeCopyFqn": "Copy Qualified Name",
+    "treeCopied": "Copied",
+    "treeCopyFailed": "Copy failed",
+    "treeOpenFailed": "Open failed",
+    "treeGitSection": "Git",
+    "treeAnnotate": "Annotate with Git Blame",
+    "treeDiff": "Show Diff",
+    "treeHistory": "Show History",
+    "treeCompareRevision": "Compare with Revision…",
+    "treeCompareRef": "Compare with Branch or Tag…",
+    "treeDiffFailed": "Could not read the diff",
+    "treeLogFailed": "Could not read the history",
+    "treeRefsFailed": "Could not read the branches",
+    "treeNoHistory": "This file has no commits",
+    "treeNoRefs": "The repository has no branches or tags",
+    "treeNoDiff": "No differences from the current revision",
+    "treeUntracked": "This file is not tracked yet",
+    "treeTruncated": "Truncated",
+    "treeTag": "tag",
+    "treeBranch": "branch",
+    "treeRouteMissing": "The route is missing; quit and reopen DSH",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -306,7 +333,7 @@ window.__ModuleLoader__.load({
     "setupClose": "关闭",
     "setupReady": "代码导航已就绪",
     "setupStill": "仍未检测到 LSP：看一下 DSH 启动日志和 profile 的 cordis.patch.yml。",
-    "treeReveal": "定位到当前文件",
+    "treeReveal": "在 Finder 中显示",
     "treeRevealNone": "没有打开的文件",
     "treeExpandAll": "展开全部",
     "treeCollapseAll": "收起全部",
@@ -319,6 +346,33 @@ window.__ModuleLoader__.load({
     "chainNone": "没有找到调用方（可能已是入口方法）",
     "chainHint": "点击节点跳到对应代码",
     "chainRule": "上方节点调用下方节点；← 后是它调用下方方法的位置",
+    "treeMenuLabel": "文件菜单",
+    "treeOpen": "在代码工作区打开",
+    "treeTerminal": "在终端中打开",
+    "treeCopyContent": "复制文件内容",
+    "treeCopyPath": "复制绝对路径",
+    "treeCopyRelative": "复制仓库相对路径",
+    "treeCopyFqn": "复制限定类名",
+    "treeCopied": "已复制",
+    "treeCopyFailed": "复制失败",
+    "treeOpenFailed": "打开失败",
+    "treeGitSection": "Git",
+    "treeAnnotate": "使用 Git 追溯注解",
+    "treeDiff": "显示差异",
+    "treeHistory": "显示历史记录",
+    "treeCompareRevision": "与修订比较…",
+    "treeCompareRef": "与分支或标签比较…",
+    "treeDiffFailed": "读取差异失败",
+    "treeLogFailed": "读取历史失败",
+    "treeRefsFailed": "读取分支失败",
+    "treeNoHistory": "该文件没有提交记录",
+    "treeNoRefs": "仓库里没有分支或标签",
+    "treeNoDiff": "与当前版本没有差异",
+    "treeUntracked": "该文件尚未纳入版本控制",
+    "treeTruncated": "内容过长，已截断",
+    "treeTag": "标签",
+    "treeBranch": "分支",
+    "treeRouteMissing": "新路由未注册，请完全退出并重新打开 DSH",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1471,6 +1525,72 @@ html.iw-select-code .iw-code .iw-vision {
   color: var(--dsw-alias-label-secondary, inherit);
 }
 .iw-menu-label { flex: 1 1 auto; }
+/* A labelled group inside a menu (the tree menu's Git section). */
+.iw-menu-section {
+  padding: 8px 9px 3px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* Centered overlay for the tree menu's difference view and pickers. */
+.iw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.iw-overlay .iw-pop {
+  position: static;
+  width: min(940px, 92vw);
+  max-height: min(76vh, 860px);
+}
+.iw-overlay .iw-diff-body,
+.iw-overlay .iw-pick-body { flex: 1 1 auto; min-height: 0; }
+.iw-pop-close {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 15px;
+  line-height: 18px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.iw-pop-close:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
+.iw-diff-body {
+  overflow: auto;
+  padding: 6px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.iw-diff-line { padding: 0 12px; white-space: pre; }
+.iw-diff-line.add { background: rgba(80, 180, 110, 0.16); }
+.iw-diff-line.del { background: rgba(220, 90, 90, 0.16); }
+.iw-diff-line.hunk { color: var(--dsw-alias-label-secondary, #98a0ad); }
+.iw-pick-body { overflow: auto; padding: 4px; }
+.iw-pick-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-pick-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
+.iw-pick-main { font-family: ui-monospace, monospace; font-size: 12.5px; }
+.iw-pick-sub { color: var(--dsw-alias-label-secondary, #98a0ad); font-size: 11.5px; }
+
 .iw-menu-sep {
   height: 0.5px;
   margin: 5px 8px;
@@ -1555,14 +1675,14 @@ function IdeStyles() {
  */
 
 /** Shared wrapping element: 16px box, stroke-only body. */
-function ideSvg(size, children) {
+function ideSvg(size, children, strokeWidth = 1.3) {
   return h('svg', {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
     fill: 'none',
     stroke: 'currentColor',
-    strokeWidth: 1.3,
+    strokeWidth,
     strokeLinecap: 'round',
     strokeLinejoin: 'round',
     'aria-hidden': 'true',
@@ -1580,26 +1700,28 @@ function IdeChevron({ open, size = 12 }) {
   ])
 }
 
-/** Folder glyph, filled in the accent tone. */
+/**
+ * Folder glyph: a 1.5px line folder that shares the language of the shipped
+ * icons. Expanded folders open the front flap instead of dropping into a
+ * different shape, so the tree keeps one silhouette while it unfolds.
+ */
 function IdeFolderIcon({ open, size = 14 }) {
-  return h('svg', {
-    width: size,
-    height: size,
-    viewBox: '0 0 16 16',
-    'aria-hidden': 'true',
-    focusable: 'false',
-    style: { display: 'block' },
-  }, [
+  return ideSvg(size, [
     h('path', {
       key: 'body',
       d: open
-        ? 'M1.8 12.4V4.4c0-.6.5-1.1 1.1-1.1h3.1l1.3 1.5h5.8c.6 0 1.1.5 1.1 1.1v1H4.3l-1.4 5.5H1.8Z'
-        : 'M1.8 12.4V4.4c0-.6.5-1.1 1.1-1.1h3.1l1.3 1.5h5.8c.6 0 1.1.5 1.1 1.1v6.5c0 .6-.5 1.1-1.1 1.1H2.9c-.6 0-1.1-.5-1.1-1.1Z',
-      fill: 'currentColor',
-      opacity: open ? 0.95 : 0.8,
+        ? 'M1.9 12.05V4.6c0-.7.55-1.25 1.25-1.25h2.85l1.2 1.4h5.65c.7 0 1.25.55 1.25 1.25v1.15H4.35L3.2 12.05H1.9Z'
+        : 'M1.9 12.05V4.6c0-.7.55-1.25 1.25-1.25h2.85l1.2 1.4h5.65c.7 0 1.25.55 1.25 1.25v6.05c0 .7-.55 1.25-1.25 1.25H3.15c-.7 0-1.25-.55-1.25-1.25Z',
     }),
-  ])
+    open
+      ? h('path', { key: 'flap', d: 'M4.35 13.4l1.2-4.85h8.55l-1.2 4.85H4.35Z' })
+      : null,
+  ], 1.5)
 }
+
+/** Page outline and its folded corner, shared by every document glyph. */
+const IDE_PAGE_PATH = 'M3.6 2.1h5l3.6 3.5v7.8c0 .4-.3.7-.7.7H3.6a.7.7 0 0 1-.7-.7V2.8c0-.4.3-.7.7-.7Z'
+const IDE_PAGE_FOLD = 'M8.6 2.3v3.5h3.5'
 
 /** Colour families a file's extension maps to, for the tab and tree tint. */
 function ideTintOf(lang) {
@@ -1615,26 +1737,24 @@ function ideTintOf(lang) {
   return '#8b95a5'
 }
 
-/** Document glyph tinted by language, with the extension initials when short. */
+/** Document glyph: a 1.5px outline in the language tint, like the folder. */
 function IdeFileIcon({ lang, size = 14 }) {
   const tint = ideTintOf(lang)
   return h('svg', {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: tint,
+    strokeWidth: 1.5,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
     'aria-hidden': 'true',
     focusable: 'false',
     style: { display: 'block' },
   }, [
-    h('path', {
-      key: 'page',
-      d: 'M3.4 2.2h5.2l3.9 3.8v7.8c0 .4-.3.7-.7.7H3.4a.7.7 0 0 1-.7-.7V2.9c0-.4.3-.7.7-.7Z',
-      fill: tint,
-      opacity: 0.18,
-      stroke: tint,
-      strokeWidth: 1.1,
-    }),
-    h('path', { key: 'fold', d: 'M8.6 2.4v3.6h3.7', stroke: tint, strokeWidth: 1.1, opacity: 0.9 }),
+    h('path', { key: 'page', d: IDE_PAGE_PATH }),
+    h('path', { key: 'fold', d: IDE_PAGE_FOLD }),
   ])
 }
 
@@ -1657,7 +1777,7 @@ function ideJavaTint(kind) {
   return '#8b95a5'
 }
 
-/** Java type badge: a filled circle carrying IDEA's type letter. */
+/** Java type badge: a 1.5px ring carrying IDEA's type letter. */
 function IdeJavaIcon({ kind, size = 16 }) {
   const tint = ideJavaTint(kind)
   const letter = ideJavaLetter(kind)
@@ -1665,19 +1785,20 @@ function IdeJavaIcon({ kind, size = 16 }) {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
+    fill: 'none',
     'aria-hidden': 'true',
     focusable: 'false',
     style: { display: 'block' },
   }, [
-    h('circle', { key: 'badge', cx: 8, cy: 8, r: 6.4, fill: tint }),
+    h('circle', { key: 'ring', cx: 8, cy: 8, r: 6.1, stroke: tint, strokeWidth: 1.5 }),
     h('text', {
       key: 'letter',
       x: 8,
-      y: 10.7,
+      y: 10.55,
       textAnchor: 'middle',
-      fontSize: letter === '@' ? 7.4 : 8.2,
-      fontWeight: 700,
-      fill: '#ffffff',
+      fontSize: letter === '@' ? 6.9 : 7.7,
+      fontWeight: 600,
+      fill: tint,
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
     }, letter),
   ])
@@ -1701,26 +1822,36 @@ function IdeFileBadgeIcon({ letter, tint, size = 16 }) {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
+    fill: 'none',
     'aria-hidden': 'true',
     focusable: 'false',
     style: { display: 'block' },
   }, [
     h('path', {
       key: 'page',
-      d: 'M3.4 2.2h5.2l3.9 3.8v7.8c0 .4-.3.7-.7.7H3.4a.7.7 0 0 1-.7-.7V2.9c0-.4.3-.7.7-.7Z',
-      fill: tint,
-      opacity: 0.18,
+      d: IDE_PAGE_PATH,
       stroke: tint,
-      strokeWidth: 1.1,
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
     }),
-    h('path', { key: 'fold', d: 'M8.6 2.4v3.6h3.7', stroke: tint, strokeWidth: 1.1, opacity: 0.9 }),
+    h('path', {
+      key: 'fold',
+      d: IDE_PAGE_FOLD,
+      stroke: tint,
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    }),
+    // Centred in the page: a corner letter collided with the outline at tree
+    // sizes and read as a smudge.
     h('text', {
       key: 'badge',
-      x: 12.1,
-      y: 13.9,
-      textAnchor: 'end',
-      fontSize: 6.4,
-      fontWeight: 700,
+      x: 8,
+      y: 10.9,
+      textAnchor: 'middle',
+      fontSize: 6.8,
+      fontWeight: 600,
       fill: tint,
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
     }, letter),
@@ -1732,6 +1863,9 @@ function IdeFileBadgeIcon({ letter, tint, size = 16 }) {
  * the same editor, so neither chooses its own.
  */
 const IDE_ENTRY_ICON_SIZE = 21
+
+/** Folders sit at 20px: one pixel slimmer than the file badge, by request. */
+const IDE_FOLDER_ICON_SIZE = 20
 
 /**
  * The icon for one file, by what it is: a Java type keeps its declaration
@@ -2539,6 +2673,10 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    /** The file-tree context menu, or null: `{ path, isDir, x, y }`. */
+    treeMenu: null,
+    /** A file-tree overlay (diff or picker), or null. */
+    treePopup: null,
     /** A file the tree should scroll to: `{ path, stamp }`, or null. */
     revealFile: null,
     /** Files shown with Git annotate: `path → true`. */
@@ -3312,6 +3450,16 @@ function ideCreateStore(refs) {
     patch({ codeMenu: menu === null || menu === undefined ? null : menu })
   }
 
+  /** Open or close the file-tree context menu. */
+  function setTreeMenu(menu) {
+    patch({ treeMenu: menu === null || menu === undefined ? null : menu })
+  }
+
+  /** Open or close the file-tree overlay (difference text or a picker). */
+  function setTreePopup(popup) {
+    patch({ treePopup: popup === null || popup === undefined ? null : popup })
+  }
+
   /** Turn the Git annotate gutter on or off for one file. */
   function toggleAnnotate(path) {
     if (typeof path !== 'string' || path === '') return
@@ -3581,6 +3729,8 @@ function ideCreateStore(refs) {
     closeReadOnly,
     closeUnmodified,
     setTabMenu,
+    setTreeMenu,
+    setTreePopup,
     setCodeMenu,
     toggleAnnotate,
     closeOtherTabs,
@@ -3647,6 +3797,22 @@ function ideRequestJavaKinds(root, paths, done) {
   })
 }
 
+/**
+ * Directory listing order: folders first, then files, each group by name.
+ *
+ * The Host lists a directory the way the filesystem hands it over; an IDE
+ * groups directories ahead of files so the shape of a module stays readable.
+ */
+function ideTreeOrder(left, right) {
+  const leftDir = left?.type === 'directory' ? 0 : 1
+  const rightDir = right?.type === 'directory' ? 0 : 1
+  if (leftDir !== rightDir) return leftDir - rightDir
+  return String(left?.name ?? '').localeCompare(String(right?.name ?? ''), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
 /** One tree row. */
 function IdeTreeRow({ entry, depth, node, state, store, tr }) {
   const isDir = entry.type === 'directory'
@@ -3666,10 +3832,14 @@ function IdeTreeRow({ entry, depth, node, state, store, tr }) {
       if (isDir) store.toggleDir(entry.path)
       else store.openFile(entry.path)
     },
+    onContextMenu: (event) => {
+      event.preventDefault()
+      store.setTreeMenu({ path: entry.path, isDir, x: event.clientX, y: event.clientY })
+    },
   }, [
     h('span', { key: 'tw', className: 'iw-twisty' }, isDir ? h(IdeChevron, { open, size: 12 }) : null),
     h('span', { key: 'ic', className: 'iw-icon' }, isDir
-      ? h(IdeFolderIcon, { open, size: IDE_ENTRY_ICON_SIZE })
+      ? h(IdeFolderIcon, { open, size: IDE_FOLDER_ICON_SIZE })
       : h(IdeEntryIcon, { name: entry.name, kind: javaKind })),
     h('span', { key: 'nm', className: 'iw-name' }, entry.name),
   ])
@@ -3700,8 +3870,8 @@ function IdeTreeBranch({ path, depth, state, store, tr, rows }) {
     rows.push(h('div', { key: 'empty', className: 'iw-hint' }, tr('emptyDir')))
     return null
   }
-  for (const entry of entries) {
-    if (ideIsHiddenEntry(entry)) continue
+  const ordered = entries.filter((entry) => !ideIsHiddenEntry(entry)).sort(ideTreeOrder)
+  for (const entry of ordered) {
     rows.push(h(IdeTreeRow, {
       key: entry.path,
       entry,
@@ -3938,6 +4108,315 @@ function IdeResizer({ store, state, tr }) {
     title: tr('treeWidthHint'),
     onPointerDown: begin,
   })
+}
+
+/* ── the file context menu ───────────────────────────────────────────── */
+
+/** POST one Host route and unwrap its value. */
+async function ideTreeRoute(name, body) {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  const url = new URL(`dsh-ide/${name}`, base).href
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    })
+    const parsed = await response.json().catch(() => null)
+    if (parsed === null) {
+      // An unknown route is answered by the carrier, not by this plugin: the
+      // running Host predates the route.
+      if (response.status === 404 || response.status === 405) {
+        return { ok: false, error: 'route-missing' }
+      }
+      return { ok: false, error: `http-${response.status}` }
+    }
+    if (parsed.ok !== true) {
+      return { ok: false, error: parsed.error?.code ?? 'route-failed', message: parsed.error?.message ?? '' }
+    }
+    return { ok: true, value: parsed.value }
+  } catch {
+    return { ok: false, error: 'network' }
+  }
+}
+
+/** Put text on the clipboard, falling back to a selection copy. */
+function ideCopyToClipboard(text) {
+  const clip = globalThis.navigator?.clipboard
+  if (clip !== undefined && typeof clip.writeText === 'function') {
+    void clip.writeText(text).catch(() => undefined)
+    return true
+  }
+  try {
+    const area = document.createElement('textarea')
+    area.value = text
+    area.setAttribute('readonly', '')
+    area.style.position = 'fixed'
+    area.style.opacity = '0'
+    document.body.append(area)
+    area.select()
+    document.execCommand('copy')
+    area.remove()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Absolute path of one workspace-relative path. */
+function ideAbsolutePath(root, path) {
+  const base = String(root ?? '').replace(/\/+$/, '')
+  return path === '' ? base : `${base}/${path}`
+}
+
+/** Copy a value and say so in the banner. */
+function ideCopyWithNotice(store, tr, text) {
+  if (!ideCopyToClipboard(text)) {
+    store.setNotice(tr('treeCopyFailed'))
+    return
+  }
+  const shown = text.length > 90 ? `${text.slice(0, 87)}…` : text
+  store.setNotice(`${tr('treeCopied')}: ${shown}`)
+}
+
+/** Open a path through the Host: Finder, Terminal, or the default app. */
+function ideOpenExternally(store, tr, root, path, mode) {
+  void ideTreeRoute('open', { workspaceRoot: root, path, mode }).then((result) => {
+    if (result.ok !== true) store.setNotice(`${tr('treeOpenFailed')}: ${ideRouteErrorText(tr, result)}`)
+  })
+}
+
+/** The banner text for one failed route call. */
+function ideRouteErrorText(tr, result) {
+  if (result.error === 'route-missing') return tr('treeRouteMissing')
+  return String(result.message || result.error)
+}
+
+/** Fetch one file's patch and show it in the overlay. */
+function ideShowPatch(store, tr, root, path, base, target) {
+  void ideTreeRoute('patch', { workspaceRoot: root, path, base, target }).then((result) => {
+    if (result.ok !== true) {
+      store.setNotice(`${tr('treeDiffFailed')}: ${ideRouteErrorText(tr, result)}`)
+      return
+    }
+    const value = result.value ?? {}
+    if (value.untracked === true) {
+      store.setNotice(tr('treeUntracked'))
+      return
+    }
+    // Comparing a commit shows `<sha>^` as the base; the caret is noise.
+    const reference = typeof value.base === 'string' && value.base !== 'HEAD'
+      ? value.base.replace(/\^$/, '')
+      : ''
+    const title = `${ideBasename(path)}${reference === '' ? '' : ` · ${reference}`}`
+    store.setTreePopup({
+      kind: 'diff',
+      title,
+      text: typeof value.text === 'string' ? value.text : '',
+      truncated: value.truncated === true,
+    })
+  })
+}
+
+/** Commits that touched a file, shown in the picker. */
+function ideShowLog(store, tr, root, path, mode) {
+  void ideTreeRoute('log', { workspaceRoot: root, path }).then((result) => {
+    if (result.ok !== true) {
+      store.setNotice(`${tr('treeLogFailed')}: ${ideRouteErrorText(tr, result)}`)
+      return
+    }
+    const rows = Array.isArray(result.value?.rows) ? result.value.rows : []
+    if (rows.length === 0) {
+      store.setNotice(tr('treeNoHistory'))
+      return
+    }
+    store.setTreePopup({ kind: 'pick', mode, path, title: `${ideBasename(path)} · ${tr('treeHistory')}`, rows })
+  })
+}
+
+/** Branches and tags of the repository, shown in the picker. */
+function ideShowRefs(store, tr, root, path) {
+  void ideTreeRoute('refs', { workspaceRoot: root }).then((result) => {
+    if (result.ok !== true) {
+      store.setNotice(`${tr('treeRefsFailed')}: ${ideRouteErrorText(tr, result)}`)
+      return
+    }
+    const rows = Array.isArray(result.value?.rows) ? result.value.rows : []
+    if (rows.length === 0) {
+      store.setNotice(tr('treeNoRefs'))
+      return
+    }
+    store.setTreePopup({ kind: 'pick', mode: 'ref', path, title: `${ideBasename(path)} · ${tr('treeCompareRef')}`, rows })
+  })
+}
+
+/** The file tree's context menu. */
+function IdeTreeMenu({ store, state, tr }) {
+  const menu = state.treeMenu
+  if (menu === null || menu === undefined) return null
+  const path = menu.path
+  const isDir = menu.isDir === true
+  const root = state.rootPath
+  const close = () => store.setTreeMenu(null)
+  const then = (action) => () => {
+    close()
+    action()
+  }
+  const items = []
+  if (!isDir) {
+    items.push({ key: 'open', icon: IdeFileIcon, label: tr('treeOpen'), run: then(() => store.openFile(path)) })
+  }
+  items.push({ key: 'reveal', icon: IdeFolderIcon, label: tr('treeReveal'), run: then(() => ideOpenExternally(store, tr, root, path, 'reveal')) })
+  items.push({ key: 'terminal', icon: IdeExternalIcon, label: tr('treeTerminal'), run: then(() => ideOpenExternally(store, tr, root, path, 'terminal')) })
+  items.push({ key: 'sep1', separator: true })
+  if (!isDir) {
+    items.push({
+      key: 'copy-content',
+      icon: IdeCopyIcon,
+      label: tr('treeCopyContent'),
+      run: then(() => {
+        void ideTreeRoute('text', { workspaceRoot: root, path }).then((result) => {
+          if (result.ok !== true) {
+            store.setNotice(`${tr('treeCopyFailed')}: ${ideRouteErrorText(tr, result)}`)
+            return
+          }
+          const value = result.value ?? {}
+          if (value.truncated === true) store.setNotice(tr('treeTruncated'))
+          ideCopyWithNotice(store, tr, typeof value.text === 'string' ? value.text : '')
+        })
+      }),
+    })
+  }
+  items.push({ key: 'copy-absolute', icon: IdeCopyIcon, label: tr('treeCopyPath'), run: then(() => ideCopyWithNotice(store, tr, ideAbsolutePath(root, path))) })
+  items.push({ key: 'copy-relative', icon: IdeCopyIcon, label: tr('treeCopyRelative'), run: then(() => ideCopyWithNotice(store, tr, path)) })
+  if (!isDir && /\.(java|kt|kts|scala|groovy)$/i.test(path)) {
+    items.push({ key: 'copy-fqn', icon: IdeLinkIcon, label: tr('treeCopyFqn'), run: then(() => ideCopyWithNotice(store, tr, ideFqnOf(path))) })
+  }
+  if (!isDir) {
+    items.push({ key: 'sep2', separator: true })
+    items.push({ key: 'git', section: tr('treeGitSection') })
+    items.push({
+      key: 'annotate',
+      icon: IdeDotIcon,
+      label: tr('treeAnnotate'),
+      run: then(() => {
+        store.openFile(path)
+        if ((store.getState().annotate ?? {})[path] !== true) store.toggleAnnotate(path)
+      }),
+    })
+    items.push({ key: 'diff', icon: IdeLayersIcon, label: tr('treeDiff'), run: then(() => ideShowPatch(store, tr, root, path, 'HEAD', '')) })
+    items.push({ key: 'history', icon: IdeClockIcon, label: tr('treeHistory'), run: then(() => ideShowLog(store, tr, root, path, 'history')) })
+    items.push({ key: 'revision', icon: IdeArrowLeftIcon, label: tr('treeCompareRevision'), run: then(() => ideShowLog(store, tr, root, path, 'revision')) })
+    items.push({ key: 'ref', icon: IdeStackIcon, label: tr('treeCompareRef'), run: then(() => ideShowRefs(store, tr, root, path)) })
+  }
+  const rows = items.map((item) => {
+    if (item.separator === true) return h('div', { key: item.key, className: 'iw-menu-sep' })
+    if (item.section !== undefined) return h('div', { key: item.key, className: 'iw-menu-section' }, item.section)
+    return h('button', {
+      key: item.key,
+      type: 'button',
+      role: 'menuitem',
+      className: 'iw-menu-item',
+      onClick: item.run,
+    }, [
+      h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+      h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+    ])
+  })
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: close,
+      onContextMenu: (event) => {
+        event.preventDefault()
+        close()
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('treeMenuLabel'),
+      style: {
+        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 300))}px`,
+        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 520))}px`,
+      },
+      onPointerDown: (event) => event.stopPropagation(),
+    }, rows)),
+  ])
+}
+
+/** The difference view and the revision pickers used by the tree menu. */
+function IdeTreePopup({ store, state, tr }) {
+  const popup = state.treePopup
+  if (popup === null || popup === undefined) return null
+  const close = () => store.setTreePopup(null)
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      close()
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [store])
+  const card = (children) => h('div', {
+    key: 'backdrop',
+    className: 'iw-overlay',
+    onPointerDown: close,
+    onContextMenu: (event) => {
+      event.preventDefault()
+      close()
+    },
+  }, h('div', {
+    key: 'card',
+    className: 'iw-pop',
+    onPointerDown: (event) => event.stopPropagation(),
+  }, children))
+  const head = (title) => h('div', { key: 'head', className: 'iw-pop-head' }, [
+    h('span', { key: 't', className: 'iw-pop-name' }, title),
+    h('button', { key: 'x', type: 'button', className: 'iw-pop-close', title: tr('close'), onClick: close }, '\u00d7'),
+  ])
+  if (popup.kind === 'diff') {
+    const lines = String(popup.text ?? '').split('\n')
+    return card([
+      head(`${popup.title}${popup.truncated === true ? ` · ${tr('treeTruncated')}` : ''}`),
+      h('div', { key: 'body', className: 'iw-diff-body' }, lines.length === 1 && lines[0] === ''
+        ? h('div', { key: 'empty', className: 'iw-hint' }, tr('treeNoDiff'))
+        : lines.map((line, index) => h('div', {
+          key: index,
+          className: `iw-diff-line${line.startsWith('+') ? ' add' : line.startsWith('-') ? ' del' : line.startsWith('@@') ? ' hunk' : ''}`,
+        }, line === '' ? ' ' : line))),
+    ])
+  }
+  const pick = (row) => {
+    close()
+    const path = popup.path
+    if (popup.mode === 'ref') ideShowPatch(store, tr, state.rootPath, path, row.name, '')
+    else if (popup.mode === 'revision') ideShowPatch(store, tr, state.rootPath, path, row.sha, '')
+    else ideShowPatch(store, tr, state.rootPath, path, `${row.sha}^`, row.sha)
+  }
+  return card([
+    head(popup.title),
+    h('div', { key: 'body', className: 'iw-pick-body' }, popup.rows.map((row) => h('button', {
+      key: popup.mode === 'ref' ? row.name : row.sha,
+      type: 'button',
+      className: 'iw-pick-row',
+      onClick: () => pick(row),
+    }, popup.mode === 'ref'
+      ? [
+        h('span', { key: 'main', className: 'iw-pick-main' }, row.name),
+        h('span', { key: 'sub', className: 'iw-pick-sub' }, row.kind === 'tag' ? tr('treeTag') : tr('treeBranch')),
+      ]
+      : [
+        h('span', { key: 'main', className: 'iw-pick-main' }, `${row.sha} ${row.subject}`),
+        h('span', { key: 'sub', className: 'iw-pick-sub' }, `${row.author} · ${row.date}`),
+      ]))),
+  ])
 }
 
 // ---- 30-code.js ----------------------------------------------------------
@@ -5546,6 +6025,18 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    h(IdeTreeMenu, {
+      key: 'treemenu',
+      store,
+      state,
+      tr,
+    }),
+    h(IdeTreePopup, {
+      key: 'treepopup',
+      store,
+      state,
+      tr,
+    }),
     h(IdeGutterMenu, {
       key: 'guttermenu',
       store,

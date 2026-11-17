@@ -1147,6 +1147,72 @@ html.iw-select-code .iw-code .iw-vision {
   color: var(--dsw-alias-label-secondary, inherit);
 }
 .iw-menu-label { flex: 1 1 auto; }
+/* A labelled group inside a menu (the tree menu's Git section). */
+.iw-menu-section {
+  padding: 8px 9px 3px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* Centered overlay for the tree menu's difference view and pickers. */
+.iw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.iw-overlay .iw-pop {
+  position: static;
+  width: min(940px, 92vw);
+  max-height: min(76vh, 860px);
+}
+.iw-overlay .iw-diff-body,
+.iw-overlay .iw-pick-body { flex: 1 1 auto; min-height: 0; }
+.iw-pop-close {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 15px;
+  line-height: 18px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.iw-pop-close:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
+.iw-diff-body {
+  overflow: auto;
+  padding: 6px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.iw-diff-line { padding: 0 12px; white-space: pre; }
+.iw-diff-line.add { background: rgba(80, 180, 110, 0.16); }
+.iw-diff-line.del { background: rgba(220, 90, 90, 0.16); }
+.iw-diff-line.hunk { color: var(--dsw-alias-label-secondary, #98a0ad); }
+.iw-pick-body { overflow: auto; padding: 4px; }
+.iw-pick-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-pick-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.08)); }
+.iw-pick-main { font-family: ui-monospace, monospace; font-size: 12.5px; }
+.iw-pick-sub { color: var(--dsw-alias-label-secondary, #98a0ad); font-size: 11.5px; }
+
 .iw-menu-sep {
   height: 0.5px;
   margin: 5px 8px;

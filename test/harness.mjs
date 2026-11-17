@@ -1424,6 +1424,24 @@ check(narrow.record.sidebarToggles === undefined, 'a narrow layout never restore
 narrowInject.store.dispose()
 sandbox.innerWidth = 1440
 
+// ---- tree ordering ---------------------------------------------------------
+{
+  const order = new Function(`${sourceFunction('ideTreeOrder', '20-tree.js')}\nreturn ideTreeOrder`)()
+  const entries = [
+    { name: 'pom.xml', type: 'file' },
+    { name: 'src', type: 'directory' },
+    { name: 'AGENTS.md', type: 'file' },
+    { name: 'docs', type: 'directory' },
+    { name: 'client.js', type: 'file' },
+  ]
+  const names = entries.slice().sort(order).map((entry) => entry.name)
+  check(names.join(',') === 'docs,src,AGENTS.md,client.js,pom.xml', 'folders sort before files, each group by name', names.join(','))
+  const caseFold = [{ name: 'b.js', type: 'file' }, { name: 'A.js', type: 'file' }].sort(order).map((entry) => entry.name)
+  check(caseFold.join(',') === 'A.js,b.js', 'names sort case-insensitively', caseFold.join(','))
+  const numeric = [{ name: 'file10.txt', type: 'file' }, { name: 'file2.txt', type: 'file' }].sort(order).map((entry) => entry.name)
+  check(numeric.join(',') === 'file2.txt,file10.txt', 'numbers sort naturally', numeric.join(','))
+}
+
 store.dispose()
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)

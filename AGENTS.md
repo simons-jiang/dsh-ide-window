@@ -77,6 +77,11 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/blame` | 每行的最后提交人 | `git blame --line-porcelain`，返回 `{line, author, time}` |
 | `/dsh-ide/doctor` | 依赖自检 | `ctx.get('lsp')` 是否挂载，返回 `{lsp}`；引导页据此弹出 |
 | `/dsh-ide/kinds` | Java 声明类型（树图标） | 读文件头 8 KB 解析 `class/interface/enum/record/@interface`，一次最多 300 个路径 |
+| `/dsh-ide/open` | 文件树「打开于」 | `reveal`（Finder `open -R`）/ `terminal`（`open -a Terminal`）/ `external`（默认应用）；非 macOS 退 `xdg-open` |
+| `/dsh-ide/log` | 文件的提交历史 | `git log --date=short --pretty=format:%h%x09%an%x09%ad%x09%s -n ≤100 -- <path>` |
+| `/dsh-ide/refs` | 分支与标签 | `git for-each-ref refs/heads refs/tags`，返回 `{name, kind}` |
+| `/dsh-ide/patch` | 差异文本 | `git diff -U3 <base> [target] -- <path>`；根提交回退 `git show --patch`；未跟踪文件返回 `untracked` |
+| `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
 
 ### 3.3 用到的 DSH 槽位
 
@@ -96,10 +101,11 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 ## 四、功能清单（都已实现并自测）
 
 ### 4.1 工作区与代码视图
-- 文件树：按需展开、筛选、拖宽、实时刷新、VCS 改动条
-- 文件图标：`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 徽标（宿主 `/dsh-ide/kinds` 读文件头，按目录批量、客户端缓存）；其他文件是文档图标 + 右下角类型首字母
+- 文件树：按需展开、筛选、拖宽、实时刷新、VCS 改动条；目录顺序按 IDEA：**文件夹在前、文件在后**，组内按名称（不区分大小写、数字自然排序：`file2` < `file10`）
+- 文件图标：全部是 **1.5px 线性描边**、无填充——文件夹 20px（展开时前片翻开）；`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 的圆环徽标（宿主 `/dsh-ide/kinds` 读文件头，按目录批量、客户端缓存）；其他文件是文档轮廓 + 居中的类型首字母，字母用语言色（`ideTintOf`）；文件图标 21px
 - 文件树工具栏：**定位到当前文件**（展开祖先目录、滚动并高亮）/ **展开全部**（逐层加载，上限 200 个目录，超限提示）/ **收起全部**
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
+- **文件树右键菜单**：在代码工作区打开 / 在 Finder 中显示 / 在终端中打开 / 复制文件内容、绝对路径、仓库相对路径、限定类名；**Git 分组**：使用 Git 追溯注解、显示差异（叠加层展示 unified diff）、显示历史记录、与修订比较…（最近提交列表）、与分支或标签比较…（分支/标签列表）；差异弹层与选择器用 `iw-overlay`，Esc 关闭
 - 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带），`git commit` 不改内容也能更新
 - 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）
 - DSH 自带的「已编辑 N 个文件」卡片：点**文件行**直接在本插件工作区打开（捕获阶段拦截 + 行内隐藏的绝对路径；卡片头部仍打开官方 review）

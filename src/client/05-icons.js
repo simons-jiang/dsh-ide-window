@@ -4,14 +4,14 @@
  */
 
 /** Shared wrapping element: 16px box, stroke-only body. */
-function ideSvg(size, children) {
+function ideSvg(size, children, strokeWidth = 1.3) {
   return h('svg', {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
     fill: 'none',
     stroke: 'currentColor',
-    strokeWidth: 1.3,
+    strokeWidth,
     strokeLinecap: 'round',
     strokeLinejoin: 'round',
     'aria-hidden': 'true',
@@ -29,26 +29,28 @@ function IdeChevron({ open, size = 12 }) {
   ])
 }
 
-/** Folder glyph, filled in the accent tone. */
+/**
+ * Folder glyph: a 1.5px line folder that shares the language of the shipped
+ * icons. Expanded folders open the front flap instead of dropping into a
+ * different shape, so the tree keeps one silhouette while it unfolds.
+ */
 function IdeFolderIcon({ open, size = 14 }) {
-  return h('svg', {
-    width: size,
-    height: size,
-    viewBox: '0 0 16 16',
-    'aria-hidden': 'true',
-    focusable: 'false',
-    style: { display: 'block' },
-  }, [
+  return ideSvg(size, [
     h('path', {
       key: 'body',
       d: open
-        ? 'M1.8 12.4V4.4c0-.6.5-1.1 1.1-1.1h3.1l1.3 1.5h5.8c.6 0 1.1.5 1.1 1.1v1H4.3l-1.4 5.5H1.8Z'
-        : 'M1.8 12.4V4.4c0-.6.5-1.1 1.1-1.1h3.1l1.3 1.5h5.8c.6 0 1.1.5 1.1 1.1v6.5c0 .6-.5 1.1-1.1 1.1H2.9c-.6 0-1.1-.5-1.1-1.1Z',
-      fill: 'currentColor',
-      opacity: open ? 0.95 : 0.8,
+        ? 'M1.9 12.05V4.6c0-.7.55-1.25 1.25-1.25h2.85l1.2 1.4h5.65c.7 0 1.25.55 1.25 1.25v1.15H4.35L3.2 12.05H1.9Z'
+        : 'M1.9 12.05V4.6c0-.7.55-1.25 1.25-1.25h2.85l1.2 1.4h5.65c.7 0 1.25.55 1.25 1.25v6.05c0 .7-.55 1.25-1.25 1.25H3.15c-.7 0-1.25-.55-1.25-1.25Z',
     }),
-  ])
+    open
+      ? h('path', { key: 'flap', d: 'M4.35 13.4l1.2-4.85h8.55l-1.2 4.85H4.35Z' })
+      : null,
+  ], 1.5)
 }
+
+/** Page outline and its folded corner, shared by every document glyph. */
+const IDE_PAGE_PATH = 'M3.6 2.1h5l3.6 3.5v7.8c0 .4-.3.7-.7.7H3.6a.7.7 0 0 1-.7-.7V2.8c0-.4.3-.7.7-.7Z'
+const IDE_PAGE_FOLD = 'M8.6 2.3v3.5h3.5'
 
 /** Colour families a file's extension maps to, for the tab and tree tint. */
 function ideTintOf(lang) {
@@ -64,26 +66,24 @@ function ideTintOf(lang) {
   return '#8b95a5'
 }
 
-/** Document glyph tinted by language, with the extension initials when short. */
+/** Document glyph: a 1.5px outline in the language tint, like the folder. */
 function IdeFileIcon({ lang, size = 14 }) {
   const tint = ideTintOf(lang)
   return h('svg', {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: tint,
+    strokeWidth: 1.5,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
     'aria-hidden': 'true',
     focusable: 'false',
     style: { display: 'block' },
   }, [
-    h('path', {
-      key: 'page',
-      d: 'M3.4 2.2h5.2l3.9 3.8v7.8c0 .4-.3.7-.7.7H3.4a.7.7 0 0 1-.7-.7V2.9c0-.4.3-.7.7-.7Z',
-      fill: tint,
-      opacity: 0.18,
-      stroke: tint,
-      strokeWidth: 1.1,
-    }),
-    h('path', { key: 'fold', d: 'M8.6 2.4v3.6h3.7', stroke: tint, strokeWidth: 1.1, opacity: 0.9 }),
+    h('path', { key: 'page', d: IDE_PAGE_PATH }),
+    h('path', { key: 'fold', d: IDE_PAGE_FOLD }),
   ])
 }
 
@@ -106,7 +106,7 @@ function ideJavaTint(kind) {
   return '#8b95a5'
 }
 
-/** Java type badge: a filled circle carrying IDEA's type letter. */
+/** Java type badge: a 1.5px ring carrying IDEA's type letter. */
 function IdeJavaIcon({ kind, size = 16 }) {
   const tint = ideJavaTint(kind)
   const letter = ideJavaLetter(kind)
@@ -114,19 +114,20 @@ function IdeJavaIcon({ kind, size = 16 }) {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
+    fill: 'none',
     'aria-hidden': 'true',
     focusable: 'false',
     style: { display: 'block' },
   }, [
-    h('circle', { key: 'badge', cx: 8, cy: 8, r: 6.4, fill: tint }),
+    h('circle', { key: 'ring', cx: 8, cy: 8, r: 6.1, stroke: tint, strokeWidth: 1.5 }),
     h('text', {
       key: 'letter',
       x: 8,
-      y: 10.7,
+      y: 10.55,
       textAnchor: 'middle',
-      fontSize: letter === '@' ? 7.4 : 8.2,
-      fontWeight: 700,
-      fill: '#ffffff',
+      fontSize: letter === '@' ? 6.9 : 7.7,
+      fontWeight: 600,
+      fill: tint,
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
     }, letter),
   ])
@@ -150,26 +151,36 @@ function IdeFileBadgeIcon({ letter, tint, size = 16 }) {
     width: size,
     height: size,
     viewBox: '0 0 16 16',
+    fill: 'none',
     'aria-hidden': 'true',
     focusable: 'false',
     style: { display: 'block' },
   }, [
     h('path', {
       key: 'page',
-      d: 'M3.4 2.2h5.2l3.9 3.8v7.8c0 .4-.3.7-.7.7H3.4a.7.7 0 0 1-.7-.7V2.9c0-.4.3-.7.7-.7Z',
-      fill: tint,
-      opacity: 0.18,
+      d: IDE_PAGE_PATH,
       stroke: tint,
-      strokeWidth: 1.1,
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
     }),
-    h('path', { key: 'fold', d: 'M8.6 2.4v3.6h3.7', stroke: tint, strokeWidth: 1.1, opacity: 0.9 }),
+    h('path', {
+      key: 'fold',
+      d: IDE_PAGE_FOLD,
+      stroke: tint,
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    }),
+    // Centred in the page: a corner letter collided with the outline at tree
+    // sizes and read as a smudge.
     h('text', {
       key: 'badge',
-      x: 12.1,
-      y: 13.9,
-      textAnchor: 'end',
-      fontSize: 6.4,
-      fontWeight: 700,
+      x: 8,
+      y: 10.9,
+      textAnchor: 'middle',
+      fontSize: 6.8,
+      fontWeight: 600,
       fill: tint,
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
     }, letter),
@@ -181,6 +192,9 @@ function IdeFileBadgeIcon({ letter, tint, size = 16 }) {
  * the same editor, so neither chooses its own.
  */
 const IDE_ENTRY_ICON_SIZE = 21
+
+/** Folders sit at 20px: one pixel slimmer than the file badge, by request. */
+const IDE_FOLDER_ICON_SIZE = 20
 
 /**
  * The icon for one file, by what it is: a Java type keeps its declaration

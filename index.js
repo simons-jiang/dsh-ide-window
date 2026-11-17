@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { open as openFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 
@@ -37,6 +37,11 @@ const ROUTE_STATUS = '/dsh-ide/status'
 const ROUTE_BLAME = '/dsh-ide/blame'
 const ROUTE_DOCTOR = '/dsh-ide/doctor'
 const ROUTE_KINDS = '/dsh-ide/kinds'
+const ROUTE_OPEN = '/dsh-ide/open'
+const ROUTE_LOG = '/dsh-ide/log'
+const ROUTE_REFS = '/dsh-ide/refs'
+const ROUTE_PATCH = '/dsh-ide/patch'
+const ROUTE_TEXT = '/dsh-ide/text'
 
 /** Largest number of content matches returned by one grep. */
 const MAX_GREP_MATCHES = 200
@@ -384,6 +389,161 @@ async function diffWorkspace(payload) {
     if (hunks.length >= MAX_DIFF_HUNKS) break
   }
   return { untracked: false, hunks }
+}
+
+
+/** Largest number of commits one log request returns. */
+const MAX_LOG_COMMITS = 100
+
+/** Largest patch text one request returns, in characters. */
+const MAX_PATCH_CHARS = 400000
+
+/** Largest file text one copy request returns, in characters. */
+const MAX_COPY_CHARS = 512000
+
+/**
+ * Validate the workspace root and the relative path a route may touch.
+ *
+ * `rel` may be empty for routes that speak about the repository itself.
+ */
+function scopeOf(payload) {
+  const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot.trim() : ''
+  const rel = typeof payload?.path === 'string' ? payload.path.trim() : ''
+  if (root === '' || !root.startsWith('/')) {
+    throw new RouteError(400, 'invalid-arguments', 'workspaceRoot must be absolute')
+  }
+  if (rel !== '' && (rel.startsWith('/') || rel.split('/').includes('..'))) {
+    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
+  }
+  return { root: root.replace(/\/+$/, ''), rel }
+}
+
+/** Parse `git log --pretty=format:%h%x09%an%x09%ad%x09%s` output. */
+export function parseCommitLog(text) {
+  const rows = []
+  for (const line of String(text ?? '').split('\n')) {
+    if (line.trim() === '') continue
+    const [sha, author, date, subject] = line.split('\t')
+    if (typeof sha !== 'string' || sha === '') continue
+    rows.push({ sha, author: author ?? '', date: date ?? '', subject: subject ?? '' })
+  }
+  return rows
+}
+
+/** Parse `git for-each-ref --format=%(refname:short)%09%(objecttype)` output. */
+export function parseGitRefs(text) {
+  const rows = []
+  for (const line of String(text ?? '').split('\n')) {
+    if (line.trim() === '') continue
+    const [name, type] = line.split('\t')
+    if (typeof name !== 'string' || name === '') continue
+    rows.push({ name, kind: type === 'tag' ? 'tag' : 'branch' })
+  }
+  return rows
+}
+
+/** The ways a path may be opened outside the panel. */
+const OPEN_MODES = new Set(['reveal', 'terminal', 'external'])
+
+/** Reveal a file in Finder, open its directory in a terminal, or hand it over. */
+export async function openWorkspace(payload) {
+  const { root, rel } = scopeOf(payload)
+  const mode = typeof payload?.mode === 'string' ? payload.mode : ''
+  if (rel === '' || !OPEN_MODES.has(mode)) {
+    throw new RouteError(400, 'invalid-arguments', 'path and a known mode are required')
+  }
+  const target = join(root, rel)
+  const isDirectory = existsSync(target) ? statSync(target).isDirectory() : false
+  let command = 'open'
+  let args
+  if (process.platform === 'darwin') {
+    args = mode === 'reveal'
+      ? (isDirectory ? [target] : ['-R', target])
+      : mode === 'terminal'
+        ? ['-a', 'Terminal', isDirectory ? target : dirname(target)]
+        : [target]
+  } else {
+    command = 'xdg-open'
+    args = mode === 'terminal' ? [] : [target]
+  }
+  if (args.length === 0) {
+    throw new RouteError(400, 'unsupported', 'opening a terminal is only supported on macOS')
+  }
+  const result = await runCommand(command, args, root)
+  if (result.code !== 0) throw new RouteError(500, 'open-failed', result.stderr.trim() || 'open failed')
+  return { ok: true }
+}
+
+/** Recent commits that touched one file. */
+export async function logWorkspace(payload) {
+  const { root, rel } = scopeOf(payload)
+  if (rel === '') throw new RouteError(400, 'invalid-arguments', 'path is required')
+  const asked = Number.isInteger(payload?.limit) ? payload.limit : 30
+  const limit = Math.min(MAX_LOG_COMMITS, Math.max(1, asked))
+  const log = await runCommand('git', [
+    'log', '--date=short', '--pretty=format:%h%x09%an%x09%ad%x09%s', '-n', String(limit), '--', rel,
+  ], root)
+  if (log.code !== 0) throw new RouteError(500, 'log-failed', log.stderr.trim() || 'git log failed')
+  return { rows: parseCommitLog(log.stdout) }
+}
+
+/** Branches and tags a file can be compared against. */
+export async function refsWorkspace(payload) {
+  const { root } = scopeOf(payload)
+  const refs = await runCommand('git', [
+    'for-each-ref', '--format=%(refname:short)%09%(objecttype)', 'refs/heads', 'refs/tags',
+  ], root)
+  if (refs.code !== 0) throw new RouteError(500, 'refs-failed', refs.stderr.trim() || 'git for-each-ref failed')
+  return { rows: parseGitRefs(refs.stdout) }
+}
+
+/**
+ * The patch text of one file against a revision.
+ *
+ * `base` defaults to `HEAD` (working tree against the last commit); `target`
+ * compares two revisions instead. A root commit has no parent, so the fallback
+ * asks `git show` for that commit's own patch.
+ */
+export async function patchWorkspace(payload) {
+  const { root, rel } = scopeOf(payload)
+  if (rel === '') throw new RouteError(400, 'invalid-arguments', 'path is required')
+  const base = typeof payload?.base === 'string' && payload.base.trim() !== '' ? payload.base.trim() : 'HEAD'
+  const target = typeof payload?.target === 'string' && payload.target.trim() !== '' ? payload.target.trim() : ''
+  const tracked = await runCommand('git', ['ls-files', '--error-unmatch', '--', rel], root)
+  if (tracked.code !== 0) return { untracked: true, base, target, text: '', truncated: false }
+  let diff = await runCommand('git', [
+    'diff', '--no-color', '--no-ext-diff', '-U3', base,
+    ...(target === '' ? [] : [target]),
+    '--', rel,
+  ], root)
+  if (diff.code !== 0 && target !== '') {
+    diff = await runCommand('git', ['show', '--format=', '--no-color', '--patch', target, '--', rel], root)
+  }
+  if (diff.code !== 0) throw new RouteError(500, 'diff-failed', diff.stderr.trim() || 'git diff failed')
+  const text = diff.stdout
+  return {
+    untracked: false,
+    base,
+    target,
+    text: text.length > MAX_PATCH_CHARS ? text.slice(0, MAX_PATCH_CHARS) : text,
+    truncated: text.length > MAX_PATCH_CHARS,
+  }
+}
+
+/** The text of one workspace file, for the tree's copy action. */
+export function fileText(payload) {
+  const { root, rel } = scopeOf(payload)
+  if (rel === '') throw new RouteError(400, 'invalid-arguments', 'path is required')
+  let text
+  try {
+    text = readFileSync(join(root, rel), 'utf8')
+  } catch {
+    throw new RouteError(400, 'read-failed', 'cannot read the file')
+  }
+  return {
+    text: text.length > MAX_COPY_CHARS ? text.slice(0, MAX_COPY_CHARS) : text,
+    truncated: text.length > MAX_COPY_CHARS,
+  }
 }
 
 /** Largest number of extensions one content search may be narrowed to. */
@@ -762,7 +922,7 @@ function createHandler(ctx) {
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_OPEN && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -781,6 +941,16 @@ function createHandler(ctx) {
                 ? doctorReport(ctx)
               : pathname === ROUTE_KINDS
                 ? await kindsWorkspace(payload)
+              : pathname === ROUTE_OPEN
+                ? await openWorkspace(payload)
+              : pathname === ROUTE_LOG
+                ? await logWorkspace(payload)
+              : pathname === ROUTE_REFS
+                ? await refsWorkspace(payload)
+              : pathname === ROUTE_PATCH
+                ? await patchWorkspace(payload)
+              : pathname === ROUTE_TEXT
+                ? fileText(payload)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -833,4 +1003,29 @@ export function apply(ctx) {
     path: ROUTE_KINDS,
     handler,
   }), 'dsh-ide-window: kinds route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_OPEN,
+    handler,
+  }), 'dsh-ide-window: open route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_LOG,
+    handler,
+  }), 'dsh-ide-window: log route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_REFS,
+    handler,
+  }), 'dsh-ide-window: refs route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_PATCH,
+    handler,
+  }), 'dsh-ide-window: patch route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_TEXT,
+    handler,
+  }), 'dsh-ide-window: file text route')
 }

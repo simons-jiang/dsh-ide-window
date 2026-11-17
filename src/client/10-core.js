@@ -400,6 +400,10 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    /** The file-tree context menu, or null: `{ path, isDir, x, y }`. */
+    treeMenu: null,
+    /** A file-tree overlay (diff or picker), or null. */
+    treePopup: null,
     /** A file the tree should scroll to: `{ path, stamp }`, or null. */
     revealFile: null,
     /** Files shown with Git annotate: `path → true`. */
@@ -1173,6 +1177,16 @@ function ideCreateStore(refs) {
     patch({ codeMenu: menu === null || menu === undefined ? null : menu })
   }
 
+  /** Open or close the file-tree context menu. */
+  function setTreeMenu(menu) {
+    patch({ treeMenu: menu === null || menu === undefined ? null : menu })
+  }
+
+  /** Open or close the file-tree overlay (difference text or a picker). */
+  function setTreePopup(popup) {
+    patch({ treePopup: popup === null || popup === undefined ? null : popup })
+  }
+
   /** Turn the Git annotate gutter on or off for one file. */
   function toggleAnnotate(path) {
     if (typeof path !== 'string' || path === '') return
@@ -1442,6 +1456,8 @@ function ideCreateStore(refs) {
     closeReadOnly,
     closeUnmodified,
     setTabMenu,
+    setTreeMenu,
+    setTreePopup,
     setCodeMenu,
     toggleAnnotate,
     closeOtherTabs,

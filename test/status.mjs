@@ -10,7 +10,7 @@
  * These fixtures are the exact shapes `git status --porcelain=v1 -z` prints,
  * including the rename/copy pair whose second field has no status prefix.
  */
-import { parseStatus, parseBlame, doctorReport, parseJavaKind } from '../index.js'
+import { parseStatus, parseBlame, doctorReport, parseJavaKind, parseCommitLog, parseGitRefs, logWorkspace, refsWorkspace, patchWorkspace, fileText, openWorkspace } from '../index.js'
 
 let failures = 0
 const ok = (name) => console.log(`  ✓ ${name}`)
@@ -136,6 +136,39 @@ const nul = (fields) => fields.map((field) => `${field}\0`).join('')
   check(parseJavaKind('@Tag(name = \"interface\")\npublic class Tagged {}') === 'class', 'a label inside a string does not answer for the file', parseJavaKind('@Tag(name = \"interface\")\npublic class Tagged {}'))
   check(parseJavaKind('class Plain { String s = """\nrecord Fake\n"""; }') === 'class', 'a text block cannot answer for the file', parseJavaKind('class Plain { String s = """\nrecord Fake\n"""; }'))
   check(parseJavaKind('Foo.class\npublic class Bar {}') === 'class', 'a class literal before a class still reads as a class', parseJavaKind('Foo.class\npublic class Bar {}'))
+}
+
+// ---- file-tree menu routes -------------------------------------------------
+{
+  const parsedLog = parseCommitLog('abc1234\tsimon\t2026-11-17\t全选修复\n')
+  check(parsedLog.length === 1 && parsedLog[0].sha === 'abc1234' && parsedLog[0].subject === '全选修复', 'a commit line is parsed', JSON.stringify(parsedLog))
+  const refs = parseGitRefs('main\tcommit\nv1.0\ttag\n')
+  check(refs.length === 2 && refs[0].kind === 'branch' && refs[1].kind === 'tag', 'refs keep their kind', JSON.stringify(refs))
+
+  const repo = process.cwd()
+  const log = await logWorkspace({ workspaceRoot: repo, path: 'index.js', limit: 5 })
+  check(Array.isArray(log.rows) && log.rows.length > 0, 'git log lists the commits of a file', JSON.stringify(log.rows[0]))
+  const head = log.rows[0].sha
+  const patch = await patchWorkspace({ workspaceRoot: repo, path: 'index.js', base: `${head}^`, target: head })
+  check(patch.text.startsWith('diff --git') && patch.text.includes('index.js'), 'a commit patch is returned', patch.text.slice(0, 48))
+  const refsList = await refsWorkspace({ workspaceRoot: repo })
+  check(refsList.rows.some((row) => row.kind === 'branch'), 'branches are listed', String(refsList.rows.length))
+  const copy = fileText({ workspaceRoot: repo, path: 'package.json' })
+  check(copy.text.includes('"name"'), 'the copy route returns file text', copy.text.slice(0, 16))
+  let unknownMode
+  try {
+    await openWorkspace({ workspaceRoot: repo, path: 'package.json', mode: 'bogus' })
+  } catch (error) {
+    unknownMode = error.code
+  }
+  check(unknownMode === 'invalid-arguments', 'an unknown open mode is refused', String(unknownMode))
+  let escaped
+  try {
+    await patchWorkspace({ workspaceRoot: repo, path: '../package.json' })
+  } catch (error) {
+    escaped = error.code
+  }
+  check(escaped === 'invalid-scope', 'a path outside the workspace is refused', String(escaped))
 }
 
 console.log(failures === 0 ? '\nall status checks passed' : `\n${failures} status check(s) failed`)
