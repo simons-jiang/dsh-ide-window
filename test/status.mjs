@@ -95,13 +95,19 @@ const nul = (fields) => fields.map((field) => `${field}\0`).join('')
     'author alice',
     'author-time 1794800000',
     '\tpublic class Demo {',
+    '0000000000000000000000000000000000000000 4 4',
+    'author Not Committed Yet',
+    'author-time 1794900000',
+    '\t// local change',
   ].join('\n')
   const rows = parseBlame(fixture)
-  check(rows.length === 3, 'three blamed lines', JSON.stringify(rows))
+  check(rows.length === 4, 'four blamed lines', JSON.stringify(rows))
   check(rows[0]?.line === 1 && rows[0]?.author === 'simon', 'the first line keeps its author', JSON.stringify(rows[0]))
   check(rows[1]?.line === 2 && rows[1]?.author === 'simon', 'a short header (no count) still parses', JSON.stringify(rows[1]))
   check(rows[2]?.line === 3 && rows[2]?.author === 'alice', 'a second author is read', JSON.stringify(rows[2]))
   check(rows[0]?.time === 1794792855, 'the author timestamp is kept', String(rows[0]?.time))
+  check(rows[3]?.uncommitted === true, 'the zero commit is marked uncommitted', JSON.stringify(rows[3]))
+  check(rows[0]?.uncommitted === false, 'a real commit is not uncommitted', String(rows[0]?.uncommitted))
   check(parseBlame('').length === 0, 'empty blame yields nothing')
   check(parseBlame('not porcelain').length === 0, 'garbage yields nothing')
 }

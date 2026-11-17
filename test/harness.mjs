@@ -836,6 +836,21 @@ function sourceFunction(name, file = undefined) {
   check(annotate.get(4)?.label === '', 'a line without blame stays empty', JSON.stringify(annotate.get(4)))
   check(annotate.size === 6, 'every line gets a cell', String(annotate.size))
   check(vision.ideAnnotateRows(undefined, 3).size === 0, 'no blame means no cells', String(vision.ideAnnotateRows(undefined, 3).size))
+  const freshFn = new Function([
+    grabSource('IDE_BLAME_TTL_MS', '30-code.js'),
+    sourceFunction('ideBlameIsFresh', '30-code.js'),
+    'return ideBlameIsFresh',
+  ].join('\n'))()
+  check(freshFn(undefined, 1000) === false, 'no cache is never fresh')
+  check(freshFn({ at: 1000, rows: new Map() }, 20000) === true, 'a recent answer is fresh')
+  check(freshFn({ at: 1000, rows: new Map() }, 31001) === false, 'an old answer expires')
+  const mixed = new Map([
+    [1, { author: 'Not Committed Yet', date: '2026/11/16', time: 9, uncommitted: true }],
+    [2, { author: 'Not Committed Yet', date: '2026/11/16', time: 9, uncommitted: true }],
+  ])
+  const marked = vision.ideAnnotateRows(mixed, 2, '未提交')
+  check(marked.get(1)?.label === '未提交', 'an uncommitted line says so', JSON.stringify(marked.get(1)))
+  check(marked.get(1)?.band === marked.get(2)?.band, 'adjacent uncommitted lines share a band', `${marked.get(1)?.band}/${marked.get(2)?.band}`)
 }
 
 // ---- shell-only Turns are explained, not silent -----------------------------
@@ -941,6 +956,15 @@ check(again?.reveal === 5, 'a second reference moves the highlight', String(agai
 // A path outside the workspace must be refused rather than guessed at.
 check(jumpStore.openAt('/etc/passwd', 1) === false, 'a path outside the workspace is refused')
 check(jumpStore.getState().activePath === 'Main.java', 'a refused path leaves the selection alone')
+
+// Coming back to the window re-reads the active file (commit changes no bytes).
+const focusPath = jumpStore.getState().activePath
+const focusAbs = `/tmp/workspace-only/${focusPath}`
+const focusReadsBefore = jumpLog.filter((entry) => entry[0] === 'read' && entry[2] === focusAbs).length
+jumpStore.reloadActive()
+await tick()
+const focusReadsAfter = jumpLog.filter((entry) => entry[0] === 'read' && entry[2] === focusAbs).length
+check(focusReadsAfter > focusReadsBefore, 'reloadActive re-reads the active file', `${focusReadsBefore} -> ${focusReadsAfter}`)
 
 // The tree tools: collapse everything, then reveal the active file again.
 jumpStore.openAt('/tmp/workspace-only/src/App.ts', 1)

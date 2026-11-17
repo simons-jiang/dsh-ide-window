@@ -159,5 +159,6 @@
   "treeRevealNone": "No file is open",
   "treeExpandAll": "Expand all",
   "treeCollapseAll": "Collapse all",
-  "treeExpandLimit": "Stopped at the 200-directory limit"
+  "treeExpandLimit": "Stopped at the 200-directory limit",
+  "annotateUncommitted": "Not committed"
 }

@@ -973,6 +973,18 @@ function ideCreateStore(refs) {
     putTab(path, { revealApplied: line })
   }
 
+  /**
+   * Re-read the active file (content and its git hunks).
+   *
+   * Called when the window regains focus: a commit changes git's view of the
+   * file without changing its bytes, so no change frame arrives.
+   */
+  function reloadActive() {
+    const tab = state.tabs.find((entry) => entry.path === state.activePath)
+    if (tab === undefined || tab.kind === 'jar') return
+    void loadTabFile(tab, { silent: true })
+  }
+
   /** Re-read every open tab, whatever its state. */
   function refreshTabs() {
     for (const tab of state.tabs) {
@@ -1397,6 +1409,7 @@ function ideCreateStore(refs) {
     refreshDir,
     refreshAll,
     refreshTabs,
+    reloadActive,
     rememberScroll,
     setRevealApplied,
     openFile,

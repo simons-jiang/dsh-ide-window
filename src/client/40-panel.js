@@ -270,6 +270,14 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     globalThis.addEventListener('keyup', onKey)
     return () => globalThis.removeEventListener('keyup', onKey)
   }, [store])
+  // Coming back to the window re-reads the active file: a commit changes git's
+  // view of it without changing its bytes, so no change frame arrives.
+  useEffect(() => {
+    const onFocus = () => store.reloadActive?.()
+    globalThis.addEventListener('focus', onFocus)
+    return () => globalThis.removeEventListener('focus', onFocus)
+  }, [store])
+
   // The setup guide: one check when the workspace is entered, then on demand.
   const [setupOpen, setSetupOpen] = useState(false)
   const [setupBusy, setSetupBusy] = useState(false)

@@ -299,9 +299,9 @@ export function parseBlame(text) {
   const entries = []
   let current
   for (const raw of String(text ?? '').split('\n')) {
-    const header = /^[0-9a-f]{7,64} \d+ (\d+)(?: \d+)?$/.exec(raw)
+    const header = /^([0-9a-f]{7,64}) \d+ (\d+)(?: \d+)?$/.exec(raw)
     if (header !== null) {
-      current = { line: Number(header[1]), author: '', time: 0 }
+      current = { line: Number(header[2]), author: '', time: 0, sha: header[1] }
       continue
     }
     if (current === undefined) continue
@@ -315,7 +315,14 @@ export function parseBlame(text) {
       continue
     }
     if (raw.startsWith('\t')) {
-      entries.push(current)
+      // The zero commit marks a line git cannot attribute yet: "Not Committed
+      // Yet". It must not be shown as a real author.
+      entries.push({
+        line: current.line,
+        author: current.author,
+        time: current.time,
+        uncommitted: /^0+$/.test(current.sha),
+      })
       current = undefined
     }
   }

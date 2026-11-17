@@ -408,12 +408,13 @@ function ideVisionKey(root, tab) {
 }
 
 /** `line → label` already known for this file, counts and blame merged. */
-function ideVisionRows(root, tab) {
+function ideVisionRows(root, tab, uncommittedLabel) {
   const key = ideVisionKey(root, tab)
   const rows = new Map()
   for (const [line, text] of ideVisionCounts.get(key) ?? []) rows.set(line, text)
-  for (const [line, blame] of ideBlames.get(key) ?? []) {
-    rows.set(line, [rows.get(line), blame.label].filter(Boolean).join('  '))
+  for (const [line, blame] of ideBlames.get(key)?.rows ?? []) {
+    const label = blame.uncommitted ? uncommittedLabel : blame.label
+    rows.set(line, [rows.get(line), label].filter(Boolean).join('  '))
   }
   return rows
 }
@@ -421,12 +422,13 @@ function ideVisionRows(root, tab) {
 /**
  * One Git annotate cell per line, banded by commit.
  *
- * @param blames - `line → { author, date, time }` (1-based).
+ * @param blames - `line → { author, date, time, uncommitted }` (1-based).
  * @param lineCount - how many lines the file has.
+ * @param uncommittedLabel - what to write for lines git cannot attribute yet.
  * @returns `line → { label, band }` (`band` is 0 or 1, so adjacent commits can
  *   alternate a tint the way an editor's annotate view does).
  */
-function ideAnnotateRows(blames, lineCount) {
+function ideAnnotateRows(blames, lineCount, uncommittedLabel) {
   const rows = new Map()
   if (blames === undefined) return rows
   let band = 0
@@ -438,12 +440,15 @@ function ideAnnotateRows(blames, lineCount) {
       previous = undefined
       continue
     }
-    const key = `${blame.author}|${blame.time}`
+    const key = blame.uncommitted === true ? 'uncommitted' : `${blame.author}|${blame.time}`
     if (key !== previous) {
       band = band === 0 ? 1 : 0
       previous = key
     }
-    rows.set(line, { label: [blame.date, blame.author].filter(Boolean).join(' '), band })
+    const label = blame.uncommitted === true
+      ? (uncommittedLabel ?? '')
+      : [blame.date, blame.author].filter(Boolean).join(' ')
+    rows.set(line, { label, band })
   }
   return rows
 }
@@ -489,13 +494,32 @@ function ideRequestVision(store, tab, declarations, done) {
   }
 }
 
-/** Fetch the last commit that touched each line, once per file version. */
-function ideRequestBlame(store, tab, done) {
+/**
+ * How long a blame answer stays fresh.
+ *
+ * Committing changes no file content, so no workspace change arrives; without a
+ * lifetime the annotate column would keep saying "Not Committed" forever.
+ */
+const IDE_BLAME_TTL_MS = 30000
+
+/** Whether a cached blame answer is still inside its lifetime. */
+function ideBlameIsFresh(cached, now) {
+  return cached !== undefined && now - cached.at < IDE_BLAME_TTL_MS
+}
+
+/**
+ * Fetch the last commit that touched each line.
+ *
+ * @param options.force - refetch even when the cached answer is fresh.
+ */
+function ideRequestBlame(store, tab, done, options = {}) {
   const state = store.getState()
   if (tab.kind === 'jar' || state.rootPath === '') return
   const key = ideVisionKey(state.rootPath, tab)
   const id = `${key}|blame`
-  if (ideBlames.has(key) || ideVisionPending.has(id)) return
+  const cached = ideBlames.get(key)
+  if (options.force !== true && ideBlameIsFresh(cached, Date.now())) return
+  if (ideVisionPending.has(id)) return
   ideVisionPending.add(id)
   void ideBlameQuery(state.rootPath, tab.path)
     .then((found) => {
@@ -505,9 +529,16 @@ function ideRequestBlame(store, tab, done) {
         if (!Number.isFinite(row?.line) || typeof row?.author !== 'string' || row.author === '') continue
         const when = Number.isFinite(row.time) && row.time > 0 ? new Date(row.time * 1000) : undefined
         const date = when === undefined ? '' : `${when.getFullYear()}/${when.getMonth() + 1}/${when.getDate()}`
-        rows.set(row.line, { author: row.author, date, time: row.time, label: [row.author, date].filter(Boolean).join(' · ') })
+        const uncommitted = row.uncommitted === true
+        rows.set(row.line, {
+          author: row.author,
+          date,
+          time: row.time,
+          uncommitted,
+          label: uncommitted ? '' : [row.author, date].filter(Boolean).join(' · '),
+        })
       }
-      ideBlames.set(key, rows)
+      ideBlames.set(key, { at: Date.now(), rows })
       done()
     })
     .catch(() => undefined)
@@ -534,7 +565,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   )
   const visionRows = useMemo(() => {
     if (tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return new Map()
-    const rows = ideVisionRows(rootPath, tab)
+    const rows = ideVisionRows(rootPath, tab, tr('annotateUncommitted'))
     for (const line of [...rows.keys()]) {
       if (!declarationRows.has(line)) rows.delete(line)
     }
@@ -544,7 +575,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const annotateOn = store.getState().annotate?.[tab.path] === true
   const annotateRows = useMemo(() => {
     if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return undefined
-    return ideAnnotateRows(ideBlames.get(ideVisionKey(rootPath, tab)), lines.length)
+    return ideAnnotateRows(ideBlames.get(ideVisionKey(rootPath, tab))?.rows, lines.length, tr('annotateUncommitted'))
   }, [annotateOn, rootPath, tab.path, tab.version, tab.status, tab.kind, lines, visionStamp])
 
   // ---- symbol navigation --------------------------------------------------
@@ -860,10 +891,17 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     }
   }, [store, tab.path, tab.version, tab.status, tab.kind, tab.text, lines])
 
-  // Turning annotate on asks for the file's blame if the first pass had none.
+  // Annotate is an explicit mode: re-read the blame when it is switched on (a
+  // commit changed no file content, so no change event would), and again when
+  // the window regains focus. No timer runs while it stays open.
   useEffect(() => {
-    if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar') return
-    ideRequestBlame(store, tab, () => setVisionStamp((value) => value + 1))
+    if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar') return undefined
+    const bump = () => setVisionStamp((value) => value + 1)
+    ideRequestBlame(store, tab, bump, { force: true })
+    // Coming back to the window is the user asking "is this still true?".
+    const onFocus = () => ideRequestBlame(store, tab, bump, { force: true })
+    globalThis.addEventListener('focus', onFocus)
+    return () => globalThis.removeEventListener('focus', onFocus)
   }, [annotateOn, store, tab.path, tab.version, tab.status, tab.kind])
 
   if (lines.length === 0 && tab.text === '') {

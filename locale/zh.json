@@ -159,5 +159,6 @@
   "treeRevealNone": "没有打开的文件",
   "treeExpandAll": "展开全部",
   "treeCollapseAll": "收起全部",
-  "treeExpandLimit": "已展开到上限（200 个目录）"
+  "treeExpandLimit": "已展开到上限（200 个目录）",
+  "annotateUncommitted": "未提交"
 }
