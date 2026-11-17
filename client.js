@@ -169,6 +169,11 @@ window.__ModuleLoader__.load({
     "annotateUncommitted": "Not committed",
     "gestureCtrl": "Ctrl+click",
     "gesturePickHint": "Pick the trigger",
+    "gestureChain": "Call chain",
+    "chainLoading": "Walking callers…",
+    "chainNone": "No callers found (this may be an entry point)",
+    "chainHint": "Click a node to jump to it",
+    "chainRule": "Upper nodes call the ones below them; the ← line is where that call happens",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -331,6 +336,11 @@ window.__ModuleLoader__.load({
     "annotateUncommitted": "未提交",
     "gestureCtrl": "Ctrl+单击",
     "gesturePickHint": "选择触发方式",
+    "gestureChain": "查看调用链",
+    "chainLoading": "正在向上查找调用方…",
+    "chainNone": "没有找到调用方（可能已是入口方法）",
+    "chainHint": "点击节点跳到对应代码",
+    "chainRule": "上方节点调用下方节点；← 后是它调用下方方法的位置",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -773,6 +783,101 @@ const IDE_CSS = `
 .iw-pop-count { color: var(--dsw-alias-label-secondary, #98a0ad); font-size: 11.5px; }
 .iw-pop-body { overflow: auto; padding: 4px; }
 .iw-pop-section + .iw-pop-section { margin-top: 4px; }
+
+/* The call chain: method cards joined by rounded elbows, mind-map style. */
+.iw-pop:focus { outline: none; }
+.iw-pop-chain { width: 600px; max-width: 94vw; }
+.iw-pop-chain .iw-pop-body { max-height: min(62vh, 540px); overflow-x: hidden; }
+
+.iw-chain-roots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.iw-chain-rule {
+  padding: 2px 8px 6px;
+  color: var(--dsw-alias-label-tertiary, #6f7783);
+  font-size: 11px;
+}
+.iw-chain-node { position: relative; }
+.iw-chain-node + .iw-chain-node { margin-top: 2px; }
+.iw-chain-children {
+  position: relative;
+  margin-left: 8px;
+  padding-left: 16px;
+  border-left: 1.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.14));
+}
+.iw-chain-children > .iw-chain-node::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 0;
+  width: 16px;
+  height: 14px;
+  border-left: 1.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.14));
+  border-bottom: 1.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.14));
+  border-bottom-left-radius: 9px;
+  pointer-events: none;
+}
+
+.iw-chain-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 5px 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.05));
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-chain-row:hover {
+  border-color: var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.2));
+  background: var(--dsw-alias-bg-layer-3, rgba(255, 255, 255, 0.09));
+}
+.iw-chain-row.root {
+  border-color: rgba(122, 162, 255, 0.55);
+  background: rgba(122, 162, 255, 0.14);
+  font-weight: 600;
+}
+.iw-chain-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-secondary, #8b93a1);
+}
+.iw-chain-row.root .iw-chain-dot { background: #7aa2ff; }
+.iw-chain-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iw-chain-where {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary, #8b93a1);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iw-chain-site {
+  flex: none;
+  margin-left: 2px;
+  color: var(--dsw-alias-label-tertiary, #6f7783);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .iw-pop-section-head {
   position: sticky;
   top: -4px;
@@ -1920,6 +2025,12 @@ const IDE_SHORTCUTS = [
     labelKey: 'gestureUsages',
     action: 'usages',
   },
+  {
+    id: 'code-workspace.gesture-chain',
+    kind: 'gesture',
+    labelKey: 'gestureChain',
+    action: 'chain',
+  },
 ]
 
 /**
@@ -2448,6 +2559,7 @@ function ideCreateStore(refs) {
     gestures: {
       definition: prefs.gestures?.definition ?? 'double',
       usages: prefs.gestures?.usages ?? 'meta',
+      chain: prefs.gestures?.chain ?? 'alt',
     },
     /** Whether the gesture editor inside General settings is expanded. */
     gestureEditorOpen: false,
@@ -3000,6 +3112,32 @@ function ideCreateStore(refs) {
   }
 
   /**
+   * Read one workspace file's lines without attaching them to a tab.
+   *
+   * The call chain asks for the declarations above a call site; that file may
+   * not be open, and nothing here should change the editor.
+   */
+  async function readLines(path) {
+    const face = files()
+    const sessionId = state.sessionId
+    if (face === undefined || sessionId === null || sessionId === undefined) return []
+    if (state.rootPath === '' || typeof path !== 'string' || path === '') return []
+    const absolutePath = ideAbs(state.rootPath, path)
+    const lines = []
+    let offset = 1
+    for (let page = 0; page < 64; page += 1) {
+      const result = await ideCall(face, 'read', [sessionId, absolutePath, { offset }, new AbortController().signal])
+      if (!result.ok) return lines
+      const value = result.value
+      if (value.lines <= 0) return lines
+      for (const line of String(value.text).split('\n')) lines.push(line)
+      if (value.eof === true || lines.length >= IDE_MAX_LINES) return lines
+      offset += value.lines
+    }
+    return lines
+  }
+
+  /**
    * Re-read the active file (content and its git hunks).
    *
    * Called when the window regains focus: a commit changes git's view of the
@@ -3413,12 +3551,12 @@ function ideCreateStore(refs) {
     setGestureIssue: (issue) => {
       patch({ gestureIssue: typeof issue === 'string' ? issue : '' })
     },
-    /** Change one navigation gesture; the two actions must stay distinct. */
+    /** Change one navigation gesture; the actions must stay distinct. */
     setGesture: (which, value) => {
-      if (which !== 'definition' && which !== 'usages') return false
+      if (which !== 'definition' && which !== 'usages' && which !== 'chain') return false
       if (!['double', 'meta', 'ctrl', 'alt'].includes(value)) return false
-      const other = which === 'definition' ? state.gestures.usages : state.gestures.definition
-      if (value === other) return false
+      const others = ['definition', 'usages', 'chain'].filter((key) => key !== which)
+      if (others.some((key) => state.gestures[key] === value)) return false
       const gestures = { ...state.gestures, [which]: value }
       ideWritePrefs({ gestures })
       patch({ gestures })
@@ -3436,6 +3574,7 @@ function ideCreateStore(refs) {
     refreshAll,
     refreshTabs,
     reloadActive,
+    readLines,
     rememberScroll,
     setRevealApplied,
     openFile,
@@ -4053,6 +4192,10 @@ function IdeUsageSection({ section, onPick }) {
  * with the source it describes.
  */
 function IdeUsagePopup({ popup, onPick, onClose }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (ref.current !== null && typeof ref.current.focus === 'function') ref.current.focus()
+  }, [])
   useEffect(() => {
     const onDown = (event) => {
       const element = event.target
@@ -4060,19 +4203,24 @@ function IdeUsagePopup({ popup, onPick, onClose }) {
       onClose()
     }
     const onKey = (event) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
     }
     globalThis.addEventListener('pointerdown', onDown, true)
-    globalThis.addEventListener('keydown', onKey)
+    globalThis.addEventListener('keydown', onKey, true)
     return () => {
       globalThis.removeEventListener('pointerdown', onDown, true)
-      globalThis.removeEventListener('keydown', onKey)
+      globalThis.removeEventListener('keydown', onKey, true)
     }
   }, [onClose])
 
   const sections = popup.sections ?? []
   const total = sections.reduce((sum, section) => sum + section.rows.length, 0)
   return h('div', {
+    ref,
+    tabIndex: -1,
     className: 'iw-pop',
     style: { left: `${popup.x}px`, top: `${popup.y}px` },
     role: 'dialog',
@@ -4304,7 +4452,10 @@ function ideRequestVision(store, tab, declarations, done) {
         // A failed query is not a zero: leave the line uncached so it can be
         // answered when the server is available again.
         if (!failed) {
-          const usages = ideVisionCount(references?.locations, tab.path, line)
+          // A caller that holds the interface never names the implementation;
+          // without the contract's references every override looks unused.
+          const contract = await ideContractReferences(store, tab.path, tab.text.split('\n'), declaration.name)
+          const usages = ideVisionCount([...(references?.locations ?? []), ...contract], tab.path, line)
           const implemented = ideVisionCount(implementations?.locations, tab.path, line)
           ideVisionCounts.get(key).set(line, ideVisionLabel(usages, implemented))
           done()
@@ -4428,8 +4579,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   // panel-relative and an overlay can never paint over the app shell's composer.
   // Viewport coordinates: the popup is `position: fixed`, so it lands next to the
   // pointer and never scrolls with the source.
-  const popupAt = (event) => ({
-    x: Math.min(Math.max(8, event.clientX), Math.max(8, (globalThis.innerWidth || 1200) - 520)),
+  const popupAt = (event, width = 520) => ({
+    x: Math.min(Math.max(8, event.clientX), Math.max(8, (globalThis.innerWidth || 1200) - width)),
     y: Math.min(Math.max(8, event.clientY), Math.max(8, (globalThis.innerHeight || 800) - 360)),
   })
 
@@ -4599,6 +4750,47 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     return true
   }
 
+  /** Which navigation action a pointer gesture is bound to, if any. */
+  const gestureActionOf = (gesture) => {
+    const actions = store.getState().gestures ?? {}
+    return ['definition', 'usages', 'chain'].find((key) => ideGestureMatches(actions[key], gesture, ideRuntimeContext.platform)) ?? ''
+  }
+
+  /** Run the action a gesture is bound to against the symbol under the pointer. */
+  const runGestureAction = (action, hit, event) => {
+    if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
+    else if (action === 'usages') void showUsages(hit.name, hit.position, event)
+    else if (action === 'chain') void showChain(hit.name, hit.position, event)
+  }
+
+  /**
+   * The caller tree of `name` (Alt+click), painted as each level arrives.
+   *
+   * "From start to end" is the direction LSP can answer: who calls this method,
+   * who calls that caller, and so on until an entry point.
+   */
+  const showChain = async (name, position, event) => {
+    if (navigate === undefined) {
+      store.setNotice(`${tr('lspFailed')}: lsp-unavailable`)
+      return
+    }
+    const anchor = popupAt(event, 620)
+    const started = ideNow()
+    const root = { name, path: tab.path, line: position.line + 1, position }
+    const paint = (tree, state, ms) => setPopup({
+      kind: 'chain',
+      name,
+      tree,
+      state,
+      ms,
+      empty: tr('chainNone'),
+      ...anchor,
+    })
+    paint({ ...root, children: [] }, 'loading', 0)
+    const tree = await ideCallChain(store, root, { onPartial: (partial) => paint(partial, 'loading', 0) })
+    paint(tree, 'ready', Math.round(ideNow() - started))
+  }
+
   /** Show implementations and callers of `name` (⌘/Ctrl + click). */
   const showUsages = async (name, position, event) => {
     if (navigate === undefined) {
@@ -4756,30 +4948,22 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // macOS turns Ctrl+click into a secondary click; the context menu handler
       // runs that gesture, so it is not also acted on here.
       if (gesture === 'ctrl' && ideRuntimeContext.platform === 'macos') return
-      const actions = store.getState().gestures
-      const action = ideGestureMatches(actions.definition, gesture, ideRuntimeContext.platform) ? 'definition'
-        : ideGestureMatches(actions.usages, gesture, ideRuntimeContext.platform) ? 'usages'
-          : ''
+      const action = gestureActionOf(gesture)
       if (action === '') return
       const hit = resolveSymbolAt(event)
       if (hit === undefined) return
       event.preventDefault()
-      if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
-      else void showUsages(hit.name, hit.position, event)
+      runGestureAction(action, hit, event)
     },
     onDoubleClick: (event) => {
       // A double click with a modifier belongs to the single-click gestures above.
       if (ideGestureOf(event) !== 'plain') return
-      const actions = store.getState().gestures
+      const action = gestureActionOf('double')
+      if (action === '') return
       const hit = resolveSymbolAt(event)
       if (hit === undefined) return
-      const action = actions.definition === 'double' ? 'definition'
-        : actions.usages === 'double' ? 'usages'
-          : ''
-      if (action === '') return
       event.preventDefault()
-      if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
-      else void showUsages(hit.name, hit.position, event)
+      runGestureAction(action, hit, event)
     },
     onContextMenu: (event) => {
       // The gutter — change bar, annotate column, line numbers — is where an
@@ -4791,16 +4975,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         // macOS delivers Ctrl+click as a secondary click: when that gesture is
         // configured for navigation, it belongs to the source, not to a menu.
         if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
-          const actions = store.getState().gestures
-          const action = ideGestureMatches(actions.definition, 'ctrl', 'macos') ? 'definition'
-            : ideGestureMatches(actions.usages, 'ctrl', 'macos') ? 'usages'
-              : ''
+          const action = gestureActionOf('ctrl')
           if (action === '') return
           const hit = resolveSymbolAt(event)
           if (hit === undefined) return
           event.preventDefault()
-          if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
-          else void showUsages(hit.name, hit.position, event)
+          runGestureAction(action, hit, event)
         }
         return
       }
@@ -4821,7 +5001,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
 
   // The popup is a sibling of the scrolling container, not a child: inside it,
   // it would both scroll with the source and position against that container.
-  return h(React.Fragment, null, [code, popup === undefined ? null : h(IdeUsagePopup, { key: 'popup', popup, onPick: pick, onClose: closePopup })])
+  const popupView = popup === undefined
+    ? null
+    : popup.kind === 'chain'
+      ? h(IdeChainPopup, { key: 'popup', popup, tr, onPick: pick, onClose: closePopup })
+      : h(IdeUsagePopup, { key: 'popup', popup, onPick: pick, onClose: closePopup })
+  return h(React.Fragment, null, [code, popupView])
 }
 
 /** The bottom status bar. */
@@ -5933,6 +6118,9 @@ function ideGestureLabel(choice, platform, tr) {
   return tr(IDE_GESTURE_KEYS[choice])
 }
 
+/** The gesture actions, in settings order. */
+const GESTURE_ACTIONS = ['definition', 'usages', 'chain']
+
 /** One gesture row: a dropdown with the choices this platform can tell apart. */
 function IdeGestureSelect(props) {
   const { entry, tr, platform, onPick } = props
@@ -5945,8 +6133,8 @@ function IdeGestureSelect(props) {
   }, ideGestureChoices(platform).map((choice) => h('option', {
     key: choice,
     value: choice,
-    disabled: choice === entry.taken,
-    title: choice === entry.taken ? tr('gestureTaken') : undefined,
+    disabled: entry.taken.includes(choice),
+    title: entry.taken.includes(choice) ? tr('gestureTaken') : undefined,
   }, ideGestureLabel(choice, platform, tr))))
 }
 
@@ -5998,7 +6186,7 @@ function IdeWorkspaceSettingsItem(props) {
   const open = state.gestureEditorOpen === true
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
-  const gestures = state.gestures ?? { definition: 'double', usages: 'meta' }
+  const gestures = state.gestures ?? { definition: 'double', usages: 'meta', chain: 'alt' }
   const bindings = state.shortcutBindings ?? {}
 
   // Generated: one row per registry entry, no per-shortcut code here.
@@ -6010,7 +6198,8 @@ function IdeWorkspaceSettingsItem(props) {
         action: command.action,
         label: tr(command.labelKey),
         value: gestures[command.action],
-        taken: gestures[command.action === 'definition' ? 'usages' : 'definition'],
+        // Every other action's gesture is unavailable here: one gesture, one job.
+        taken: GESTURE_ACTIONS.filter((key) => key !== command.action).map((key) => gestures[key]),
       }
     }
     if (command.kind === 'sequence') {
@@ -6316,6 +6505,21 @@ function ideDecodeSegment(segment) {
  *
  * @returns `{ scope, sessionId, path }`, or `undefined` for anything else.
  */
+/**
+ * A path the shell hands out, as a path inside this workspace.
+ *
+ * The built-in 「已编辑」 card stores the absolute path of each file next to the
+ * row; the panel addresses files relative to its root. A path outside the root
+ * keeps the card's own display text, which is already workspace-relative.
+ */
+function ideRelativeWorkspacePath(absolute, root, fallback) {
+  if (typeof absolute === 'string' && absolute !== '' && typeof root === 'string' && root !== '') {
+    if (absolute === root) return ''
+    if (absolute.startsWith(`${root}/`)) return absolute.slice(root.length + 1)
+  }
+  return typeof fallback === 'string' ? fallback : ''
+}
+
 function ideParseFileAddress(address) {
   const prefix = 'dsh-resource://file/'
   if (typeof address !== 'string' || !address.startsWith(prefix)) return undefined
@@ -6929,6 +7133,18 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   if (onPartial !== undefined) onPartial(partial)
 
   const references = await run('findReferences', 'refs')
+  // The popup has the same blind spot as the counter: a caller holding the
+  // interface never appears among the implementation's references.
+  if (typeof symbolName === 'string' && symbolName !== '') {
+    const contract = await ideContractReferences(store, tabPath, await store.readLines(tabPath), symbolName)
+    const known = new Set(references.map(ideLocationKey))
+    for (const location of contract) {
+      const key = ideLocationKey(location)
+      if (known.has(key)) continue
+      known.add(key)
+      references.push(location)
+    }
+  }
 
   const callerRows = []
   const seenCaller = new Set()
@@ -7081,6 +7297,316 @@ async function ideLspHoverText(store, tabPath, position) {
     return contents.map((entry) => (typeof entry === 'string' ? entry : entry?.value ?? '')).join('\n')
   }
   return ''
+}
+
+// ---- 66-callchain.js -----------------------------------------------------
+/*
+ * The call chain of one method, as a tree.
+ *
+ * LSP answers "who references this symbol"; walking that answer upward — and
+ * resolving each call site to the method that contains it — is what produces the
+ * chain from an entry point down to the clicked method. Every node carries the
+ * location of its declaration, so a click in the popup is an ordinary jump.
+ */
+
+const IDE_CHAIN_DEPTH = 3
+const IDE_CHAIN_NODES = 40
+const IDE_CHAIN_CHILDREN = 6
+
+/** The last declaration strictly above `line` (1-based) in one file. */
+function ideEnclosingDeclaration(lines, line) {
+  const declarations = ideDeclarations(lines, 0, Math.max(0, line - 1))
+  return declarations.length === 0 ? undefined : declarations[declarations.length - 1]
+}
+
+/** Interface simple names one class declaration implements. */
+function ideContractNames(lines) {
+  for (const line of lines) {
+    const at = line.indexOf('implements')
+    if (at < 0 || !/\b(?:class|enum|record)\b/.test(line)) continue
+    const tail = line.slice(at + 'implements'.length)
+    const cut = tail.indexOf('{')
+    return tail.slice(0, cut < 0 ? tail.length : cut)
+      .split(',')
+      .map((part) => part.trim().split(/[<.\s]/)[0])
+      .filter((part) => part !== '')
+  }
+  return []
+}
+
+/** Interface simple name → the workspace files that declare it. */
+const ideInterfacePaths = new Map()
+
+/** Resolve one interface's declaration files (a name is unique in a workspace). */
+async function ideInterfacePathsOf(root, name) {
+  let pending = ideInterfacePaths.get(name)
+  if (pending === undefined) {
+    pending = ideGrepQuery(root, `\\binterface\\s+${name}\\b`, { extensions: IDE_CODE_EXTENSIONS, caseSensitive: true })
+      .then((answer) => (answer.ok === true ? answer.matches : []))
+      .catch(() => [])
+    ideInterfacePaths.set(name, pending)
+  }
+  const matches = await pending
+  return matches.filter((match) => typeof match?.path === 'string').map((match) => match.path)
+}
+
+/**
+ * Call sites that reach a method through its contract.
+ *
+ * A caller holding the interface type (`ReconBillGenerateService service;`)
+ * resolves to the interface declaration; the implementation's own references
+ * never mention it. Reading the `implements` clause, finding the same method in
+ * the interface and asking *there* is what reunites the two halves.
+ *
+ * @returns `{ path, line }[]`, empty when the class overrides no such method.
+ */
+async function ideContractReferences(store, path, lines, name) {
+  const root = store.getState().rootPath
+  if (root === '' || typeof name !== 'string' || name === '') return []
+  const contracts = ideContractNames(lines)
+  if (contracts.length === 0) return []
+  const found = []
+  for (const contractName of contracts) {
+    for (const contractPath of await ideInterfacePathsOf(root, contractName)) {
+      const contractLines = await store.readLines(contractPath)
+      const declaration = ideDeclarations(contractLines, 0, contractLines.length)
+        .find((entry) => entry.name === name)
+      if (declaration === undefined) continue
+      const answer = await ideLspQuery({
+        operation: 'findReferences',
+        filePath: ideAbs(root, contractPath),
+        workspaceRoot: root,
+        position: { line: declaration.index, character: declaration.column },
+      }).catch(() => undefined)
+      if (Array.isArray(answer?.locations)) found.push(...answer.locations)
+    }
+  }
+  return found
+}
+
+/** Whether a reference line declares a method instead of calling one. */
+function ideChainDeclaresAt(lines, line) {
+  return ideDeclarations(lines, line - 1, line).length > 0
+}
+
+/**
+ * Turn the caller tree into the tree the popup shows.
+ *
+ * The caller tree points down at callers; people read a chain the other way —
+ * the entry on top, the clicked method at the bottom, every arrow going
+ * "this one calls the one below it". Each entry-to-target path becomes its own
+ * branch, so a method reached from two places is drawn twice instead of once.
+ */
+function ideChainInverted(tree) {
+  const parentOf = new Map()
+  const leaves = []
+  const walk = (node) => {
+    if (node.children.length === 0) leaves.push(node)
+    for (const child of node.children) {
+      parentOf.set(child, node)
+      walk(child)
+    }
+  }
+  walk(tree)
+  const build = (node) => ({
+    name: node.name,
+    path: node.path,
+    line: node.line,
+    callSite: node.callSite,
+    focus: node.focus === true,
+    children: parentOf.has(node) ? [build(parentOf.get(node))] : [],
+  })
+  return leaves.map(build)
+}
+
+/** How many methods one tree holds. */
+function ideChainCount(node) {
+  if (node === undefined || node === null) return 0
+  return 1 + node.children.reduce((sum, child) => sum + ideChainCount(child), 0)
+}
+
+/**
+ * Build the caller tree of one method.
+ *
+ * @param store - the workspace store; it reads the files that are not open.
+ * @param root - `{ name, path, line, position }`, the clicked method.
+ * @param options.onPartial - called with the tree after each level, so the
+ *   popup can paint what is known instead of waiting for the deepest caller.
+ * @returns the tree, filled in.
+ */
+async function ideCallChain(store, root, options = {}) {
+  const tree = { ...root, focus: true, children: [] }
+  const files = new Map()
+  const linesOf = (path) => {
+    let pending = files.get(path)
+    if (pending === undefined) {
+      pending = Promise.resolve(store.readLines(path)).then((lines) => (Array.isArray(lines) ? lines : []))
+      files.set(path, pending)
+    }
+    return pending
+  }
+  /**
+   * The method containing a call site, or nothing when it sits outside one.
+   *
+   * `findReferences` also answers with the symbol's own declaration (and, for a
+   * contract, the declarations of its overrides). Those lines declare a method
+   * instead of calling one, so they are not call sites and must not become a
+   * caller — reading one as "the previous method calls it" is what made every
+   * arrow point at the parent's own signature line.
+   */
+  const callerAt = async (path, line) => {
+    const lines = await linesOf(path)
+    if (ideChainDeclaresAt(lines, line)) return 'declaration'
+    const declaration = ideEnclosingDeclaration(lines, line)
+    if (declaration === undefined) return undefined
+    return {
+      name: declaration.name,
+      line: declaration.index + 1,
+      position: { line: declaration.index, character: declaration.column },
+    }
+  }
+
+  const seen = new Set([`${root.path}:${root.line}`])
+  let level = [tree]
+  let count = 1
+  for (let depth = 1; depth <= IDE_CHAIN_DEPTH && level.length > 0; depth += 1) {
+    const next = []
+    for (const node of level) {
+      const [answer, contract] = await Promise.all([
+        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch(() => undefined),
+        ideContractReferences(store, node.path, await linesOf(node.path), node.name),
+      ])
+      const locations = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      let added = 0
+      for (const location of locations) {
+        if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
+        if (typeof location?.path !== 'string' || typeof location?.line !== 'number') continue
+        // The declaration of the method we are walking is not a call to it.
+        if (location.path === node.path && location.line === node.line) continue
+        const caller = await callerAt(location.path, location.line)
+        if (caller === 'declaration') continue
+        // A call site outside any method (a field initialiser, a static block):
+        // the line itself is the node, so the chain never loses that caller.
+        const target = caller ?? {
+          name: ideBasename(location.path),
+          line: location.line,
+          position: { line: location.line - 1, character: 0 },
+        }
+        const key = `${location.path}:${target.line}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        count += 1
+        added += 1
+        const child = {
+          ...target,
+          path: location.path,
+          callSite: { path: location.path, line: location.line },
+          children: [],
+        }
+        node.children.push(child)
+        next.push(child)
+      }
+    }
+    level = next
+    options.onPartial?.(tree)
+  }
+  return tree
+}
+
+/** `ReconBillQueryServiceImpl:339` — the file without its directory or extension. */
+function ideChainFileOf(path) {
+  const name = ideBasename(path)
+  return name.endsWith('.java') ? name.slice(0, -'.java'.length) : name
+}
+
+/** One node card plus its children, joined by rounded elbows. */
+function IdeChainNode({ node, depth, onPick }) {
+  const where = `${ideChainFileOf(node.path)}:${node.line}`
+  return h('div', { className: 'iw-chain-node' }, [
+    h('button', {
+      key: 'row',
+      type: 'button',
+      className: `iw-chain-row${node.focus === true ? ' root' : ''}`,
+      title: `${node.path}:${node.line}`,
+      onClick: () => onPick(node.path, node.line),
+    }, [
+      h('span', { key: 'dot', className: 'iw-chain-dot' }),
+      h('span', { key: 'n', className: 'iw-chain-name' }, node.name),
+      h('span', { key: 'p', className: 'iw-chain-where' }, where),
+      node.callSite === undefined
+        ? null
+        : h('span', { key: 's', className: 'iw-chain-site', title: `${node.callSite.path}:${node.callSite.line}` }, `← :${node.callSite.line}`),
+    ]),
+    node.children.length === 0
+      ? null
+      : h('div', { key: 'children', className: 'iw-chain-children' }, node.children.map((child) => h(IdeChainNode, {
+        key: `${child.path}:${child.line}`,
+        node: child,
+        depth: depth + 1,
+        onPick,
+      }))),
+  ])
+}
+
+/** The popup: one tree, one row per method; clicking a row jumps to it. */
+function IdeChainPopup({ popup, tr, onPick, onClose }) {
+  const ref = React.useRef(null)
+  // The popup owns the keyboard while it is open: capture-phase, so no other
+  // handler has to be focused for Esc to close it.
+  useEffect(() => {
+    if (ref.current !== null && typeof ref.current.focus === 'function') ref.current.focus()
+  }, [])
+  useEffect(() => {
+    const onDown = (event) => {
+      const element = event.target
+      if (element instanceof Element && element.closest('.iw-pop') !== null) return
+      onClose()
+    }
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+    }
+    globalThis.addEventListener('pointerdown', onDown, true)
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => {
+      globalThis.removeEventListener('pointerdown', onDown, true)
+      globalThis.removeEventListener('keydown', onKey, true)
+    }
+  }, [onClose])
+
+  const root = popup.tree
+  const count = ideChainCount(root)
+  const status = popup.state === 'loading'
+    ? tr('chainLoading')
+    : `${count}${typeof popup.ms === 'number' ? ` · ${popup.ms}ms` : ''}`
+  const forest = root === undefined ? [] : ideChainInverted(root)
+  const body = h(React.Fragment, null, [
+    h('div', { key: 'rule', className: 'iw-chain-rule' }, tr('chainRule')),
+    root === undefined || (count <= 1 && popup.state === 'ready')
+      ? h('div', { key: 'empty', className: 'iw-hint' }, popup.empty ?? tr('chainNone'))
+      : h('div', { key: 'forest', className: 'iw-chain-roots' }, forest.map((entry, index) => h(IdeChainNode, {
+        key: `${entry.path}:${entry.line}:${index}`,
+        node: entry,
+        depth: 0,
+        onPick,
+      }))),
+  ])
+  return h('div', {
+    ref,
+    tabIndex: -1,
+    className: 'iw-pop iw-pop-chain',
+    style: { left: `${popup.x}px`, top: `${popup.y}px` },
+    role: 'dialog',
+    'aria-label': popup.name,
+  }, [
+    h('div', { key: 'head', className: 'iw-pop-head' }, [
+      h('span', { key: 'n', className: 'iw-pop-name' }, popup.name),
+      h('span', { key: 'c', className: 'iw-pop-count', title: tr('chainHint') }, status),
+    ]),
+    h('div', { key: 'body', className: 'iw-pop-body' }, body),
+  ])
 }
 
 // ---- 68-grep.js ----------------------------------------------------------
@@ -8246,6 +8772,36 @@ function apply(ctx) {
     }
     store.setNotice(translate('jumpFailed'))
   }
+
+  /**
+   * Rows of DSH's own 「已编辑」 card open this workspace instead of the review.
+   *
+   * The card is a shipped plugin and stays untouched: the click is swallowed in
+   * the capture phase, and the row's own hidden span carries the absolute path.
+   * The card's header keeps its meaning (open the review) — only the file rows
+   * switch target.
+   */
+  ctx.effect(() => {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined
+    const onChangedFileClick = (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const row = target.closest('[data-changed-files="true"] .vdszpW_row')
+      if (row === null || row.parentElement === null) return
+      const hidden = row.parentElement.querySelector('span[hidden]')
+      const display = row.querySelector('.vdszpW_path')?.textContent ?? ''
+      const path = ideRelativeWorkspacePath(hidden?.textContent?.trim() ?? '', store.getState().rootPath, display.trim())
+      if (path === '') return
+      event.preventDefault()
+      event.stopPropagation()
+      if (store.openAt(path, undefined)) {
+        store.setNotice('')
+        selectPanel(IDE_PANEL_ID)
+      }
+    }
+    document.addEventListener('click', onChangedFileClick, true)
+    return () => document.removeEventListener('click', onChangedFileClick, true)
+  }, 'dsh-ide-window: edited-file rows open the workspace')
 
   /** Mount effect of the panel: fold the navigation column, nothing else. */
   function enter() {

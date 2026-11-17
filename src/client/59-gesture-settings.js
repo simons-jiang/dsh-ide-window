@@ -28,6 +28,9 @@ function ideGestureLabel(choice, platform, tr) {
   return tr(IDE_GESTURE_KEYS[choice])
 }
 
+/** The gesture actions, in settings order. */
+const GESTURE_ACTIONS = ['definition', 'usages', 'chain']
+
 /** One gesture row: a dropdown with the choices this platform can tell apart. */
 function IdeGestureSelect(props) {
   const { entry, tr, platform, onPick } = props
@@ -40,8 +43,8 @@ function IdeGestureSelect(props) {
   }, ideGestureChoices(platform).map((choice) => h('option', {
     key: choice,
     value: choice,
-    disabled: choice === entry.taken,
-    title: choice === entry.taken ? tr('gestureTaken') : undefined,
+    disabled: entry.taken.includes(choice),
+    title: entry.taken.includes(choice) ? tr('gestureTaken') : undefined,
   }, ideGestureLabel(choice, platform, tr))))
 }
 
@@ -93,7 +96,7 @@ function IdeWorkspaceSettingsItem(props) {
   const open = state.gestureEditorOpen === true
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
-  const gestures = state.gestures ?? { definition: 'double', usages: 'meta' }
+  const gestures = state.gestures ?? { definition: 'double', usages: 'meta', chain: 'alt' }
   const bindings = state.shortcutBindings ?? {}
 
   // Generated: one row per registry entry, no per-shortcut code here.
@@ -105,7 +108,8 @@ function IdeWorkspaceSettingsItem(props) {
         action: command.action,
         label: tr(command.labelKey),
         value: gestures[command.action],
-        taken: gestures[command.action === 'definition' ? 'usages' : 'definition'],
+        // Every other action's gesture is unavailable here: one gesture, one job.
+        taken: GESTURE_ACTIONS.filter((key) => key !== command.action).map((key) => gestures[key]),
       }
     }
     if (command.kind === 'sequence') {

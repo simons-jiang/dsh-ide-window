@@ -365,6 +365,36 @@ function apply(ctx) {
     store.setNotice(translate('jumpFailed'))
   }
 
+  /**
+   * Rows of DSH's own 「已编辑」 card open this workspace instead of the review.
+   *
+   * The card is a shipped plugin and stays untouched: the click is swallowed in
+   * the capture phase, and the row's own hidden span carries the absolute path.
+   * The card's header keeps its meaning (open the review) — only the file rows
+   * switch target.
+   */
+  ctx.effect(() => {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined
+    const onChangedFileClick = (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const row = target.closest('[data-changed-files="true"] .vdszpW_row')
+      if (row === null || row.parentElement === null) return
+      const hidden = row.parentElement.querySelector('span[hidden]')
+      const display = row.querySelector('.vdszpW_path')?.textContent ?? ''
+      const path = ideRelativeWorkspacePath(hidden?.textContent?.trim() ?? '', store.getState().rootPath, display.trim())
+      if (path === '') return
+      event.preventDefault()
+      event.stopPropagation()
+      if (store.openAt(path, undefined)) {
+        store.setNotice('')
+        selectPanel(IDE_PANEL_ID)
+      }
+    }
+    document.addEventListener('click', onChangedFileClick, true)
+    return () => document.removeEventListener('click', onChangedFileClick, true)
+  }, 'dsh-ide-window: edited-file rows open the workspace')
+
   /** Mount effect of the panel: fold the navigation column, nothing else. */
   function enter() {
     if (immersive) return () => {}

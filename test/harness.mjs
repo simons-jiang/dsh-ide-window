@@ -611,10 +611,37 @@ function sourceFunction(name, file = undefined) {
       if (parens === 0) break
     }
   }
+  // Braces inside strings and comments are not structure: a function that
+  // compares against `'{'` would otherwise look unbalanced.
+  const skipQuoted = (from) => {
+    const quote = source[from]
+    for (let scan = from + 1; scan < source.length; scan += 1) {
+      if (source[scan] === '\\') {
+        scan += 1
+        continue
+      }
+      if (source[scan] === quote) return scan + 1
+    }
+    return source.length
+  }
   let depth = 0
   for (index = source.indexOf('{', index); index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1
-    else if (source[index] === '}') {
+    const char = source[index]
+    if (char === "'" || char === '"' || char === '`') {
+      index = skipQuoted(index) - 1
+      continue
+    }
+    if (char === '/' && source[index + 1] === '/') {
+      index = source.indexOf('\n', index)
+      if (index < 0) break
+      continue
+    }
+    if (char === '/' && source[index + 1] === '*') {
+      index = source.indexOf('*/', index + 2) + 1
+      continue
+    }
+    if (char === '{') depth += 1
+    else if (char === '}') {
       depth -= 1
       if (depth === 0) return source.slice(start, index + 1)
     }
@@ -930,6 +957,15 @@ const claimAddress = 'dsh-resource://file/session/session-1/src/App.ts'
 check(fileType.canOpen(claimAddress) === true, 'the file claim is live at startup')
 check(fileType.canOpen('dsh-resource://file/session/session-1/assets/logo.png') === false, 'non-text addresses are vetoed')
 
+// DSH's 「已编辑」 rows carry an absolute path; the panel addresses files relatively.
+{
+  const relative = new Function(`${sourceFunction('ideRelativeWorkspacePath', '60-jump.js')}\nreturn ideRelativeWorkspacePath`)()
+  check(relative('/w/app/A.java', '/w/app', 'A.java') === 'A.java', 'a path under the root turns relative', relative('/w/app/A.java', '/w/app', 'A.java'))
+  check(relative('/elsewhere/B.java', '/w/app', 'B.java') === 'B.java', 'a path outside keeps the card text', relative('/elsewhere/B.java', '/w/app', 'B.java'))
+  check(relative('', '/w/app', '') === '', 'no path yields nothing', relative('', '/w/app', ''))
+  check(relative('/w/app', '/w/app', 'x') === '', 'the root itself is not a file', relative('/w/app', '/w/app', 'x'))
+}
+
 // ---- jump to a file and a line -------------------------------------------
 // The panel is opened by a reference elsewhere in the UI, which speaks absolute
 // paths and carries a 1-based line.
@@ -1188,10 +1224,10 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 // ---- the single shortcut registry ------------------------------------------
 {
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
-  check(Array.isArray(registry) && registry.length === 6, 'the registry holds every code-workspace shortcut', String(registry?.length))
+  check(Array.isArray(registry) && registry.length === 7, 'the registry holds every code-workspace shortcut', String(registry?.length))
   const kinds = registry.map((entry) => entry.kind)
   check(kinds.filter((kind) => kind === 'key').length === 3, 'three keyboard commands (toggle, back, ⌘P)', kinds.join(','))
-  check(kinds.filter((kind) => kind === 'gesture').length === 2, 'two are pointer gestures', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'gesture').length === 3, 'three are pointer gestures', kinds.join(','))
   check(kinds.filter((kind) => kind === 'sequence').length === 1, 'one is a double-press sequence (double Shift)', kinds.join(','))
   check(kinds.every((kind) => kind !== 'fixed'), 'every shortcut is editable', kinds.join(','))
 
@@ -1257,6 +1293,61 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(injected.store?.setGesture('usages', 'ctrl') === false, 'two actions cannot share a gesture', JSON.stringify(injected.store?.getState().gestures))
   injected.store?.setGesture('definition', 'double')
 
+  // The call chain: a third, distinct gesture, and the tree helpers.
+  check(new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
+    .some((entry) => entry.kind === 'gesture' && entry.action === 'chain'), 'the call chain has its own gesture entry')
+  check(injected.store?.getState().gestures.chain === 'alt', 'the call chain defaults to Alt+click', String(injected.store?.getState().gestures.chain))
+  check(injected.store?.setGesture('definition', 'alt') === false, 'Alt belongs to the call chain', JSON.stringify(injected.store?.getState().gestures))
+  check(injected.store?.setGesture('chain', 'ctrl') === true, 'the call chain can take another gesture', JSON.stringify(injected.store?.getState().gestures))
+  injected.store?.setGesture('chain', 'alt')
+
+  const chainSrc = [
+    sourceFunction('ideDeclarations', '30-code.js'),
+    sourceFunction('ideEnclosingDeclaration', '66-callchain.js'),
+    sourceFunction('ideChainDeclaresAt', '66-callchain.js'),
+    sourceFunction('ideChainCount', '66-callchain.js'),
+    'return { ideEnclosingDeclaration, ideChainDeclaresAt, ideChainCount }',
+  ].join('\n')
+  const chain = new Function(chainSrc)()
+  const chainLines = [
+    'public class Demo extends Base {',
+    '    private int a;',
+    '',
+    '    public void first() {',
+    '        helper();',
+    '    }',
+    '',
+    '    public void second() {',
+    '        helper();',
+    '    }',
+    '}',
+  ]
+  check(chain.ideEnclosingDeclaration(chainLines, 9)?.name === 'second', 'the enclosing method is the one above the call', JSON.stringify(chain.ideEnclosingDeclaration(chainLines, 9)))
+  check(chain.ideEnclosingDeclaration(chainLines, 1) === undefined, 'above every method there is no caller', JSON.stringify(chain.ideEnclosingDeclaration(chainLines, 1)))
+  const contractNames = new Function(`${sourceFunction('ideContractNames', '66-callchain.js')}\nreturn ideContractNames`)()
+  check(JSON.stringify(contractNames(['public class A implements X, Y {'])) === '["X","Y"]', 'an implements clause lists its contracts', JSON.stringify(contractNames(['public class A implements X, Y {'])))
+  check(JSON.stringify(contractNames(['class B extends C implements D<E> {'])) === '["D"]', 'a generic contract keeps its simple name', JSON.stringify(contractNames(['class B extends C implements D<E> {'])))
+  check(contractNames(['public interface I {']).length === 0, 'an interface itself implements nothing', JSON.stringify(contractNames(['public interface I {'])))
+  check(chain.ideChainDeclaresAt(chainLines, 4) === true, 'a declaration line is recognised as a declaration', String(chain.ideChainDeclaresAt(chainLines, 4)))
+  check(chain.ideChainDeclaresAt(chainLines, 5) === false, 'a call line is not a declaration', String(chain.ideChainDeclaresAt(chainLines, 5)))
+  const chainTree = { name: 'root', children: [{ name: 'a', children: [] }, { name: 'b', children: [{ name: 'c', children: [] }] }] }
+  check(chain.ideChainCount(chainTree) === 4, 'the tree counts every node', String(chain.ideChainCount(chainTree)))
+  const invert = new Function(`${sourceFunction('ideChainInverted', '66-callchain.js')}\nreturn ideChainInverted`)()
+  const callerTree = {
+    name: 'generate',
+    focus: true,
+    children: [
+      { name: 'regenerate', children: [] },
+      { name: 'generateOneBill', children: [{ name: 'generateAndPickBill', children: [] }] },
+    ],
+  }
+  const forest = invert(callerTree)
+  check(forest.length === 2, 'every entry caller starts a branch', JSON.stringify(forest.map((entry) => entry.name)))
+  check(forest[0].name === 'regenerate' && forest[0].children[0]?.name === 'generate', 'a caller sits above the method it calls', JSON.stringify(forest[0].name))
+  check(forest[1].children[0]?.children[0]?.name === 'generate', 'the clicked method ends every branch', JSON.stringify(forest[1]))
+  check(forest[1].children[0]?.children[0]?.focus === true, 'the clicked method is the highlighted one', JSON.stringify(forest[1].children[0]?.children[0]))
+  check(forest[0].children[0]?.children.length === 0, 'the clicked method has no caller below it', JSON.stringify(forest[0].children[0]?.children))
+
   // 键盘绑定由插件自己存：默认值来自注册表，改键写入偏好
   const defaults = new Function(`${grabSource('ideShortcutDefault', '05-shortcut-registry.js')}\nreturn ideShortcutDefault`)()
   const toggle = registry.find((entry) => entry.action === 'toggle')
@@ -1273,8 +1364,8 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(matcher(digitTwo, { code: 'Digit2', metaKey: true, shiftKey: true }, 'macos') === false, 'an extra modifier does not match')
   check(injected.store?.getState().gestures.usages === 'meta', 'meta click lists usages by default')
   check(injected.store?.setGesture('definition', 'meta') === false, 'a gesture already in use is refused')
-  check(injected.store?.setGesture('definition', 'alt') === true, 'a free gesture is accepted')
-  check(injected.store?.getState().gestures.definition === 'alt', 'the accepted gesture is stored', injected.store?.getState().gestures.definition)
+  check(injected.store?.setGesture('definition', 'ctrl') === true, 'a free gesture is accepted')
+  check(injected.store?.getState().gestures.definition === 'ctrl', 'the accepted gesture is stored', injected.store?.getState().gestures.definition)
   check(injected.store?.setGesture('definition', 'double') === true, 'it can be put back')
 
   const gestureOf = new Function(`${grabSource('ideGestureOf', '30-code.js')}\nreturn ideGestureOf`)()

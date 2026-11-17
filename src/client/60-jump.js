@@ -69,6 +69,21 @@ function ideDecodeSegment(segment) {
  *
  * @returns `{ scope, sessionId, path }`, or `undefined` for anything else.
  */
+/**
+ * A path the shell hands out, as a path inside this workspace.
+ *
+ * The built-in 「已编辑」 card stores the absolute path of each file next to the
+ * row; the panel addresses files relative to its root. A path outside the root
+ * keeps the card's own display text, which is already workspace-relative.
+ */
+function ideRelativeWorkspacePath(absolute, root, fallback) {
+  if (typeof absolute === 'string' && absolute !== '' && typeof root === 'string' && root !== '') {
+    if (absolute === root) return ''
+    if (absolute.startsWith(`${root}/`)) return absolute.slice(root.length + 1)
+  }
+  return typeof fallback === 'string' ? fallback : ''
+}
+
 function ideParseFileAddress(address) {
   const prefix = 'dsh-resource://file/'
   if (typeof address !== 'string' || !address.startsWith(prefix)) return undefined

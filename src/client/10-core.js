@@ -422,6 +422,7 @@ function ideCreateStore(refs) {
     gestures: {
       definition: prefs.gestures?.definition ?? 'double',
       usages: prefs.gestures?.usages ?? 'meta',
+      chain: prefs.gestures?.chain ?? 'alt',
     },
     /** Whether the gesture editor inside General settings is expanded. */
     gestureEditorOpen: false,
@@ -974,6 +975,32 @@ function ideCreateStore(refs) {
   }
 
   /**
+   * Read one workspace file's lines without attaching them to a tab.
+   *
+   * The call chain asks for the declarations above a call site; that file may
+   * not be open, and nothing here should change the editor.
+   */
+  async function readLines(path) {
+    const face = files()
+    const sessionId = state.sessionId
+    if (face === undefined || sessionId === null || sessionId === undefined) return []
+    if (state.rootPath === '' || typeof path !== 'string' || path === '') return []
+    const absolutePath = ideAbs(state.rootPath, path)
+    const lines = []
+    let offset = 1
+    for (let page = 0; page < 64; page += 1) {
+      const result = await ideCall(face, 'read', [sessionId, absolutePath, { offset }, new AbortController().signal])
+      if (!result.ok) return lines
+      const value = result.value
+      if (value.lines <= 0) return lines
+      for (const line of String(value.text).split('\n')) lines.push(line)
+      if (value.eof === true || lines.length >= IDE_MAX_LINES) return lines
+      offset += value.lines
+    }
+    return lines
+  }
+
+  /**
    * Re-read the active file (content and its git hunks).
    *
    * Called when the window regains focus: a commit changes git's view of the
@@ -1387,12 +1414,12 @@ function ideCreateStore(refs) {
     setGestureIssue: (issue) => {
       patch({ gestureIssue: typeof issue === 'string' ? issue : '' })
     },
-    /** Change one navigation gesture; the two actions must stay distinct. */
+    /** Change one navigation gesture; the actions must stay distinct. */
     setGesture: (which, value) => {
-      if (which !== 'definition' && which !== 'usages') return false
+      if (which !== 'definition' && which !== 'usages' && which !== 'chain') return false
       if (!['double', 'meta', 'ctrl', 'alt'].includes(value)) return false
-      const other = which === 'definition' ? state.gestures.usages : state.gestures.definition
-      if (value === other) return false
+      const others = ['definition', 'usages', 'chain'].filter((key) => key !== which)
+      if (others.some((key) => state.gestures[key] === value)) return false
       const gestures = { ...state.gestures, [which]: value }
       ideWritePrefs({ gestures })
       patch({ gestures })
@@ -1410,6 +1437,7 @@ function ideCreateStore(refs) {
     refreshAll,
     refreshTabs,
     reloadActive,
+    readLines,
     rememberScroll,
     setRevealApplied,
     openFile,

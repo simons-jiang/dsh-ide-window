@@ -553,6 +553,18 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   if (onPartial !== undefined) onPartial(partial)
 
   const references = await run('findReferences', 'refs')
+  // The popup has the same blind spot as the counter: a caller holding the
+  // interface never appears among the implementation's references.
+  if (typeof symbolName === 'string' && symbolName !== '') {
+    const contract = await ideContractReferences(store, tabPath, await store.readLines(tabPath), symbolName)
+    const known = new Set(references.map(ideLocationKey))
+    for (const location of contract) {
+      const key = ideLocationKey(location)
+      if (known.has(key)) continue
+      known.add(key)
+      references.push(location)
+    }
+  }
 
   const callerRows = []
   const seenCaller = new Set()

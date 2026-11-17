@@ -162,5 +162,10 @@
   "treeExpandLimit": "Stopped at the 200-directory limit",
   "annotateUncommitted": "Not committed",
   "gestureCtrl": "Ctrl+click",
-  "gesturePickHint": "Pick the trigger"
+  "gesturePickHint": "Pick the trigger",
+  "gestureChain": "Call chain",
+  "chainLoading": "Walking callers…",
+  "chainNone": "No callers found (this may be an entry point)",
+  "chainHint": "Click a node to jump to it",
+  "chainRule": "Upper nodes call the ones below them; the ← line is where that call happens"
 }

@@ -102,6 +102,12 @@ const IDE_SHORTCUTS = [
     labelKey: 'gestureUsages',
     action: 'usages',
   },
+  {
+    id: 'code-workspace.gesture-chain',
+    kind: 'gesture',
+    labelKey: 'gestureChain',
+    action: 'chain',
+  },
 ]
 
 /**

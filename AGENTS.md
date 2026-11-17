@@ -40,9 +40,9 @@
 index.js               宿主（Node ESM）：注册 8 条 HTTP 路由，转发到 DSH 服务
 client.js              客户端产物（build.mjs 生成，**必须提交**）
 src/client/*.js        客户端源码片段（构建时按文件名排序拼接）
-build.mjs              把 15 个片段 + locale 拼成 client.js
+build.mjs              把 16 个片段 + locale 拼成 client.js
 cordis.patch.yml       bundle patch：把插件插入 profile（id: dsh-ide-window）
-locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里读标题/描述
+locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里读标题/描述
 ```
 
 **为什么有切片 + 构建**：浏览器模块加载器每个包只吃**一个**文件，所以源码必须合并成一个 factory body。片段前缀数字 = 拼接顺序。
@@ -61,6 +61,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 | `59-gesture-settings.js` | 设置分区（快捷键 / 字号）+ 标签页右键菜单组件 |
 | `60-jump.js` | 文件地址声明与跳转拦截（`dsh-resource://file/session/**`） |
 | `65-lsp.js` | LSP 语义辅助（符号消歧、注解属性、bean 字段推断） |
+| `66-callchain.js` | 调用链（Alt+单击）：沿 `findReferences` 向上递归，思维导图式浮层 |
 | `68-grep.js` | 工作区搜索 + jar 源码查询客户端 |
 | `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
@@ -102,11 +103,12 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 - 文件树工具栏：**定位到当前文件**（展开祖先目录、滚动并高亮）/ **展开全部**（逐层加载，上限 200 个目录，超限提示）/ **收起全部**
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
 - 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带），`git commit` 不改内容也能更新
+- DSH 自带的「已编辑 N 个文件」卡片：点**文件行**直接在本插件工作区打开（捕获阶段拦截 + 行内隐藏的绝对路径；卡片头部仍打开官方 review）
 - 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
 - 大文件保护：>60000 行或超字节上限时截断并提示
 
 ### 4.2 语义导航（IntelliJ LSP）
-- **双击** → 转到定义；**⌘+单击** → 实现 / 调用方弹层；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，两个动作互斥）
+- **双击** → 转到定义；**⌘+单击** → 实现 / 调用方弹层；**⌥+单击方法名** → 调用链（向上递归「谁调用了它」，思维导图浮层，点节点跳转）；`findReferences` 返回的声明位置会被丢弃（否则会把上一层自己的签名行误当成调用点），浮层把入口放在最上面、被点的方法放在最下面（上方调用下方），← 后是它调用下方方法的位置；每个节点都带类名；**实现方法会顺着 `implements` 找到接口里的同名方法，把接口调用方一并纳入调用链、用法计数和 ⌘+单击的调用方列表**（否则实现方法永远显示 0 用法）；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，三个动作互斥）
 - 跳转成功后横幅显示 `→ 文件:行 · 查询 xms · 载入 yms`
 - 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明
 - 定义在依赖 jar 内时 → 自动去 sources jar 找源码（含「跳过 javadoc 里的 `{@link #x()}`」判定）
@@ -125,7 +127,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 - 卡片状态按「会话+轮次」缓存，切面板不丢
 
 ### 4.5 设置（设置 → 通用设置 → 代码工作区设置）
-- **快捷键**（6 条，全部可改，点「修改」直接按新键）
+- **快捷键**（7 条，全部可改，点「修改」直接按新键）
 - **基础设置 → 字号**：代码字号（默认 12.5）、文件树字号（默认 14.5），10–24px 步进 0.5，行高按比例联动
 
 ### 4.6 快捷键（唯一登记处 `IDE_SHORTCUTS`）
@@ -138,6 +140,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 | `code-workspace.file-search` | key | `⌘P` |
 | `code-workspace.gesture-definition` | gesture | 双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击 |
 | `code-workspace.gesture-usages` | gesture | 同上（互斥） |
+| `code-workspace.gesture-chain` | gesture | ⌥+单击（三个动作互斥） |
 
 **加一条新快捷键**：只在 `05-shortcut-registry.js` 加一条，设置页自动出现；`key`/`sequence` 由 `90-apply.js` 的派发器处理。
 
@@ -230,7 +233,7 @@ index.js                      宿主：8 条路由 + jar ZIP 解析 + git 状态
 client.js                     构建产物（提交）
 build.mjs                     拼接 + 注入校验（禁止未声明的 ide* 辅助函数）
 cordis.patch.yml              profile 插入项
-locale/zh.json, en.json       UI 文案（134 键）+ 插件展示信息
+locale/zh.json, en.json       UI 文案（165 键）+ 插件展示信息
 src/client/05-shortcut-registry.js   ★ 快捷键唯一登记处
 src/client/10-core.js         store / 偏好 / 标签页 / 视图持久化
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载

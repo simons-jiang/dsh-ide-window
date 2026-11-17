@@ -243,6 +243,10 @@ function IdeUsageSection({ section, onPick }) {
  * with the source it describes.
  */
 function IdeUsagePopup({ popup, onPick, onClose }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (ref.current !== null && typeof ref.current.focus === 'function') ref.current.focus()
+  }, [])
   useEffect(() => {
     const onDown = (event) => {
       const element = event.target
@@ -250,19 +254,24 @@ function IdeUsagePopup({ popup, onPick, onClose }) {
       onClose()
     }
     const onKey = (event) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
     }
     globalThis.addEventListener('pointerdown', onDown, true)
-    globalThis.addEventListener('keydown', onKey)
+    globalThis.addEventListener('keydown', onKey, true)
     return () => {
       globalThis.removeEventListener('pointerdown', onDown, true)
-      globalThis.removeEventListener('keydown', onKey)
+      globalThis.removeEventListener('keydown', onKey, true)
     }
   }, [onClose])
 
   const sections = popup.sections ?? []
   const total = sections.reduce((sum, section) => sum + section.rows.length, 0)
   return h('div', {
+    ref,
+    tabIndex: -1,
     className: 'iw-pop',
     style: { left: `${popup.x}px`, top: `${popup.y}px` },
     role: 'dialog',
@@ -494,7 +503,10 @@ function ideRequestVision(store, tab, declarations, done) {
         // A failed query is not a zero: leave the line uncached so it can be
         // answered when the server is available again.
         if (!failed) {
-          const usages = ideVisionCount(references?.locations, tab.path, line)
+          // A caller that holds the interface never names the implementation;
+          // without the contract's references every override looks unused.
+          const contract = await ideContractReferences(store, tab.path, tab.text.split('\n'), declaration.name)
+          const usages = ideVisionCount([...(references?.locations ?? []), ...contract], tab.path, line)
           const implemented = ideVisionCount(implementations?.locations, tab.path, line)
           ideVisionCounts.get(key).set(line, ideVisionLabel(usages, implemented))
           done()
@@ -618,8 +630,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   // panel-relative and an overlay can never paint over the app shell's composer.
   // Viewport coordinates: the popup is `position: fixed`, so it lands next to the
   // pointer and never scrolls with the source.
-  const popupAt = (event) => ({
-    x: Math.min(Math.max(8, event.clientX), Math.max(8, (globalThis.innerWidth || 1200) - 520)),
+  const popupAt = (event, width = 520) => ({
+    x: Math.min(Math.max(8, event.clientX), Math.max(8, (globalThis.innerWidth || 1200) - width)),
     y: Math.min(Math.max(8, event.clientY), Math.max(8, (globalThis.innerHeight || 800) - 360)),
   })
 
@@ -789,6 +801,47 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     return true
   }
 
+  /** Which navigation action a pointer gesture is bound to, if any. */
+  const gestureActionOf = (gesture) => {
+    const actions = store.getState().gestures ?? {}
+    return ['definition', 'usages', 'chain'].find((key) => ideGestureMatches(actions[key], gesture, ideRuntimeContext.platform)) ?? ''
+  }
+
+  /** Run the action a gesture is bound to against the symbol under the pointer. */
+  const runGestureAction = (action, hit, event) => {
+    if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
+    else if (action === 'usages') void showUsages(hit.name, hit.position, event)
+    else if (action === 'chain') void showChain(hit.name, hit.position, event)
+  }
+
+  /**
+   * The caller tree of `name` (Alt+click), painted as each level arrives.
+   *
+   * "From start to end" is the direction LSP can answer: who calls this method,
+   * who calls that caller, and so on until an entry point.
+   */
+  const showChain = async (name, position, event) => {
+    if (navigate === undefined) {
+      store.setNotice(`${tr('lspFailed')}: lsp-unavailable`)
+      return
+    }
+    const anchor = popupAt(event, 620)
+    const started = ideNow()
+    const root = { name, path: tab.path, line: position.line + 1, position }
+    const paint = (tree, state, ms) => setPopup({
+      kind: 'chain',
+      name,
+      tree,
+      state,
+      ms,
+      empty: tr('chainNone'),
+      ...anchor,
+    })
+    paint({ ...root, children: [] }, 'loading', 0)
+    const tree = await ideCallChain(store, root, { onPartial: (partial) => paint(partial, 'loading', 0) })
+    paint(tree, 'ready', Math.round(ideNow() - started))
+  }
+
   /** Show implementations and callers of `name` (⌘/Ctrl + click). */
   const showUsages = async (name, position, event) => {
     if (navigate === undefined) {
@@ -946,30 +999,22 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // macOS turns Ctrl+click into a secondary click; the context menu handler
       // runs that gesture, so it is not also acted on here.
       if (gesture === 'ctrl' && ideRuntimeContext.platform === 'macos') return
-      const actions = store.getState().gestures
-      const action = ideGestureMatches(actions.definition, gesture, ideRuntimeContext.platform) ? 'definition'
-        : ideGestureMatches(actions.usages, gesture, ideRuntimeContext.platform) ? 'usages'
-          : ''
+      const action = gestureActionOf(gesture)
       if (action === '') return
       const hit = resolveSymbolAt(event)
       if (hit === undefined) return
       event.preventDefault()
-      if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
-      else void showUsages(hit.name, hit.position, event)
+      runGestureAction(action, hit, event)
     },
     onDoubleClick: (event) => {
       // A double click with a modifier belongs to the single-click gestures above.
       if (ideGestureOf(event) !== 'plain') return
-      const actions = store.getState().gestures
+      const action = gestureActionOf('double')
+      if (action === '') return
       const hit = resolveSymbolAt(event)
       if (hit === undefined) return
-      const action = actions.definition === 'double' ? 'definition'
-        : actions.usages === 'double' ? 'usages'
-          : ''
-      if (action === '') return
       event.preventDefault()
-      if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
-      else void showUsages(hit.name, hit.position, event)
+      runGestureAction(action, hit, event)
     },
     onContextMenu: (event) => {
       // The gutter — change bar, annotate column, line numbers — is where an
@@ -981,16 +1026,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         // macOS delivers Ctrl+click as a secondary click: when that gesture is
         // configured for navigation, it belongs to the source, not to a menu.
         if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
-          const actions = store.getState().gestures
-          const action = ideGestureMatches(actions.definition, 'ctrl', 'macos') ? 'definition'
-            : ideGestureMatches(actions.usages, 'ctrl', 'macos') ? 'usages'
-              : ''
+          const action = gestureActionOf('ctrl')
           if (action === '') return
           const hit = resolveSymbolAt(event)
           if (hit === undefined) return
           event.preventDefault()
-          if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
-          else void showUsages(hit.name, hit.position, event)
+          runGestureAction(action, hit, event)
         }
         return
       }
@@ -1011,7 +1052,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
 
   // The popup is a sibling of the scrolling container, not a child: inside it,
   // it would both scroll with the source and position against that container.
-  return h(React.Fragment, null, [code, popup === undefined ? null : h(IdeUsagePopup, { key: 'popup', popup, onPick: pick, onClose: closePopup })])
+  const popupView = popup === undefined
+    ? null
+    : popup.kind === 'chain'
+      ? h(IdeChainPopup, { key: 'popup', popup, tr, onPick: pick, onClose: closePopup })
+      : h(IdeUsagePopup, { key: 'popup', popup, onPick: pick, onClose: closePopup })
+  return h(React.Fragment, null, [code, popupView])
 }
 
 /** The bottom status bar. */

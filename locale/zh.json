@@ -162,5 +162,10 @@
   "treeExpandLimit": "已展开到上限（200 个目录）",
   "annotateUncommitted": "未提交",
   "gestureCtrl": "Ctrl+单击",
-  "gesturePickHint": "选择触发方式"
+  "gesturePickHint": "选择触发方式",
+  "gestureChain": "查看调用链",
+  "chainLoading": "正在向上查找调用方…",
+  "chainNone": "没有找到调用方（可能已是入口方法）",
+  "chainHint": "点击节点跳到对应代码",
+  "chainRule": "上方节点调用下方节点；← 后是它调用下方方法的位置"
 }
