@@ -636,18 +636,6 @@ function apply(ctx) {
     }),
   }, IdeWorkspaceSettingsItem)), 'dsh-ide-window: workspace settings')
 
-  // The Turn's changed files, in the Turn's own tail: clicking one opens this
-  // panel at the first changed line. `seq` and `sessionId` come from the slot's
-  // owner props, so the card always describes the Turn it sits under.
-  ctx.effect(() => ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
-    name: 'conversation.chat.turnTail',
-    id: `${IDE_NS}:turn-changes`,
-    order: 30,
-    registrant: IDE_NS,
-    locale: IDE_NS,
-    inject: () => ({ store, translate, openPanel }),
-  }, IdeTurnChanges)), 'dsh-ide-window: turn changes')
-
   // The conversation header's leading seat: global navigation, left of the title.
   ctx.effect(() => ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
     name: 'conversation.header.leading',

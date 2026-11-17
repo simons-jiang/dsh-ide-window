@@ -474,17 +474,10 @@ await tick()
 check(log.length > before, 'refresh re-read directories')
 
 // ---- project switching -----------------------------------------------------
-check(store.getState().preferredRoot === '', 'no project is preferred by default', String(store.getState().preferredRoot))
-store.setPreferredRoot('/tmp/other-project/')
-check(store.getState().preferredRoot === '/tmp/other-project', 'a preferred project drops the trailing slash', String(store.getState().preferredRoot))
+// The Session owns the project: `setRoot` is what a switched workspace does.
+store.setRoot('/tmp/other-project')
 check(store.getState().rootPath === '/tmp/other-project', 'switching projects re-roots the panel', String(store.getState().rootPath))
 await tick()
-const prefsRaw = sandbox.localStorage.getItem('dsh-ide-window:v1')
-let prefsDoc
-try { prefsDoc = JSON.parse(prefsRaw) } catch { prefsDoc = undefined }
-check(prefsDoc?.preferredRoot === '/tmp/other-project', 'the preferred project is persisted', String(prefsRaw).slice(0, 80))
-store.setPreferredRoot('')
-check(store.getState().preferredRoot === '', 'clearing the choice follows the Session again', String(store.getState().preferredRoot))
 
 // ---- navigation history ----------------------------------------------------
 sandbox.localStorage.removeItem('dsh-ide-window:view')
@@ -522,7 +515,7 @@ check((navStore.getState().historyForward ?? []).length === 0, 'a fresh jump cle
 
 
 /** Extract one top-level function's source from a client fragment, for unit checks. */
-function grabSource(name, file = '58-turn.js') {
+function grabSource(name, file = '10-core.js') {
   const source = readFileSync(new URL(`../src/client/${file}`, import.meta.url), 'utf8')
   const constant = source.indexOf(`const ${name} = `)
   if (constant >= 0 && source.indexOf(`function ${name}(`) < 0) {
@@ -886,37 +879,7 @@ function sourceFunction(name, file = undefined) {
   check(marked.get(1)?.band === marked.get(2)?.band, 'adjacent uncommitted lines share a band', `${marked.get(1)?.band}/${marked.get(2)?.band}`)
 }
 
-// ---- shell-only Turns are explained, not silent -----------------------------
-{
-  const touched = new Function(
-    `${grabSource('IDE_SHELL_WRITES', '58-turn.js')}\n${grabSource('ideTurnTouchedShell', '58-turn.js')}\nreturn ideTurnTouchedShell`,
-  )()
-  const make = (command, turn = 7) => ({
-    eventLocations: new Map([[1, { kind: 'turn', turn: { turn } }], [2, { kind: 'event' }]]),
-    eventNodes: [{ seq: 2, type: 'tool/call', turn, data: { name: 'bash', arguments: JSON.stringify({ command }) } }],
-  })
-  check(touched(make('git commit -am "x"'), 7) === true, 'a git commit counts as a shell write')
-  check(touched(make('python3 -c "open(1)"'), 7) === true, 'a python rewrite counts as a shell write')
-  check(touched(make('mvn -q compile'), 7) === false, 'a plain build does not')
-  check(touched(make('grep -rn foo src'), 7) === false, 'a read-only search does not')
-  check(touched(make('git commit -am x', 9), 7) === false, 'another Turn is ignored')
-}
 
-// ---- the changes card never asks for a summary the Host cannot serve --------
-{
-  const source = readFileSync(new URL('../src/client/58-turn.js', import.meta.url), 'utf8')
-  // 曾经用 slot 的 seq 兜底；那会让每个历史轮次都发一次必然 404 的请求。
-  check(/Number\.isFinite\(recorded\?\.changes\?\.seq\) \? recorded\.changes\.seq : undefined/.test(source),
-    'the sequence comes only from the recorded deliverables node')
-  check(!/recorded\.changes\.seq\s*\n?\s*:\s*\(Number\.isFinite\(seq\)/.test(source),
-    'the slot sequence is no longer used as a fallback')
-  check(/if \(!Number\.isFinite\(changesSeq\)\) \{/.test(source),
-    'a Turn without a recorded summary skips the request entirely')
-  // 只防并发重复，不再缓存 404：把临时故障固化下来不值得
-  check(/ideSummaryRequests\.has\(summaryKey\)/.test(source), 'a Turn with a request in flight is not asked twice')
-  check(!/localStorage/.test(source), 'no 404 result is cached', 'still has localStorage')
-
-}
 
 // ---- jar sources -----------------------------------------------------------
 const jarStore = main.inject().store
@@ -1375,45 +1338,6 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(gestureOf({}) === 'plain', 'a bare click is plain')
 }
 
-// ---- turn changes ----------------------------------------------------------
-{
-  const names = mode.record.registrations.map((entry) => entry.name)
-  check(names.includes('conversation.chat.turnTail'), 'registers the turn changes entry', names.join(','))
-
-  // 首个改动行：hunk 的 newStart 加上跳过上下文行后的偏移
-  const drop = new Function(`${grabSource('ideFirstChangedLine')}\nreturn ideFirstChangedLine`)()
-  const diff = { kind: 'text', hunks: [
-    { oldStart: 1, oldLines: 2, newStart: 10, newLines: 3, lines: [' keep', '+added', ' keep'] },
-  ] }
-  check(drop(diff) === 11, 'the first added line is located', String(drop(diff)))
-  const deletionOnly = { kind: 'text', hunks: [
-    { oldStart: 4, oldLines: 1, newStart: 4, newLines: 0, lines: ['-gone'] },
-  ] }
-  check(drop(deletionOnly) === 4, 'a deletion-only hunk falls back to its start', String(drop(deletionOnly)))
-  check(drop({ kind: 'binary' }) === 0, 'a binary comparison has no line', String(drop({ kind: 'binary' })))
-
-  // 事件日志兜底：摘要丢失时从工具调用还原改动文件
-  const edited = new Function(`${grabSource('IDE_WRITE_TOOLS')}\n${grabSource('ideTurnEditedPaths')}\nreturn ideTurnEditedPaths`)()
-  const trajectory = {
-    eventLocations: new Map([
-      [10, { kind: 'turn', turn: { turn: 2 } }],
-      [11, { kind: 'step', turn: { turn: 2 }, step: {} }],
-      [12, { kind: 'turn', turn: { turn: 1 } }],
-    ]),
-    eventNodes: [
-      { matches: [{ event: { seq: 11, type: 'tool/call', data: { name: 'edit', arguments: '{"file_path":"src/A.java","old_string":"x"}' } } }] },
-      { matches: [{ event: { seq: 10, type: 'tool/call', data: { name: 'write', arguments: { path: 'src/B.java' } } } }] },
-      { matches: [{ event: { seq: 10, type: 'tool/call', data: { name: 'read', arguments: '{"file_path":"src/Ignored.java"}' } } }] },
-      { matches: [{ event: { seq: 12, type: 'tool/call', data: { name: 'edit', arguments: '{"file_path":"src/Other.java"}' } } }] },
-      { matches: [{ event: { seq: 11, type: 'tool/call', data: { name: 'edit', arguments: '{"file_path":"src/A.java"}' } } }] },
-    ],
-  }
-  // 真实会话日志里字段名是 arguments（不是 input）
-  const recovered = edited(trajectory, 2)
-  check(recovered.length === 2, 'read tools and other turns are ignored', JSON.stringify(recovered))
-  check(recovered[0] === 'src/A.java' && recovered[1] === 'src/B.java', 'paths keep first-touch order', JSON.stringify(recovered))
-  check(edited(trajectory, 9).length === 0, 'an unknown turn recovers nothing', JSON.stringify(edited(trajectory, 9)))
-}
 
 
 // ---- shortcuts are the plugin's own -----------------------------------------

@@ -436,7 +436,6 @@ function ideCreateStore(refs) {
      * A project root chosen by the user, overriding the Session-derived one.
      * Empty means "follow the Session", which is the default.
      */
-    preferredRoot: typeof prefs.preferredRoot === 'string' ? prefs.preferredRoot : '',
     treeVisible: prefs.treeVisible !== false,
     treeWidth: ideClamp(Number(prefs.treeWidth) || 300, 190, 560),
     filter: '',
@@ -1272,13 +1271,7 @@ function ideCreateStore(refs) {
    * The Remote file methods address absolute paths, so a switched project needs
    * no other Session; only the relative-path vocabulary follows the new root.
    */
-  function setPreferredRoot(rootPath) {
-    const next = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
-    if (next === state.preferredRoot) return
-    patch({ preferredRoot: next })
-    ideWritePrefs({ preferredRoot: next })
-    if (next !== '') setRoot(next)
-  }
+
 
   /** The active tab's position, which is what history entries remember. */
   function currentPosition() {
@@ -1460,7 +1453,6 @@ function ideCreateStore(refs) {
     searchFiles,
     setPaletteOpen,
     restoreView,
-    setPreferredRoot,
     openJarSource,
     goBack,
     goForward,

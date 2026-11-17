@@ -40,7 +40,7 @@
 index.js               宿主（Node ESM）：注册 8 条 HTTP 路由，转发到 DSH 服务
 client.js              客户端产物（build.mjs 生成，**必须提交**）
 src/client/*.js        客户端源码片段（构建时按文件名排序拼接）
-build.mjs              把 16 个片段 + locale 拼成 client.js
+build.mjs              把 15 个片段 + locale 拼成 client.js
 cordis.patch.yml       bundle patch：把插件插入 profile（id: dsh-ide-window）
 locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里读标题/描述
 ```
@@ -57,7 +57,6 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
 | `40-panel.js` | 面板骨架（工具栏、横幅、布局、字号 CSS 变量） |
 | `45-tracker.js` | 会话追踪（面板与当前会话/工作区绑定） |
-| `58-turn.js` | 对话改动的「代码改动」卡片 |
 | `59-gesture-settings.js` | 设置分区（快捷键 / 字号）+ 标签页右键菜单组件 |
 | `60-jump.js` | 文件地址声明与跳转拦截（`dsh-resource://file/session/**`） |
 | `65-lsp.js` | LSP 语义辅助（符号消歧、注解属性、bean 字段推断） |
@@ -85,7 +84,6 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 |---|---|
 | `main`（keyed `dsh-ide-window:code`） | 面板占中栏 |
 | `conversation.header.leading` | 会话表头左侧的入口按钮 |
-| `conversation.chat.turnTail`（list, scope session） | 每轮末尾的「代码改动」卡片 |
 | `settings.general.item` | 设置 → 通用设置里的「代码工作区设置」 |
 | `shell.overlay`（list） | 面板内浮层（用法弹层等） |
 | `sidebar.right.pane.tab` | 仅用于文件地址认领（body 不渲染） |
@@ -103,6 +101,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 - 文件树工具栏：**定位到当前文件**（展开祖先目录、滚动并高亮）/ **展开全部**（逐层加载，上限 200 个目录，超限提示）/ **收起全部**
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
 - 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带），`git commit` 不改内容也能更新
+- 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）
 - DSH 自带的「已编辑 N 个文件」卡片：点**文件行**直接在本插件工作区打开（捕获阶段拦截 + 行内隐藏的绝对路径；卡片头部仍打开官方 review）
 - 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
 - 大文件保护：>60000 行或超字节上限时截断并提示
@@ -122,9 +121,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
 
 ### 4.4 与对话联动
-- 「代码改动」卡片：本轮改动文件 + `+A/−D`，点击跳到第一个改动行
-- 摘要丢失时回退：本轮工具调用 → **工作区未提交文件**（带 M/A/?? 标记）→ 一行说明
-- 卡片状态按「会话+轮次」缓存，切面板不丢
+- 用 DSH 自带的「已编辑 N 个文件」卡片即可：**点文件行**直接进本插件工作区（见 4.1 的拦截项）；插件不再渲染自己的改动卡片（原 `turnTail` 卡片已删除，`58-turn.js` 随之移除）
 
 ### 4.5 设置（设置 → 通用设置 → 代码工作区设置）
 - **快捷键**（7 条，全部可改，点「修改」直接按新键）
@@ -155,7 +152,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
    `ctx.shortcuts` 只用来读平台/运行时、以及 `describeBinding` 判冲突。
 3. **`⌘W` 不绑**。它是 DSH 的「关闭窗口」，菜单里不写快捷键提示，避免误导。
 4. **jar 源码只读**：不反编译、不复制、不落盘；进程内只缓存 `类名 → jar 路径`。
-5. **卡片只报「本轮」改动**；DSH 只统计编辑工具（edit/write），shell（git/sed/重定向/python -c）改的文件它不知道 → 回退列「工作区未提交」并明确标注语义。
+5. **改动列表用官方卡片**：插件只拦截它的文件行跳工作区，不再自己渲染卡片，也不再解析 `changes.summary`（少一处与 Host 内存态耦合的逻辑）。
 6. **状态放 store、结果缓存到模块级**。切到代码工作区会卸载对话组件，`useState` 会丢；`ideTurnStates` / `ideSummaryRequests` 是为此存在的。
 7. **设置项内联展开，不弹窗**。`shell.overlay` 的层级低于设置弹窗，弹窗会被盖住。
 
@@ -203,7 +200,6 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | `cannot get property "shortcuts" without inject` | 插件导出没声明该服务 | `build.mjs` 里 `inject: ['slots','locale','shortcuts']` |
 | 快捷键注册整条失败 | 声明了 `web:linux` 默认值（该 profile 只允许 Slash/Comma/Period） | **不要**声明 `web:linux` |
 | `getBaseCurrency` 找不到定义 | 泛型接收者没解析出基类 | `ideChainBase` / `ideGenericArgument` 要容忍 `org.mockito.ArgumentCaptor<T>` |
-| 改动卡片不出现、网络里 `changes.summary 404` | 用了 turn 结束序号，而摘要按 `workspace/changes` 事件序号 | 从 `turn.data.get('deliverables').changes.seq` 取 |
 | 跳转成功却报 `outcome is not defined` | 解构时只取 `locations`，后面又用 `outcome.ms` | 接住整个返回值；**这类错误测不到，必须给跳转逻辑写桩测试** |
 | 注解点不动 | 分词把 `@X` 当成一个 `iw-ann` 运行，只有普通标识符可点击 | `ideSymbolOfRun()` 去 `@`、取简单名、算列偏移 |
 | 切到代码工作区再回来卡片消失 | 组件卸载丢 `useState` | 结果缓存到模块级 Map |
@@ -215,7 +211,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 
 ## 八、已知限制 / 待办
 
-1. **DSH 重启后历史轮次没有改动摘要**（Host 内存态）——只能回退到「工作区未提交」，不会伪造。
+1. **DSH 重启后历史轮次没有改动摘要**（Host 内存态，官方卡片同样消失）——这是 DSH 自身行为，插件不做补偿。
 2. **「添加到智能体上下文」是降级实现**：复制 `@相对路径` 并提示粘贴；DSH 未开放插件的对话草稿插入 API。
 3. **分享前待办**（用户已知，尚未做）：
    - 包名 `@local/dsh-ide-window` 建议改成唯一 scope（如 `@simons-jiang/dsh-ide-window`）
@@ -237,7 +233,6 @@ locale/zh.json, en.json       UI 文案（165 键）+ 插件展示信息
 src/client/05-shortcut-registry.js   ★ 快捷键唯一登记处
 src/client/10-core.js         store / 偏好 / 标签页 / 视图持久化
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
-src/client/58-turn.js         「代码改动」卡片（含回退与缓存）
 src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
 src/client/90-apply.js        全部注册 + 入口
 test/harness.mjs              VM 夹具测试（当前 212 项断言）

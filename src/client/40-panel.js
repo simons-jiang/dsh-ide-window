@@ -77,11 +77,13 @@ function IdeProjectMenu({ store, state, projects, tr, onSelectProject }) {
     return () => globalThis.removeEventListener('pointerdown', onDown, true)
   }, [open])
 
-  const rows = [{ path: '', title: tr('followSession'), detail: '' }, ...projects.map((project) => ({
+  // No "follow" row: the panel always follows the Session. Choosing another
+  // project switches to a Session of it, which is how the binding moves.
+  const rows = projects.map((project) => ({
     path: project.path,
     title: project.title,
     detail: project.path,
-  }))]
+  }))
 
   return h('div', { className: 'iw-project' }, [
     h('button', {
@@ -99,12 +101,11 @@ function IdeProjectMenu({ store, state, projects, tr, onSelectProject }) {
       ? h('div', { key: 'menu', className: 'iw-project-menu' }, rows.map((row) => h('button', {
         key: row.path === '' ? '#follow' : row.path,
         type: 'button',
-        className: row.path === state.preferredRoot ? 'iw-project-row active' : 'iw-project-row',
+        className: row.path === state.rootPath ? 'iw-project-row active' : 'iw-project-row',
         title: row.detail === '' ? row.title : row.detail,
         onClick: () => {
           setOpen(false)
           if (typeof onSelectProject === 'function') onSelectProject(row.path)
-          else store.setPreferredRoot(row.path)
         },
       }, [
         h('span', { key: 't', className: 'iw-project-row-title' }, row.title),
@@ -346,36 +347,22 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     return typeof ids[0] === 'string' ? ids[0] : undefined
   }
 
+  // The Session decides which workspace the panel shows. Opening the panel from
+  // a conversation therefore lands in that conversation's project, every time.
   useEffect(() => {
-    // A project the user picked wins over the Session's own root; clearing the
-    // choice is what hands control back to the Session.
-    const preferred = store.getState().preferredRoot
-    if (preferred !== '') {
-      // The file Remote enforces the Session's workspace scope, so a switched
-      // project must also adopt a Session that belongs to it — otherwise every
-      // listing is refused as `workspace-file/outside-workspace`.
-      const sessionId = sessionOfProject(preferred)
-      if (typeof sessionId === 'string') store.rememberSession(sessionId)
-      store.setRoot(preferred)
-      return
-    }
     if (typeof resolved.sessionId === 'string') store.rememberSession(resolved.sessionId)
     if (resolvedRoot !== '') store.setRoot(resolvedRoot)
-  }, [resolved.sessionId, resolvedRoot, state.preferredRoot, store, workspaces])
+  }, [resolved.sessionId, resolvedRoot, store])
 
   /** Switch projects: adopt a Session of that workspace first, then re-root. */
   const selectProject = (path) => {
-    if (path === '') {
-      store.setPreferredRoot('')
-      return
-    }
     const sessionId = sessionOfProject(path)
     if (sessionId === undefined) {
       store.setNotice(tr('projectNoSession'))
       return
     }
     store.rememberSession(sessionId)
-    store.setPreferredRoot(path)
+    store.setRoot(path)
   }
 
   // Mouse side buttons are the usual back/forward gesture; Chromium would take
