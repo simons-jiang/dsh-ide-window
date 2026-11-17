@@ -10,3 +10,4 @@ node_modules/
 
 # DSH 本体哈希基线（每台机器各自记录，不入库）
 .dsh-asar.sha256
+.backup/
