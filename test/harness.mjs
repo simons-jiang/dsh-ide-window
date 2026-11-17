@@ -722,13 +722,19 @@ function sourceFunction(name, file = undefined) {
   const classes = [{ path: 'src/main/java/com/x/OrderService.java', name: 'OrderService', fqn: 'com.x.OrderService' }]
   const symbols = [{ path: 'src/main/java/com/x/OrderService.java', line: 12, name: 'orderId', kind: 'field', fqn: 'com.x.OrderService' }]
   const files = [{ path: 'src/main/java/com/x/OrderService.java', line: undefined }, { path: 'pom.xml', line: undefined }]
-  const text = [{ path: 'README.md', line: 3, text: 'order id' }, { path: 'src/main/java/com/x/OrderService.java', line: 40, text: 'this.orderId' }]
+  const text = [
+    { path: 'README.md', line: 3, text: 'order id' },
+    { path: 'src/main/java/com/x/OrderService.java', line: 40, text: 'this.orderId' },
+    { path: 'src/main/java/com/x/OrderService.java', line: 12, text: 'private Long orderId;' },
+  ]
   const actions = [{ id: 'tree', label: 'Toggle tree', run: () => {} }]
   const merged = palette.idePaletteEntries({ category: 'all', classes, symbols, files, text, actions, query: 'order' })
-  check(merged.map((row) => row.kind).join(',') === 'class,symbol,files,text,actions',
-    'the merged view runs classes, symbols, files, text, actions', merged.map((row) => row.kind).join(','))
+  const mergedKinds = [...new Set(merged.map((row) => row.kind))].join(',')
+  check(mergedKinds === 'class,symbol,files,text,actions',
+    'the merged view runs classes, symbols, files, text, actions', mergedKinds)
   check(merged.filter((row) => row.kind === 'files').length === 1, 'a source file is not repeated under files', String(merged.filter((row) => row.kind === 'files').length))
-  check(merged.filter((row) => row.kind === 'text').length === 1, 'a code line is not repeated under text', String(merged.filter((row) => row.kind === 'text').length))
+  check(merged.filter((row) => row.kind === 'text').length === 2, 'a code line still shows under text unless the symbol lists it', String(merged.filter((row) => row.kind === 'text').length))
+  check(merged.filter((row) => row.kind === 'text').every((row) => !(row.path.endsWith('OrderService.java') && row.line === 12)), 'the symbol line is not repeated as text', JSON.stringify(merged.filter((row) => row.kind === 'text')))
   check(palette.idePaletteEntries({ category: 'files', classes, symbols, files, text, actions, query: 'order' }).filter((row) => row.kind === 'files').length === 2,
     'the files tab still lists every file', String(palette.idePaletteEntries({ category: 'files', classes, symbols, files, text, actions, query: 'order' }).filter((row) => row.kind === 'files').length))
   check(palette.idePaletteEntries({ category: 'class', classes, symbols, files, text, actions, query: 'order' }).every((row) => row.kind === 'class'),
@@ -1237,6 +1243,20 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
   check(injected.store?.getState().gestures.definition === 'double', 'double click goes to definition by default', JSON.stringify(injected.store?.getState().gestures))
 
+  // The dropdown offers Ctrl+click on macOS and keeps gestures distinct.
+  const gestureOfRow = new Function(`${sourceFunction('ideGestureOf', '30-code.js')}\nreturn ideGestureOf`)()
+  check(gestureOfRow({ metaKey: true }) === 'meta', 'meta is its own gesture', gestureOfRow({ metaKey: true }))
+  check(gestureOfRow({ ctrlKey: true }) === 'ctrl', 'ctrl is its own gesture', gestureOfRow({ ctrlKey: true }))
+  check(gestureOfRow({ altKey: true }) === 'alt', 'alt is its own gesture', gestureOfRow({ altKey: true }))
+  check(gestureOfRow({}) === 'plain', 'a plain click stays plain', gestureOfRow({}))
+  const matches = new Function(`${sourceFunction('ideGestureMatches', '30-code.js')}\nreturn ideGestureMatches`)()
+  check(matches('ctrl', 'ctrl', 'macos') === true, 'ctrl matches on macOS', String(matches('ctrl', 'ctrl', 'macos')))
+  check(matches('meta', 'ctrl', 'macos') === false, 'meta does not swallow ctrl on macOS', String(matches('meta', 'ctrl', 'macos')))
+  check(matches('meta', 'ctrl', 'windows') === true, 'meta means Ctrl off macOS', String(matches('meta', 'ctrl', 'windows')))
+  check(injected.store?.setGesture('definition', 'ctrl') === true, 'definition can take Ctrl+click', JSON.stringify(injected.store?.getState().gestures))
+  check(injected.store?.setGesture('usages', 'ctrl') === false, 'two actions cannot share a gesture', JSON.stringify(injected.store?.getState().gestures))
+  injected.store?.setGesture('definition', 'double')
+
   // 键盘绑定由插件自己存：默认值来自注册表，改键写入偏好
   const defaults = new Function(`${grabSource('ideShortcutDefault', '05-shortcut-registry.js')}\nreturn ideShortcutDefault`)()
   const toggle = registry.find((entry) => entry.action === 'toggle')
@@ -1259,7 +1279,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 
   const gestureOf = new Function(`${grabSource('ideGestureOf', '30-code.js')}\nreturn ideGestureOf`)()
   check(gestureOf({ metaKey: true }) === 'meta', '⌘ maps to the meta gesture')
-  check(gestureOf({ ctrlKey: true }) === 'meta', 'Ctrl maps to the same gesture')
+  check(gestureOf({ ctrlKey: true }) === 'ctrl', 'Ctrl is its own physical gesture')
   check(gestureOf({ altKey: true }) === 'alt', '⌥ maps to the alt gesture')
   check(gestureOf({}) === 'plain', 'a bare click is plain')
 }

@@ -105,7 +105,7 @@
   "gestureSectionHint": "Every shortcut of this plugin, viewable and editable here (kept out of DSH's own list)",
   "gestureEdit": "View",
   "gestureClose": "Close",
-  "gestureHint": "Click Change then press the new combination (Esc cancels); pick gestures; double Shift and ⌘P are fixed",
+  "gestureHint": "Press a new combo after 「修改」 for keys (Esc cancels); pick gestures from the dropdown (⌘ and Ctrl are distinct on macOS); double Shift and ⌘P stay fixed.",
   "gestureDefinition": "Go to definition",
   "gestureUsages": "Show implementations / callers",
   "gestureDouble": "Double click",
@@ -160,5 +160,7 @@
   "treeExpandAll": "Expand all",
   "treeCollapseAll": "Collapse all",
   "treeExpandLimit": "Stopped at the 200-directory limit",
-  "annotateUncommitted": "Not committed"
+  "annotateUncommitted": "Not committed",
+  "gestureCtrl": "Ctrl+click",
+  "gesturePickHint": "Pick the trigger"
 }

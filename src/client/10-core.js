@@ -1390,7 +1390,7 @@ function ideCreateStore(refs) {
     /** Change one navigation gesture; the two actions must stay distinct. */
     setGesture: (which, value) => {
       if (which !== 'definition' && which !== 'usages') return false
-      if (!['double', 'meta', 'alt'].includes(value)) return false
+      if (!['double', 'meta', 'ctrl', 'alt'].includes(value)) return false
       const other = which === 'definition' ? state.gestures.usages : state.gestures.definition
       if (value === other) return false
       const gestures = { ...state.gestures, [which]: value }

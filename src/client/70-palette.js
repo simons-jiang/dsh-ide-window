@@ -246,8 +246,10 @@ function ideRankRows(rows, rankOf) {
  * Flatten the enabled sources into one keyboard-navigable, ranked list.
  *
  * In the merged view a source file shows up once, under 「类」: repeating it under
- * 「文件」 would only make the list longer. The dedicated tabs still list
- * everything their own way.
+ * 「文件」 would only make the list longer. Text matches inside source files *are*
+ * kept (a comment or a string literal is not a symbol), except for a line that
+ * the symbol results already list — 「所有」 must never be narrower than 「文本」.
+ * The dedicated tabs still list everything their own way.
  */
 function idePaletteEntries({ category, classes, symbols, files, text, actions, query = '' }) {
   const needle = String(query).trim()
@@ -284,8 +286,12 @@ function idePaletteEntries({ category, classes, symbols, files, text, actions, q
     }
   }
   if (merged || category === 'text') {
-    const visible = merged ? text.filter((row) => !ideIsCodePath(row.path)) : text
-    for (const match of ideRankRows(visible, (row) => ideMatchRank(row.text, needle))) {
+    // A symbol already lists its own line; every other hit still belongs here.
+    const listed = new Set(
+      entries.filter((entry) => entry.line !== undefined).map((entry) => `${entry.path}:${entry.line}`),
+    )
+    for (const match of ideRankRows(text, (row) => ideMatchRank(row.text, needle))) {
+      if (merged && listed.has(`${match.path}:${match.line}`)) continue
       entries.push({
         key: `t:${match.path}:${match.line}`,
         kind: 'text',

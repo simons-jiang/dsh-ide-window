@@ -106,7 +106,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 - 大文件保护：>60000 行或超字节上限时截断并提示
 
 ### 4.2 语义导航（IntelliJ LSP）
-- **双击** → 转到定义；**⌘+单击** → 实现 / 调用方弹层（手势可在设置里改）
+- **双击** → 转到定义；**⌘+单击** → 实现 / 调用方弹层；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，两个动作互斥）
 - 跳转成功后横幅显示 `→ 文件:行 · 查询 xms · 载入 yms`
 - 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明
 - 定义在依赖 jar 内时 → 自动去 sources jar 找源码（含「跳过 javadoc 里的 `{@link #x()}`」判定）
@@ -116,7 +116,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 - **Code Vision**：可见的**方法**声明行尾显示「N 个用法 · M 个实现」和该行最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的方法声明，字段与局部变量都不会出现；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
 ### 4.3 搜索
-- **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（非源码）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
+- **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
 
 ### 4.4 与对话联动
@@ -136,7 +136,7 @@ locale/{zh,en}.json    UI 文案（134 个键）；插件管理器也从这里�
 | `dsh-ide-window.back-to-chat` | key | 桌面 `⌘1` / Web `⌥⌘U` |
 | `code-workspace.search-everywhere` | sequence | 双击 `Shift`（窗口 400ms） |
 | `code-workspace.file-search` | key | `⌘P` |
-| `code-workspace.gesture-definition` | gesture | 双击 / ⌘+单击 / ⌥+单击 |
+| `code-workspace.gesture-definition` | gesture | 双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击 |
 | `code-workspace.gesture-usages` | gesture | 同上（互斥） |
 
 **加一条新快捷键**：只在 `05-shortcut-registry.js` 加一条，设置页自动出现；`key`/`sequence` 由 `90-apply.js` 的派发器处理。

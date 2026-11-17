@@ -24,7 +24,19 @@ const IDE_KEYCAPS = { Slash: '/', Comma: ',', Period: '.', Backslash: '\\', Back
 const IDE_GESTURE_CHOICES = ['double', 'meta', 'alt']
 
 /** Locale keys for each gesture choice. */
-const IDE_GESTURE_KEYS = { double: 'gestureDouble', meta: 'gestureMeta', alt: 'gestureAlt' }
+const IDE_GESTURE_KEYS = { double: 'gestureDouble', meta: 'gestureMeta', ctrl: 'gestureCtrl', alt: 'gestureAlt' }
+
+/**
+ * The gestures the settings dropdown offers on one platform.
+ *
+ * macOS can tell ⌘ from ^, so both are offered; elsewhere the primary modifier
+ * *is* Ctrl, so a separate Ctrl entry would be the same physical gesture.
+ */
+function ideGestureChoices(platform) {
+  return platform === 'macos'
+    ? ['double', 'meta', 'ctrl', 'alt']
+    : ['double', 'meta', 'alt']
+}
 
 /**
  * The registry.

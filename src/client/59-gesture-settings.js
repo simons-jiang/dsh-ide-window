@@ -22,31 +22,38 @@ function ideNextGesture(current, taken) {
   return current
 }
 
-/** One gesture row: a label plus one chip per choice. */
-function IdeGestureChips(props) {
-  const { entry, tr, onPick } = props
-  return h('span', { className: 'iw-gesture-chips' }, IDE_GESTURE_CHOICES.map((choice) => {
-    const taken = choice === entry.taken
-    return h('button', {
-      key: choice,
-      type: 'button',
-      className: `iw-gesture-chip${choice === entry.value ? ' active' : ''}${taken ? ' taken' : ''}`,
-      disabled: taken,
-      title: taken ? tr('gestureTaken') : tr(IDE_GESTURE_KEYS[choice]),
-      onClick: () => onPick(entry.action, choice),
-    }, tr(IDE_GESTURE_KEYS[choice]))
-  }))
+/** Locale label for one gesture choice. */
+function ideGestureLabel(choice, platform, tr) {
+  if (choice === 'meta') return platform === 'macos' ? tr('gestureMeta') : tr('gestureCtrl')
+  return tr(IDE_GESTURE_KEYS[choice])
+}
+
+/** One gesture row: a dropdown with the choices this platform can tell apart. */
+function IdeGestureSelect(props) {
+  const { entry, tr, platform, onPick } = props
+  return h('select', {
+    className: 'iw-gesture-select',
+    value: entry.value,
+    title: tr('gesturePickHint'),
+    'aria-label': entry.label,
+    onChange: (event) => onPick(entry.action, event.target.value),
+  }, ideGestureChoices(platform).map((choice) => h('option', {
+    key: choice,
+    value: choice,
+    disabled: choice === entry.taken,
+    title: choice === entry.taken ? tr('gestureTaken') : undefined,
+  }, ideGestureLabel(choice, platform, tr))))
 }
 
 /** One generated row: label on the left, its control on the right. */
 function IdeShortcutRow(props) {
-  const { entry, tr, onPick, onRecord, onReset, recording, busy } = props
+  const { entry, tr, platform, onPick, onRecord, onReset, recording, busy } = props
   const editable = entry.kind === 'key' || entry.kind === 'sequence'
   return h('div', { className: 'iw-gesture-row' }, [
     h('span', { key: 'l', className: 'iw-gesture-label' }, entry.label),
     h('span', { key: 'right', className: 'iw-gesture-right' }, [
       entry.kind === 'gesture'
-        ? h(IdeGestureChips, { key: 'c', entry, tr, onPick })
+        ? h(IdeGestureSelect, { key: 'c', entry, tr, platform, onPick })
         : h('span', {
           key: 'k',
           className: `iw-gesture-keys${recording ? ' recording' : ''}`,
@@ -185,6 +192,7 @@ function IdeWorkspaceSettingsItem(props) {
               key: entry.id,
               entry,
               tr,
+              platform,
               onPick,
               onRecord,
               onReset,

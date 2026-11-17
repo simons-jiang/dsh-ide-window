@@ -105,7 +105,7 @@
   "gestureSectionHint": "本插件的全部快捷键，就在这里查看与修改（不占用 DSH 自己的快捷键列表）",
   "gestureEdit": "查看",
   "gestureClose": "关闭",
-  "gestureHint": "键盘命令点「修改」后直接按新组合键（Esc 取消）；手势点选；双击 Shift 与 ⌘P 为面板内固定行为",
+  "gestureHint": "键盘命令点「修改」后直接按新组合键（Esc 取消）；手势用下拉选择（macOS 上 ⌘ 与 Ctrl 分开）；双击 Shift 与 ⌘P 为面板内固定行为",
   "gestureDefinition": "转到定义",
   "gestureUsages": "查看实现 / 调用方",
   "gestureDouble": "双击",
@@ -160,5 +160,7 @@
   "treeExpandAll": "展开全部",
   "treeCollapseAll": "收起全部",
   "treeExpandLimit": "已展开到上限（200 个目录）",
-  "annotateUncommitted": "未提交"
+  "annotateUncommitted": "未提交",
+  "gestureCtrl": "Ctrl+单击",
+  "gesturePickHint": "选择触发方式"
 }

@@ -20,10 +20,22 @@ const IDE_TAB_COLUMNS = 4
  * `alt`, `shift`, or `plain` when nothing is held.
  */
 function ideGestureOf(event) {
-  if (event.metaKey === true || (event.ctrlKey === true && event.metaKey !== true)) return 'meta'
+  if (event.metaKey === true) return 'meta'
+  if (event.ctrlKey === true) return 'ctrl'
   if (event.altKey === true) return 'alt'
   if (event.shiftKey === true) return 'shift'
   return 'plain'
+}
+
+/**
+ * Whether a pointer gesture is the one a preference names.
+ *
+ * Windows and Linux use Ctrl as the primary modifier, so a stored `meta` there
+ * means the Ctrl click rather than a second, distinct gesture.
+ */
+function ideGestureMatches(configured, detected, platform) {
+  if (configured === detected) return true
+  return platform !== 'macos' && configured === 'meta' && detected === 'ctrl'
 }
 
 function IdeChatTab({ onOpen, tr }) {
@@ -931,9 +943,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // and a drag that ends on an identifier must not be mistaken for a request.
       const gesture = ideGestureOf(event)
       if (gesture === 'plain' || gesture === 'shift') return
+      // macOS turns Ctrl+click into a secondary click; the context menu handler
+      // runs that gesture, so it is not also acted on here.
+      if (gesture === 'ctrl' && ideRuntimeContext.platform === 'macos') return
       const actions = store.getState().gestures
-      const action = actions.definition === gesture ? 'definition'
-        : actions.usages === gesture ? 'usages'
+      const action = ideGestureMatches(actions.definition, gesture, ideRuntimeContext.platform) ? 'definition'
+        : ideGestureMatches(actions.usages, gesture, ideRuntimeContext.platform) ? 'usages'
           : ''
       if (action === '') return
       const hit = resolveSymbolAt(event)
@@ -962,7 +977,23 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       const target = event.target
       if (typeof target?.closest !== 'function') return
       const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
-      if (gutter === null) return
+      if (gutter === null) {
+        // macOS delivers Ctrl+click as a secondary click: when that gesture is
+        // configured for navigation, it belongs to the source, not to a menu.
+        if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
+          const actions = store.getState().gestures
+          const action = ideGestureMatches(actions.definition, 'ctrl', 'macos') ? 'definition'
+            : ideGestureMatches(actions.usages, 'ctrl', 'macos') ? 'usages'
+              : ''
+          if (action === '') return
+          const hit = resolveSymbolAt(event)
+          if (hit === undefined) return
+          event.preventDefault()
+          if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
+          else void showUsages(hit.name, hit.position, event)
+        }
+        return
+      }
       if (tab.kind === 'jar') return
       event.preventDefault()
       store.setCodeMenu({ path: tab.path, x: event.clientX, y: event.clientY })

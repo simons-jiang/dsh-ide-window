@@ -885,6 +885,17 @@ const IDE_CSS = `
 .iw-gesture-hint { margin: 0 0 8px; font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-gesture-issue { margin-bottom: 8px; font-size: 12px; color: var(--dsw-alias-state-error-primary, #c95c5c); }
 .iw-gesture-rows { display: flex; flex-direction: column; }
+.iw-gesture-select {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, #2a2e35);
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
 .iw-gesture-row {
   display: flex;
   align-items: center;

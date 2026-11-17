@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
     "gestureSectionHint": "Every shortcut of this plugin, viewable and editable here (kept out of DSH's own list)",
     "gestureEdit": "View",
     "gestureClose": "Close",
-    "gestureHint": "Click Change then press the new combination (Esc cancels); pick gestures; double Shift and ⌘P are fixed",
+    "gestureHint": "Press a new combo after 「修改」 for keys (Esc cancels); pick gestures from the dropdown (⌘ and Ctrl are distinct on macOS); double Shift and ⌘P stay fixed.",
     "gestureDefinition": "Go to definition",
     "gestureUsages": "Show implementations / callers",
     "gestureDouble": "Double click",
@@ -167,6 +167,8 @@ window.__ModuleLoader__.load({
     "treeCollapseAll": "Collapse all",
     "treeExpandLimit": "Stopped at the 200-directory limit",
     "annotateUncommitted": "Not committed",
+    "gestureCtrl": "Ctrl+click",
+    "gesturePickHint": "Pick the trigger",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -271,7 +273,7 @@ window.__ModuleLoader__.load({
     "gestureSectionHint": "本插件的全部快捷键，就在这里查看与修改（不占用 DSH 自己的快捷键列表）",
     "gestureEdit": "查看",
     "gestureClose": "关闭",
-    "gestureHint": "键盘命令点「修改」后直接按新组合键（Esc 取消）；手势点选；双击 Shift 与 ⌘P 为面板内固定行为",
+    "gestureHint": "键盘命令点「修改」后直接按新组合键（Esc 取消）；手势用下拉选择（macOS 上 ⌘ 与 Ctrl 分开）；双击 Shift 与 ⌘P 为面板内固定行为",
     "gestureDefinition": "转到定义",
     "gestureUsages": "查看实现 / 调用方",
     "gestureDouble": "双击",
@@ -327,6 +329,8 @@ window.__ModuleLoader__.load({
     "treeCollapseAll": "收起全部",
     "treeExpandLimit": "已展开到上限（200 个目录）",
     "annotateUncommitted": "未提交",
+    "gestureCtrl": "Ctrl+单击",
+    "gesturePickHint": "选择触发方式",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1217,6 +1221,17 @@ const IDE_CSS = `
 .iw-gesture-hint { margin: 0 0 8px; font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-gesture-issue { margin-bottom: 8px; font-size: 12px; color: var(--dsw-alias-state-error-primary, #c95c5c); }
 .iw-gesture-rows { display: flex; flex-direction: column; }
+.iw-gesture-select {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, #2a2e35);
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
 .iw-gesture-row {
   display: flex;
   align-items: center;
@@ -1827,7 +1842,19 @@ const IDE_KEYCAPS = { Slash: '/', Comma: ',', Period: '.', Backslash: '\\', Back
 const IDE_GESTURE_CHOICES = ['double', 'meta', 'alt']
 
 /** Locale keys for each gesture choice. */
-const IDE_GESTURE_KEYS = { double: 'gestureDouble', meta: 'gestureMeta', alt: 'gestureAlt' }
+const IDE_GESTURE_KEYS = { double: 'gestureDouble', meta: 'gestureMeta', ctrl: 'gestureCtrl', alt: 'gestureAlt' }
+
+/**
+ * The gestures the settings dropdown offers on one platform.
+ *
+ * macOS can tell ⌘ from ^, so both are offered; elsewhere the primary modifier
+ * *is* Ctrl, so a separate Ctrl entry would be the same physical gesture.
+ */
+function ideGestureChoices(platform) {
+  return platform === 'macos'
+    ? ['double', 'meta', 'ctrl', 'alt']
+    : ['double', 'meta', 'alt']
+}
 
 /**
  * The registry.
@@ -3389,7 +3416,7 @@ function ideCreateStore(refs) {
     /** Change one navigation gesture; the two actions must stay distinct. */
     setGesture: (which, value) => {
       if (which !== 'definition' && which !== 'usages') return false
-      if (!['double', 'meta', 'alt'].includes(value)) return false
+      if (!['double', 'meta', 'ctrl', 'alt'].includes(value)) return false
       const other = which === 'definition' ? state.gestures.usages : state.gestures.definition
       if (value === other) return false
       const gestures = { ...state.gestures, [which]: value }
@@ -3803,10 +3830,22 @@ const IDE_TAB_COLUMNS = 4
  * `alt`, `shift`, or `plain` when nothing is held.
  */
 function ideGestureOf(event) {
-  if (event.metaKey === true || (event.ctrlKey === true && event.metaKey !== true)) return 'meta'
+  if (event.metaKey === true) return 'meta'
+  if (event.ctrlKey === true) return 'ctrl'
   if (event.altKey === true) return 'alt'
   if (event.shiftKey === true) return 'shift'
   return 'plain'
+}
+
+/**
+ * Whether a pointer gesture is the one a preference names.
+ *
+ * Windows and Linux use Ctrl as the primary modifier, so a stored `meta` there
+ * means the Ctrl click rather than a second, distinct gesture.
+ */
+function ideGestureMatches(configured, detected, platform) {
+  if (configured === detected) return true
+  return platform !== 'macos' && configured === 'meta' && detected === 'ctrl'
 }
 
 function IdeChatTab({ onOpen, tr }) {
@@ -4714,9 +4753,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // and a drag that ends on an identifier must not be mistaken for a request.
       const gesture = ideGestureOf(event)
       if (gesture === 'plain' || gesture === 'shift') return
+      // macOS turns Ctrl+click into a secondary click; the context menu handler
+      // runs that gesture, so it is not also acted on here.
+      if (gesture === 'ctrl' && ideRuntimeContext.platform === 'macos') return
       const actions = store.getState().gestures
-      const action = actions.definition === gesture ? 'definition'
-        : actions.usages === gesture ? 'usages'
+      const action = ideGestureMatches(actions.definition, gesture, ideRuntimeContext.platform) ? 'definition'
+        : ideGestureMatches(actions.usages, gesture, ideRuntimeContext.platform) ? 'usages'
           : ''
       if (action === '') return
       const hit = resolveSymbolAt(event)
@@ -4745,7 +4787,23 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       const target = event.target
       if (typeof target?.closest !== 'function') return
       const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
-      if (gutter === null) return
+      if (gutter === null) {
+        // macOS delivers Ctrl+click as a secondary click: when that gesture is
+        // configured for navigation, it belongs to the source, not to a menu.
+        if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
+          const actions = store.getState().gestures
+          const action = ideGestureMatches(actions.definition, 'ctrl', 'macos') ? 'definition'
+            : ideGestureMatches(actions.usages, 'ctrl', 'macos') ? 'usages'
+              : ''
+          if (action === '') return
+          const hit = resolveSymbolAt(event)
+          if (hit === undefined) return
+          event.preventDefault()
+          if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
+          else void showUsages(hit.name, hit.position, event)
+        }
+        return
+      }
       if (tab.kind === 'jar') return
       event.preventDefault()
       store.setCodeMenu({ path: tab.path, x: event.clientX, y: event.clientY })
@@ -5869,31 +5927,38 @@ function ideNextGesture(current, taken) {
   return current
 }
 
-/** One gesture row: a label plus one chip per choice. */
-function IdeGestureChips(props) {
-  const { entry, tr, onPick } = props
-  return h('span', { className: 'iw-gesture-chips' }, IDE_GESTURE_CHOICES.map((choice) => {
-    const taken = choice === entry.taken
-    return h('button', {
-      key: choice,
-      type: 'button',
-      className: `iw-gesture-chip${choice === entry.value ? ' active' : ''}${taken ? ' taken' : ''}`,
-      disabled: taken,
-      title: taken ? tr('gestureTaken') : tr(IDE_GESTURE_KEYS[choice]),
-      onClick: () => onPick(entry.action, choice),
-    }, tr(IDE_GESTURE_KEYS[choice]))
-  }))
+/** Locale label for one gesture choice. */
+function ideGestureLabel(choice, platform, tr) {
+  if (choice === 'meta') return platform === 'macos' ? tr('gestureMeta') : tr('gestureCtrl')
+  return tr(IDE_GESTURE_KEYS[choice])
+}
+
+/** One gesture row: a dropdown with the choices this platform can tell apart. */
+function IdeGestureSelect(props) {
+  const { entry, tr, platform, onPick } = props
+  return h('select', {
+    className: 'iw-gesture-select',
+    value: entry.value,
+    title: tr('gesturePickHint'),
+    'aria-label': entry.label,
+    onChange: (event) => onPick(entry.action, event.target.value),
+  }, ideGestureChoices(platform).map((choice) => h('option', {
+    key: choice,
+    value: choice,
+    disabled: choice === entry.taken,
+    title: choice === entry.taken ? tr('gestureTaken') : undefined,
+  }, ideGestureLabel(choice, platform, tr))))
 }
 
 /** One generated row: label on the left, its control on the right. */
 function IdeShortcutRow(props) {
-  const { entry, tr, onPick, onRecord, onReset, recording, busy } = props
+  const { entry, tr, platform, onPick, onRecord, onReset, recording, busy } = props
   const editable = entry.kind === 'key' || entry.kind === 'sequence'
   return h('div', { className: 'iw-gesture-row' }, [
     h('span', { key: 'l', className: 'iw-gesture-label' }, entry.label),
     h('span', { key: 'right', className: 'iw-gesture-right' }, [
       entry.kind === 'gesture'
-        ? h(IdeGestureChips, { key: 'c', entry, tr, onPick })
+        ? h(IdeGestureSelect, { key: 'c', entry, tr, platform, onPick })
         : h('span', {
           key: 'k',
           className: `iw-gesture-keys${recording ? ' recording' : ''}`,
@@ -6032,6 +6097,7 @@ function IdeWorkspaceSettingsItem(props) {
               key: entry.id,
               entry,
               tr,
+              platform,
               onPick,
               onRecord,
               onReset,
@@ -7488,8 +7554,10 @@ function ideRankRows(rows, rankOf) {
  * Flatten the enabled sources into one keyboard-navigable, ranked list.
  *
  * In the merged view a source file shows up once, under 「类」: repeating it under
- * 「文件」 would only make the list longer. The dedicated tabs still list
- * everything their own way.
+ * 「文件」 would only make the list longer. Text matches inside source files *are*
+ * kept (a comment or a string literal is not a symbol), except for a line that
+ * the symbol results already list — 「所有」 must never be narrower than 「文本」.
+ * The dedicated tabs still list everything their own way.
  */
 function idePaletteEntries({ category, classes, symbols, files, text, actions, query = '' }) {
   const needle = String(query).trim()
@@ -7526,8 +7594,12 @@ function idePaletteEntries({ category, classes, symbols, files, text, actions, q
     }
   }
   if (merged || category === 'text') {
-    const visible = merged ? text.filter((row) => !ideIsCodePath(row.path)) : text
-    for (const match of ideRankRows(visible, (row) => ideMatchRank(row.text, needle))) {
+    // A symbol already lists its own line; every other hit still belongs here.
+    const listed = new Set(
+      entries.filter((entry) => entry.line !== undefined).map((entry) => `${entry.path}:${entry.line}`),
+    )
+    for (const match of ideRankRows(text, (row) => ideMatchRank(row.text, needle))) {
+      if (merged && listed.has(`${match.path}:${match.line}`)) continue
       entries.push({
         key: `t:${match.path}:${match.line}`,
         kind: 'text',
