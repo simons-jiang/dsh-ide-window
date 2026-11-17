@@ -623,8 +623,51 @@ const KIND_HEAD_BYTES = 8192
  * @param text - the first few KB of a `.java` file.
  * @returns `'class' | 'interface' | 'enum' | 'record' | 'annotation' | ''`.
  */
-export function parseJavaKind(text) {
+/**
+ * Blank out string, char and text-block literals.
+ *
+ * A URL or a label can hold a declaration word — `@RequestMapping(".../record")`
+ * sits above the class it belongs to — and matching it made the tree label a
+ * class as a record.
+ */
+function stripJavaLiterals(text) {
   const source = String(text ?? '')
+  let out = ''
+  let index = 0
+  while (index < source.length) {
+    const char = source[index]
+    if (char === '"' && source.startsWith('\"\"\"', index)) {
+      const end = source.indexOf('\"\"\"', index + 3)
+      const stop = end < 0 ? source.length : end + 3
+      out += ' '.repeat(stop - index)
+      index = stop
+      continue
+    }
+    if (char === '"' || char === "'") {
+      let cursor = index + 1
+      while (cursor < source.length) {
+        if (source[cursor] === '\\') {
+          cursor += 2
+          continue
+        }
+        if (source[cursor] === char) {
+          cursor += 1
+          break
+        }
+        cursor += 1
+      }
+      out += ' '.repeat(cursor - index)
+      index = cursor
+      continue
+    }
+    out += char
+    index += 1
+  }
+  return out
+}
+
+export function parseJavaKind(text) {
+  const source = stripJavaLiterals(text)
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ')
   const shapes = [

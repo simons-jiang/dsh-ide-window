@@ -438,6 +438,30 @@ const IDE_CSS = `
 .iw-pop-body { overflow: auto; padding: 4px; }
 .iw-pop-section + .iw-pop-section { margin-top: 4px; }
 
+/* While a file is open, the rest of the page is not selectable: Cmd+A then
+   selects the file (gutter columns included), and a drag cannot escape the
+   editor. Form fields keep their own text selection. */
+html.iw-select-code,
+html.iw-select-code body * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.iw-select-code .iw-code,
+html.iw-select-code .iw-code *,
+html.iw-select-code input,
+html.iw-select-code textarea,
+html.iw-select-code [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.iw-select-code .iw-code .iw-vcs,
+html.iw-select-code .iw-code .iw-ln,
+html.iw-select-code .iw-code .iw-blame,
+html.iw-select-code .iw-code .iw-vision {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* The call chain: method cards joined by rounded elbows, mind-map style. */
 .iw-pop:focus { outline: none; }
 .iw-pop-chain { width: 600px; max-width: 94vw; }

@@ -572,6 +572,42 @@ function ideRequestBlame(store, tab, done, options = {}) {
 /** The source view. */
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
+  // While this view is on screen, the page outside it is not selectable, so
+  // Cmd+A answers with the file instead of the whole shell.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    document.documentElement.classList.add('iw-select-code')
+    return () => document.documentElement.classList.remove('iw-select-code')
+  }, [])
+
+  // Cmd+A belongs to the file when the focus is anywhere else in the panel.
+  // An input keeps the shortcut for itself — selecting the query you are typing
+  // is what that focus means — and so does the command palette.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const onSelectAll = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (typeof event.key !== 'string' || event.key.toLowerCase() !== 'a') return
+      const editable = (element) => element instanceof Element
+        && element.closest('input, textarea, [contenteditable="true"]') !== null
+      const target = event.target
+      if (editable(target) || editable(document.activeElement)) return
+      if (target instanceof Element && target.closest('.iw-palette') !== null) return
+      const element = scrollRef.current
+      if (element === null) return
+      event.preventDefault()
+      element.focus({ preventScroll: true })
+      const selection = globalThis.getSelection?.()
+      if (selection === null || selection === undefined) return
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    document.addEventListener('keydown', onSelectAll, true)
+    return () => document.removeEventListener('keydown', onSelectAll, true)
+  }, [])
+
   // Every loaded line is mounted. A windowed renderer was tried here and its
   // first measurement could leave the rest of the file unrendered — the scroll
   // container is the browser's own, and a few thousand rows are cheap enough.

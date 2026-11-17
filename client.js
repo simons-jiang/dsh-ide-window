@@ -762,6 +762,30 @@ const IDE_CSS = `
 .iw-pop-body { overflow: auto; padding: 4px; }
 .iw-pop-section + .iw-pop-section { margin-top: 4px; }
 
+/* While a file is open, the rest of the page is not selectable: Cmd+A then
+   selects the file (gutter columns included), and a drag cannot escape the
+   editor. Form fields keep their own text selection. */
+html.iw-select-code,
+html.iw-select-code body * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.iw-select-code .iw-code,
+html.iw-select-code .iw-code *,
+html.iw-select-code input,
+html.iw-select-code textarea,
+html.iw-select-code [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.iw-select-code .iw-code .iw-vcs,
+html.iw-select-code .iw-code .iw-ln,
+html.iw-select-code .iw-code .iw-blame,
+html.iw-select-code .iw-code .iw-vision {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* The call chain: method cards joined by rounded elbows, mind-map style. */
 .iw-pop:focus { outline: none; }
 .iw-pop-chain { width: 600px; max-width: 94vw; }
@@ -4491,6 +4515,42 @@ function ideRequestBlame(store, tab, done, options = {}) {
 /** The source view. */
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
+  // While this view is on screen, the page outside it is not selectable, so
+  // Cmd+A answers with the file instead of the whole shell.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    document.documentElement.classList.add('iw-select-code')
+    return () => document.documentElement.classList.remove('iw-select-code')
+  }, [])
+
+  // Cmd+A belongs to the file when the focus is anywhere else in the panel.
+  // An input keeps the shortcut for itself — selecting the query you are typing
+  // is what that focus means — and so does the command palette.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const onSelectAll = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (typeof event.key !== 'string' || event.key.toLowerCase() !== 'a') return
+      const editable = (element) => element instanceof Element
+        && element.closest('input, textarea, [contenteditable="true"]') !== null
+      const target = event.target
+      if (editable(target) || editable(document.activeElement)) return
+      if (target instanceof Element && target.closest('.iw-palette') !== null) return
+      const element = scrollRef.current
+      if (element === null) return
+      event.preventDefault()
+      element.focus({ preventScroll: true })
+      const selection = globalThis.getSelection?.()
+      if (selection === null || selection === undefined) return
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    document.addEventListener('keydown', onSelectAll, true)
+    return () => document.removeEventListener('keydown', onSelectAll, true)
+  }, [])
+
   // Every loaded line is mounted. A windowed renderer was tried here and its
   // first measurement could leave the rest of the file unrendered — the scroll
   // container is the browser's own, and a few thousand rows are cheap enough.

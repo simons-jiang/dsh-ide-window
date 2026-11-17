@@ -132,6 +132,9 @@ const nul = (fields) => fields.map((field) => `${field}\0`).join('')
   check(parseJavaKind('') === '', 'an empty head means no kind', parseJavaKind(''))
   check(parseJavaKind('@interface Tight {}') === 'annotation', 'no space still reads as an annotation', parseJavaKind('@interface Tight {}'))
   check(parseJavaKind('@Constraint(validatedBy = X.class)\npublic @interface A {}') === 'annotation', 'a class literal does not answer for the file', parseJavaKind('@Constraint(validatedBy = X.class)\npublic @interface A {}'))
+  check(parseJavaKind('@RequestMapping(\"/web/v1/clearing/record\")\npublic class OrderClearingController {}') === 'class', 'a word inside a string does not answer for the file', parseJavaKind('@RequestMapping(\"/web/v1/clearing/record\")\npublic class OrderClearingController {}'))
+  check(parseJavaKind('@Tag(name = \"interface\")\npublic class Tagged {}') === 'class', 'a label inside a string does not answer for the file', parseJavaKind('@Tag(name = \"interface\")\npublic class Tagged {}'))
+  check(parseJavaKind('class Plain { String s = """\nrecord Fake\n"""; }') === 'class', 'a text block cannot answer for the file', parseJavaKind('class Plain { String s = """\nrecord Fake\n"""; }'))
   check(parseJavaKind('Foo.class\npublic class Bar {}') === 'class', 'a class literal before a class still reads as a class', parseJavaKind('Foo.class\npublic class Bar {}'))
 }
 
