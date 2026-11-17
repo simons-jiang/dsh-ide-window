@@ -89,6 +89,39 @@ async function ideDiffQuery(root, path, signal) {
   }
 }
 
+/** The status route, resolved against the page base. */
+function ideStatusUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/status', base).href
+}
+
+/**
+ * Ask the Host which files git reports as uncommitted.
+ *
+ * @returns `{ ok: true, files }` or `{ ok: false, error }`; each file carries
+ *   `{ path, status }` with the two-letter porcelain code.
+ */
+async function ideStatusQuery(root, signal) {
+  let response
+  try {
+    response = await fetch(ideStatusUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot: root }),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'status-failed' }
+  return { ok: true, files: Array.isArray(parsed.value?.files) ? parsed.value.files : [] }
+}
+
 /** The blame route, resolved against the page base. */
 function ideBlameUrl() {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'

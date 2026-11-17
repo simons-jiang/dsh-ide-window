@@ -597,6 +597,11 @@ const IDE_CSS = `
   flex: 0 0 auto;
   color: var(--dsw-alias-label-secondary, #98a0ad);
 }
+/* Git status on the tree: a changed file reads blue-green, a new one brown-red.
+   These are semantic editor colours, not theme surfaces. */
+.iw-row .iw-name.vcs-modified { color: #2fa79a; }
+.iw-row .iw-name.vcs-added { color: #b35f3d; }
+
 .iw-row .iw-icon { display: inline-flex; flex: 0 0 auto; }
 .iw-row .iw-name {
   overflow: hidden;
@@ -2707,6 +2712,8 @@ function ideCreateStore(refs) {
     gestureIssue: '',
     /** The command currently capturing keys, or ''. */
     gestureRecording: '',
+    /** Uncommitted files by workspace path: `path → porcelain code`. */
+    vcs: {},
     /** Java index progress: `{ status, done, total }`. */
     indexInfo: { status: 'idle', done: 0, total: 0 },
     /**
@@ -2830,6 +2837,7 @@ function ideCreateStore(refs) {
       if (disposed) return
       const changed = typeof change?.absolutePath === 'string' ? change.absolutePath : ''
       if (changed === '') return
+      scheduleVcs()
       const tab = tabByAbsolute.get(changed)
       if (tab !== undefined) void reloadTab(tab, change?.version)
       // A directory invalidation: relist it (and, from the root, everything below).
@@ -2991,6 +2999,7 @@ function ideCreateStore(refs) {
     // Watching speaks absolute paths, so it waits for the resolved root.
     if (state.sessionId !== null) void loadDir('', { force: true })
     if (state.sessionId !== null && state.rootPath !== '') watchDir('')
+    if (state.rootPath !== '') void refreshVcs()
     if (options.keepView === true) {
       for (const tab of state.tabs) {
         tabByAbsolute.set(ideAbs(state.rootPath, tab.path), tab.path)
@@ -3296,11 +3305,43 @@ function ideCreateStore(refs) {
     }
   }
 
+  /**
+   * Refresh the file tree's VCS colouring.
+   *
+   * One `git status` call, throttled: several change frames often arrive in a
+   * burst while an agent writes a patch.
+   */
+  let vcsTimer
+  async function refreshVcs() {
+    const root = state.rootPath
+    if (root === '') return
+    const found = await ideStatusQuery(root)
+    if (disposed || state.rootPath !== root) return
+    const next = {}
+    if (found.ok === true) {
+      for (const entry of found.files) {
+        if (typeof entry?.path !== 'string' || entry.path === '') continue
+        next[entry.path] = String(entry.status ?? '')
+      }
+    }
+    patch({ vcs: next })
+  }
+
+  /** Debounced `refreshVcs` for change frames. */
+  function scheduleVcs() {
+    if (vcsTimer !== undefined) return
+    vcsTimer = setTimeout(() => {
+      vcsTimer = undefined
+      void refreshVcs()
+    }, 250)
+  }
+
   function refreshAll() {
     patch({ liveNotice: '' })
     for (const path of state.expanded.slice()) void loadDir(path, { force: true })
     void loadDir('', { force: true })
     refreshTabs()
+    void refreshVcs()
   }
 
   /** Open one workspace file in a tab, or focus its existing tab. */
@@ -3717,6 +3758,7 @@ function ideCreateStore(refs) {
     refreshAll,
     refreshTabs,
     reloadActive,
+    refreshVcs,
     readLines,
     rememberScroll,
     setRevealApplied,
@@ -3813,12 +3855,25 @@ function ideTreeOrder(left, right) {
   })
 }
 
+/**
+ * The name class for one porcelain status code, the way an IDE paints it:
+ * changed files in blue-green, new ones in brown-red.
+ */
+function ideVcsClass(status) {
+  const text = String(status ?? '')
+  if (text === '') return ''
+  if (text === '??' || text.includes('A')) return 'vcs-added'
+  if (text.includes('M') || text.includes('R') || text.includes('C') || text.includes('T')) return 'vcs-modified'
+  return ''
+}
+
 /** One tree row. */
 function IdeTreeRow({ entry, depth, node, state, store, tr }) {
   const isDir = entry.type === 'directory'
   const open = isDir && state.expanded.includes(entry.path)
   const active = !isDir && state.activePath === entry.path
   const javaKind = isDir ? '' : ideJavaKinds.get(`${state.rootPath}|${entry.path}`) ?? ''
+  const vcs = isDir ? '' : ideVcsClass(state.vcs?.[entry.path])
   const depthPx = 8 + depth * IDE_INDENT
   return h('div', {
     className: `iw-row${active ? ' active' : ''}${isDir && !open ? ' dim' : ''}`,
@@ -3841,7 +3896,7 @@ function IdeTreeRow({ entry, depth, node, state, store, tr }) {
     h('span', { key: 'ic', className: 'iw-icon' }, isDir
       ? h(IdeFolderIcon, { open, size: IDE_FOLDER_ICON_SIZE })
       : h(IdeEntryIcon, { name: entry.name, kind: javaKind })),
-    h('span', { key: 'nm', className: 'iw-name' }, entry.name),
+    h('span', { key: 'nm', className: `iw-name${vcs === '' ? '' : ` ${vcs}`}` }, entry.name),
   ])
 }
 
@@ -5824,7 +5879,10 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
   // Coming back to the window re-reads the active file: a commit changes git's
   // view of it without changing its bytes, so no change frame arrives.
   useEffect(() => {
-    const onFocus = () => store.reloadActive?.()
+    const onFocus = () => {
+      store.reloadActive?.()
+      void store.refreshVcs?.()
+    }
     globalThis.addEventListener('focus', onFocus)
     return () => globalThis.removeEventListener('focus', onFocus)
   }, [store])
@@ -7771,6 +7829,39 @@ async function ideDiffQuery(root, path, signal) {
     untracked: parsed.value?.untracked === true,
     hunks: Array.isArray(parsed.value?.hunks) ? parsed.value.hunks : [],
   }
+}
+
+/** The status route, resolved against the page base. */
+function ideStatusUrl() {
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  return new URL('dsh-ide/status', base).href
+}
+
+/**
+ * Ask the Host which files git reports as uncommitted.
+ *
+ * @returns `{ ok: true, files }` or `{ ok: false, error }`; each file carries
+ *   `{ path, status }` with the two-letter porcelain code.
+ */
+async function ideStatusQuery(root, signal) {
+  let response
+  try {
+    response = await fetch(ideStatusUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot: root }),
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    return { ok: false, error: 'network' }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, error: `http-${response.status}` }
+  if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'status-failed' }
+  return { ok: true, files: Array.isArray(parsed.value?.files) ? parsed.value.files : [] }
 }
 
 /** The blame route, resolved against the page base. */

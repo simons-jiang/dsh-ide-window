@@ -1424,6 +1424,17 @@ check(narrow.record.sidebarToggles === undefined, 'a narrow layout never restore
 narrowInject.store.dispose()
 sandbox.innerWidth = 1440
 
+// ---- tree VCS colouring ----------------------------------------------------
+{
+  const vcs = new Function(`${sourceFunction('ideVcsClass', '20-tree.js')}\nreturn ideVcsClass`)()
+  check(vcs('??') === 'vcs-added', 'an untracked file reads as new', vcs('??'))
+  check(vcs('A ') === 'vcs-added', 'a staged addition reads as new', vcs('A '))
+  check(vcs('AM') === 'vcs-added', 'an added-then-modified file still reads as new', vcs('AM'))
+  check(vcs(' M') === 'vcs-modified', 'a modified file reads as changed', vcs(' M'))
+  check(vcs('R ') === 'vcs-modified', 'a rename reads as changed', vcs('R '))
+  check(vcs('') === '', 'a clean file carries no colour', vcs(''))
+}
+
 // ---- tree ordering ---------------------------------------------------------
 {
   const order = new Function(`${sourceFunction('ideTreeOrder', '20-tree.js')}\nreturn ideTreeOrder`)()

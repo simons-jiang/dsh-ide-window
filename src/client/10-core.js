@@ -434,6 +434,8 @@ function ideCreateStore(refs) {
     gestureIssue: '',
     /** The command currently capturing keys, or ''. */
     gestureRecording: '',
+    /** Uncommitted files by workspace path: `path → porcelain code`. */
+    vcs: {},
     /** Java index progress: `{ status, done, total }`. */
     indexInfo: { status: 'idle', done: 0, total: 0 },
     /**
@@ -557,6 +559,7 @@ function ideCreateStore(refs) {
       if (disposed) return
       const changed = typeof change?.absolutePath === 'string' ? change.absolutePath : ''
       if (changed === '') return
+      scheduleVcs()
       const tab = tabByAbsolute.get(changed)
       if (tab !== undefined) void reloadTab(tab, change?.version)
       // A directory invalidation: relist it (and, from the root, everything below).
@@ -718,6 +721,7 @@ function ideCreateStore(refs) {
     // Watching speaks absolute paths, so it waits for the resolved root.
     if (state.sessionId !== null) void loadDir('', { force: true })
     if (state.sessionId !== null && state.rootPath !== '') watchDir('')
+    if (state.rootPath !== '') void refreshVcs()
     if (options.keepView === true) {
       for (const tab of state.tabs) {
         tabByAbsolute.set(ideAbs(state.rootPath, tab.path), tab.path)
@@ -1023,11 +1027,43 @@ function ideCreateStore(refs) {
     }
   }
 
+  /**
+   * Refresh the file tree's VCS colouring.
+   *
+   * One `git status` call, throttled: several change frames often arrive in a
+   * burst while an agent writes a patch.
+   */
+  let vcsTimer
+  async function refreshVcs() {
+    const root = state.rootPath
+    if (root === '') return
+    const found = await ideStatusQuery(root)
+    if (disposed || state.rootPath !== root) return
+    const next = {}
+    if (found.ok === true) {
+      for (const entry of found.files) {
+        if (typeof entry?.path !== 'string' || entry.path === '') continue
+        next[entry.path] = String(entry.status ?? '')
+      }
+    }
+    patch({ vcs: next })
+  }
+
+  /** Debounced `refreshVcs` for change frames. */
+  function scheduleVcs() {
+    if (vcsTimer !== undefined) return
+    vcsTimer = setTimeout(() => {
+      vcsTimer = undefined
+      void refreshVcs()
+    }, 250)
+  }
+
   function refreshAll() {
     patch({ liveNotice: '' })
     for (const path of state.expanded.slice()) void loadDir(path, { force: true })
     void loadDir('', { force: true })
     refreshTabs()
+    void refreshVcs()
   }
 
   /** Open one workspace file in a tab, or focus its existing tab. */
@@ -1444,6 +1480,7 @@ function ideCreateStore(refs) {
     refreshAll,
     refreshTabs,
     reloadActive,
+    refreshVcs,
     readLines,
     rememberScroll,
     setRevealApplied,

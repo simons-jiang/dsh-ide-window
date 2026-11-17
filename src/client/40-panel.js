@@ -274,7 +274,10 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
   // Coming back to the window re-reads the active file: a commit changes git's
   // view of it without changing its bytes, so no change frame arrives.
   useEffect(() => {
-    const onFocus = () => store.reloadActive?.()
+    const onFocus = () => {
+      store.reloadActive?.()
+      void store.refreshVcs?.()
+    }
     globalThis.addEventListener('focus', onFocus)
     return () => globalThis.removeEventListener('focus', onFocus)
   }, [store])

@@ -219,6 +219,11 @@ const IDE_CSS = `
   flex: 0 0 auto;
   color: var(--dsw-alias-label-secondary, #98a0ad);
 }
+/* Git status on the tree: a changed file reads blue-green, a new one brown-red.
+   These are semantic editor colours, not theme surfaces. */
+.iw-row .iw-name.vcs-modified { color: #2fa79a; }
+.iw-row .iw-name.vcs-added { color: #b35f3d; }
+
 .iw-row .iw-icon { display: inline-flex; flex: 0 0 auto; }
 .iw-row .iw-name {
   overflow: hidden;

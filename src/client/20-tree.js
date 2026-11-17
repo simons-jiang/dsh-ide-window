@@ -60,12 +60,25 @@ function ideTreeOrder(left, right) {
   })
 }
 
+/**
+ * The name class for one porcelain status code, the way an IDE paints it:
+ * changed files in blue-green, new ones in brown-red.
+ */
+function ideVcsClass(status) {
+  const text = String(status ?? '')
+  if (text === '') return ''
+  if (text === '??' || text.includes('A')) return 'vcs-added'
+  if (text.includes('M') || text.includes('R') || text.includes('C') || text.includes('T')) return 'vcs-modified'
+  return ''
+}
+
 /** One tree row. */
 function IdeTreeRow({ entry, depth, node, state, store, tr }) {
   const isDir = entry.type === 'directory'
   const open = isDir && state.expanded.includes(entry.path)
   const active = !isDir && state.activePath === entry.path
   const javaKind = isDir ? '' : ideJavaKinds.get(`${state.rootPath}|${entry.path}`) ?? ''
+  const vcs = isDir ? '' : ideVcsClass(state.vcs?.[entry.path])
   const depthPx = 8 + depth * IDE_INDENT
   return h('div', {
     className: `iw-row${active ? ' active' : ''}${isDir && !open ? ' dim' : ''}`,
@@ -88,7 +101,7 @@ function IdeTreeRow({ entry, depth, node, state, store, tr }) {
     h('span', { key: 'ic', className: 'iw-icon' }, isDir
       ? h(IdeFolderIcon, { open, size: IDE_FOLDER_ICON_SIZE })
       : h(IdeEntryIcon, { name: entry.name, kind: javaKind })),
-    h('span', { key: 'nm', className: 'iw-name' }, entry.name),
+    h('span', { key: 'nm', className: `iw-name${vcs === '' ? '' : ` ${vcs}`}` }, entry.name),
   ])
 }
 
