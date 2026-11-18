@@ -160,14 +160,48 @@ function readZipEntry(file, entry) {
   }
 }
 
-/** Where a dependency's sources are expected to live. */
-const MAVEN_REPOSITORY = `${homedir()}/.m2/repository`
+/** Where a dependency's sources live when nothing says otherwise. */
+const MAVEN_REPOSITORY_DEFAULT = join(homedir(), '.m2', 'repository')
+
+/** `<localRepository>` from Maven's own settings, when the repository moved. */
+function mavenSettingsRepository() {
+  try {
+    // The shipped settings.xml documents `<localRepository>` inside a comment;
+    // matching that sample would point every lookup at /path/to/local/repo.
+    const xml = readFileSync(join(homedir(), '.m2', 'settings.xml'), 'utf8')
+      .replace(/<!--[\s\S]*?-->/g, '')
+    const match = /<localRepository>\s*([^<]+?)\s*<\/localRepository>/.exec(xml)
+    if (match === null) return ''
+    return match[1]
+      .replace(/\$\{user\.home\}/g, homedir())
+      .replace(/^~(?=\/)/, homedir())
+      .trim()
+  } catch (error) {
+    void error
+    return ''
+  }
+}
+
+/**
+ * The Maven repository to read sources from.
+ *
+ * A path from the plugin's settings wins, then Maven's own `settings.xml` (a
+ * repository that was moved keeps working with no configuration), then the
+ * default. Nothing assumes another machine keeps the default layout.
+ */
+function mavenRepository(configured) {
+  const explicit = typeof configured === 'string' ? configured.trim() : ''
+  if (explicit !== '') return explicit
+  const settings = mavenSettingsRepository()
+  if (settings !== '' && existsSync(settings)) return settings
+  return MAVEN_REPOSITORY_DEFAULT
+}
 
 /** Lookup results, keyed by entry path: jars do not change under a snapshot name. */
 const jarLookups = new Map()
 
-/** Every `-sources.jar` under the Maven repository, newest first. */
-function listSourcesJars() {
+/** Every `-sources.jar` under one Maven repository, newest first. */
+function listSourcesJars(repository) {
   const jars = []
   const walk = (directory, depth) => {
     if (depth > 6) return
@@ -192,7 +226,7 @@ function listSourcesJars() {
       }
     }
   }
-  walk(MAVEN_REPOSITORY, 0)
+  walk(repository, 0)
   jars.sort((a, b) => b.mtime - a.mtime)
   return jars.map((jar) => jar.path)
 }
@@ -209,15 +243,21 @@ function jarSource(payload) {
   if (!/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+$/.test(className)) {
     throw new RouteError(400, 'invalid-arguments', 'className must be a fully qualified name')
   }
+  const repository = mavenRepository(payload?.mavenRepo)
+  if (!existsSync(repository)) {
+    return { found: false, repository, scanned: 0, reason: 'missing-repository' }
+  }
   const entryPath = `${className.replace(/\./g, '/')}.java`
-  const cached = jarLookups.get(entryPath)
+  // The cache is per repository: two repositories can hold different versions.
+  const cacheKey = `${repository}|${entryPath}`
+  const cached = jarLookups.get(cacheKey)
   if (cached !== undefined) {
     const hit = readZipIndex(cached.jar, entryPath)
     const text = hit === undefined ? undefined : readZipEntry(cached.jar, hit)
-    if (text !== undefined) return { found: true, jar: cached.jar, entry: entryPath, text }
-    jarLookups.delete(entryPath)
+    if (text !== undefined) return { found: true, jar: cached.jar, entry: entryPath, text, repository }
+    jarLookups.delete(cacheKey)
   }
-  const jars = listSourcesJars()
+  const jars = listSourcesJars(repository)
   const budget = Math.min(jars.length, 600)
   for (let index = 0; index < budget; index += 1) {
     const file = jars[index]
@@ -225,10 +265,10 @@ function jarSource(payload) {
     if (entry === undefined) continue
     const text = readZipEntry(file, entry)
     if (text === undefined) continue
-    jarLookups.set(entryPath, { jar: file })
-    return { found: true, jar: file, entry: entryPath, text }
+    jarLookups.set(cacheKey, { jar: file })
+    return { found: true, jar: file, entry: entryPath, text, repository }
   }
-  return { found: false, scanned: budget }
+  return { found: false, repository, scanned: budget }
 }
 
 /** Run one command and collect its output; never throws on a non-zero exit. */
@@ -1066,10 +1106,19 @@ export async function kindsWorkspace(payload) {
  * still browse files, but nothing can navigate.
  */
 export function doctorReport(ctx) {
+  // The detected repository is what the reader needs to confirm in settings, so
+  // report whether that path is actually there instead of only its name.
+  const mavenRepo = mavenRepository('')
+  let mavenRepoExists = false
   try {
-    return { lsp: ctx.get('lsp') !== undefined }
+    mavenRepoExists = existsSync(mavenRepo)
   } catch (error) {
-    return { lsp: false }
+    void error
+  }
+  try {
+    return { lsp: ctx.get('lsp') !== undefined, mavenRepo, mavenRepoExists }
+  } catch (error) {
+    return { lsp: false, mavenRepo, mavenRepoExists }
   }
 }
 

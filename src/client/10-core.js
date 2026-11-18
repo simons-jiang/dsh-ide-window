@@ -83,6 +83,19 @@ function ideReadPrefs() {
 }
 
 /** Merge a partial preference document back into storage. */
+/**
+ * The configured Maven repository.
+ *
+ * The panel state lives inside the store factory, but the jar request is a plain
+ * module function, so the current value is mirrored here on every change.
+ */
+let ideMavenRepoPref = ''
+
+/** The repository the reader configured, or '' to let the Host resolve it. */
+function ideMavenRepoOfState() {
+  return typeof ideMavenRepoPref === 'string' ? ideMavenRepoPref : ''
+}
+
 function ideWritePrefs(patch) {
   try {
     const next = { ...ideReadPrefs(), ...patch }
@@ -411,6 +424,16 @@ function ideCreateStore(refs) {
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
+    /**
+     * Maven repository used for dependency sources. Empty means "ask the Host",
+     * which reads Maven's own settings and then `~/.m2/repository`.
+     */
+    mavenRepo: typeof prefs.mavenRepo === 'string' ? prefs.mavenRepo : '',
+    /** What the Host resolved on its own, shown as a hint in settings. */
+    mavenRepoDetected: '',
+    /** Whether the detected repository actually exists on disk. */
+    mavenRepoDetectedExists: false,
+
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
     /**
@@ -464,6 +487,9 @@ function ideCreateStore(refs) {
     tabs: [],
     activePath: null,
   }
+  // Mirror the persisted repository so the plain jar request can read it.
+  ideMavenRepoPref = typeof state.mavenRepo === 'string' ? state.mavenRepo : ''
+
   const listeners = new Set()
   /** path → disposer of that directory's watch stream. */
   const watchers = new Map()
@@ -1453,6 +1479,19 @@ function ideCreateStore(refs) {
     setJumpEnabled: (jumpEnabled) => {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })
+    },
+    /** Point dependency-source lookups at another Maven repository. */
+    setMavenRepo: (path) => {
+      const mavenRepo = typeof path === 'string' ? path.trim() : ''
+      ideMavenRepoPref = mavenRepo
+      ideWritePrefs({ mavenRepo })
+      patch({ mavenRepo })
+    },
+    /** Remember the repository the Host detected (settings hint only). */
+    setMavenRepoDetected: (mavenRepoDetected, mavenRepoDetectedExists = true) => {
+      if (typeof mavenRepoDetected !== 'string' || mavenRepoDetected === '') return
+      if (mavenRepoDetected === state.mavenRepoDetected && mavenRepoDetectedExists === state.mavenRepoDetectedExists) return
+      patch({ mavenRepoDetected, mavenRepoDetectedExists: mavenRepoDetectedExists === true })
     },
     /** Store one keyboard binding, or `null` to fall back to the default. */
     setShortcutBinding: (id, binding) => {

@@ -289,6 +289,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
   useEffect(() => {
     let cancelled = false
     void ideDoctorQuery().then((found) => {
+      if (found.ok === true && found.mavenRepo !== '') store.setMavenRepoDetected(found.mavenRepo, found.mavenRepoExists === true)
       if (cancelled || found.ok !== true || found.lsp === true) return
       if (!ideSetupDismissed) setSetupOpen(true)
     })

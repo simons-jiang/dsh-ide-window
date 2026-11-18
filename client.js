@@ -200,6 +200,14 @@ window.__ModuleLoader__.load({
     "paletteActionLicenseRelogin": "JetBrains licence: sign out and sign in again",
     "lspReloginRunning": "Signing out of the current JetBrains account and opening the sign-in page…",
     "lspReloginOpened": "Opened the JetBrains sign-in page; restart DSH after signing in",
+    "settingsMavenRepo": "Maven repository",
+    "settingsMavenRepoHint": "Dependency sources (-sources.jar) are read from here; leave empty to use Maven settings.xml and ~/.m2/repository",
+    "settingsMavenRepoAuto": "Detected automatically",
+    "mavenRepoMissing": "Maven repository not found",
+    "settingsMavenRepoInUse": "In use",
+    "settingsMavenRepoManual": "from settings",
+    "settingsMavenRepoDetecting": "Detecting the repository…",
+    "settingsMavenRepoMissingDir": "directory not found",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -393,6 +401,14 @@ window.__ModuleLoader__.load({
     "paletteActionLicenseRelogin": "JetBrains 授权：退出当前账号并重新登录",
     "lspReloginRunning": "正在退出当前 JetBrains 账号并打开登录页…",
     "lspReloginOpened": "已打开 JetBrains 登录页：登录有授权的账号后重启 DSH",
+    "settingsMavenRepo": "Maven 本地仓库",
+    "settingsMavenRepoHint": "依赖源码（-sources.jar）从这里读取；留空则自动检测 Maven 的 settings.xml 与 ~/.m2/repository",
+    "settingsMavenRepoAuto": "自动检测",
+    "mavenRepoMissing": "Maven 本地仓库不存在",
+    "settingsMavenRepoInUse": "当前使用",
+    "settingsMavenRepoManual": "设置项",
+    "settingsMavenRepoDetecting": "正在检测仓库位置…",
+    "settingsMavenRepoMissingDir": "目录不存在",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -869,6 +885,56 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-pop:focus { outline: none; }
 .iw-pop-chain { width: 600px; max-width: 94vw; }
 .iw-pop-chain .iw-pop-body { max-height: min(62vh, 540px); overflow-x: hidden; }
+
+.iw-settings-maven {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.06));
+}
+.iw-settings-maven-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.iw-settings-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary, #8b93a1);
+  word-break: break-all;
+}
+.iw-settings-hint-path {
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font-variant-numeric: tabular-nums;
+}
+.iw-settings-hint.warn {
+  color: #d9a441;
+}
+.iw-settings-hint.warn .iw-settings-hint-path {
+  color: #d9a441;
+}
+
+.iw-settings-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.14));
+  border-radius: var(--dsw-radius-md, 6px);
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.05));
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12.5px;
+}
+.iw-settings-input::placeholder {
+  color: var(--dsw-alias-label-secondary, #8b93a1);
+}
+.iw-settings-input:focus {
+  outline: none;
+  border-color: var(--dsw-alias-border-l3, rgba(255, 255, 255, 0.28));
+}
 
 .iw-chain-roots {
   display: flex;
@@ -2389,6 +2455,19 @@ function ideReadPrefs() {
 }
 
 /** Merge a partial preference document back into storage. */
+/**
+ * The configured Maven repository.
+ *
+ * The panel state lives inside the store factory, but the jar request is a plain
+ * module function, so the current value is mirrored here on every change.
+ */
+let ideMavenRepoPref = ''
+
+/** The repository the reader configured, or '' to let the Host resolve it. */
+function ideMavenRepoOfState() {
+  return typeof ideMavenRepoPref === 'string' ? ideMavenRepoPref : ''
+}
+
 function ideWritePrefs(patch) {
   try {
     const next = { ...ideReadPrefs(), ...patch }
@@ -2717,6 +2796,16 @@ function ideCreateStore(refs) {
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
+    /**
+     * Maven repository used for dependency sources. Empty means "ask the Host",
+     * which reads Maven's own settings and then `~/.m2/repository`.
+     */
+    mavenRepo: typeof prefs.mavenRepo === 'string' ? prefs.mavenRepo : '',
+    /** What the Host resolved on its own, shown as a hint in settings. */
+    mavenRepoDetected: '',
+    /** Whether the detected repository actually exists on disk. */
+    mavenRepoDetectedExists: false,
+
     /** Whether opening a file address anywhere in the shell jumps this panel. */
     jumpEnabled: prefs.jumpEnabled !== false,
     /**
@@ -2770,6 +2859,9 @@ function ideCreateStore(refs) {
     tabs: [],
     activePath: null,
   }
+  // Mirror the persisted repository so the plain jar request can read it.
+  ideMavenRepoPref = typeof state.mavenRepo === 'string' ? state.mavenRepo : ''
+
   const listeners = new Set()
   /** path → disposer of that directory's watch stream. */
   const watchers = new Map()
@@ -3759,6 +3851,19 @@ function ideCreateStore(refs) {
     setJumpEnabled: (jumpEnabled) => {
       ideWritePrefs({ jumpEnabled })
       patch({ jumpEnabled })
+    },
+    /** Point dependency-source lookups at another Maven repository. */
+    setMavenRepo: (path) => {
+      const mavenRepo = typeof path === 'string' ? path.trim() : ''
+      ideMavenRepoPref = mavenRepo
+      ideWritePrefs({ mavenRepo })
+      patch({ mavenRepo })
+    },
+    /** Remember the repository the Host detected (settings hint only). */
+    setMavenRepoDetected: (mavenRepoDetected, mavenRepoDetectedExists = true) => {
+      if (typeof mavenRepoDetected !== 'string' || mavenRepoDetected === '') return
+      if (mavenRepoDetected === state.mavenRepoDetected && mavenRepoDetectedExists === state.mavenRepoDetectedExists) return
+      patch({ mavenRepoDetected, mavenRepoDetectedExists: mavenRepoDetectedExists === true })
     },
     /** Store one keyboard binding, or `null` to fall back to the default. */
     setShortcutBinding: (id, binding) => {
@@ -5563,7 +5668,11 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     if (fqn === '') return false
     const found = await ideJarSourceQuery(fqn)
     if (found.ok !== true || found.found !== true) {
-      if (found.ok === true) store.setNotice(`${tr('noSourceInJar')}: ${owner}`)
+      if (found.ok === true) {
+        store.setNotice(found.reason === 'missing-repository'
+          ? `${tr('mavenRepoMissing')}: ${found.repository}`
+          : `${tr('noSourceInJar')}: ${owner}`)
+      }
       return found.ok === true
     }
     const fieldName = ideBeanFieldName(name)
@@ -6182,6 +6291,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
   useEffect(() => {
     let cancelled = false
     void ideDoctorQuery().then((found) => {
+      if (found.ok === true && found.mavenRepo !== '') store.setMavenRepoDetected(found.mavenRepo, found.mavenRepoExists === true)
       if (cancelled || found.ok !== true || found.lsp === true) return
       if (!ideSetupDismissed) setSetupOpen(true)
     })
@@ -6607,6 +6717,28 @@ function IdeShortcutRow(props) {
  * Inline rather than a dialog: `shell.overlay` renders below the settings dialog,
  * so a dialog opened from here would be covered by it.
  */
+/**
+ * The line under the repository field.
+ *
+ * A placeholder alone is too faint to confirm a detection, so the row states the
+ * path that is really in use, where it came from, and whether it exists.
+ */
+function mavenRowHint(tr, state) {
+  const detected = typeof state.mavenRepoDetected === 'string' ? state.mavenRepoDetected : ''
+  const manual = typeof state.mavenRepo === 'string' ? state.mavenRepo : ''
+  const inUse = manual !== '' ? manual : detected
+  if (inUse === '') {
+    return h('div', { key: 'mavenhint', className: 'iw-settings-hint' }, tr('settingsMavenRepoDetecting'))
+  }
+  const source = manual !== '' ? tr('settingsMavenRepoManual') : tr('settingsMavenRepoAuto')
+  const missing = manual === '' && detected !== '' && state.mavenRepoDetectedExists !== true
+  return h('div', { key: 'mavenhint', className: `iw-settings-hint${missing ? ' warn' : ''}` }, [
+    h('span', { key: 's' }, `${tr('settingsMavenRepoInUse')}（${source}）：`),
+    h('span', { key: 'p', className: 'iw-settings-hint-path' }, inUse),
+    missing ? h('span', { key: 'm', className: 'iw-settings-hint-warn' }, ` · ${tr('settingsMavenRepoMissingDir')}`) : null,
+  ])
+}
+
 function IdeWorkspaceSettingsItem(props) {
   const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
@@ -6614,6 +6746,18 @@ function IdeWorkspaceSettingsItem(props) {
   const open = state.gestureEditorOpen === true
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
+  // The detected repository is only known after the Host answers; ask once if
+  // the panel was never mounted, so the row can show what is really in use.
+  React.useEffect(() => {
+    if (state.mavenRepoDetected !== '') return undefined
+    let cancelled = false
+    void ideDoctorQuery().then((found) => {
+      if (!cancelled && found.ok === true && found.mavenRepo !== '') {
+        store.setMavenRepoDetected(found.mavenRepo, found.mavenRepoExists === true)
+      }
+    })
+    return () => { cancelled = true }
+  }, [state.mavenRepoDetected, store])
   const gestures = state.gestures ?? { definition: 'double', usages: 'meta', chain: 'alt' }
   const bindings = state.shortcutBindings ?? {}
 
@@ -6739,6 +6883,27 @@ function IdeWorkspaceSettingsItem(props) {
             stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
           ])
           : null,
+        // Dependency sources come from a Maven repository; the Host detects the
+        // usual places, and this field covers repositories kept anywhere else.
+        h('div', { key: 'maven', className: 'iw-settings-maven' }, [
+          h('div', { key: 'row', className: 'iw-settings-maven-row' }, [
+            h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsMavenRepo')),
+            h('input', {
+              key: 'i',
+              className: 'iw-settings-input',
+              type: 'text',
+              spellCheck: false,
+              defaultValue: state.mavenRepo,
+              placeholder: tr('settingsMavenRepoAuto'),
+              title: tr('settingsMavenRepoHint'),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              },
+              onBlur: (event) => store.setMavenRepo(event.target.value),
+            }),
+          ]),
+          mavenRowHint(tr, state),
+        ]),
       ])
       : null,
   ])
@@ -8636,7 +8801,12 @@ async function ideDoctorQuery() {
   const parsed = await response.json().catch(() => null)
   if (parsed === null) return { ok: false, error: `http-${response.status}` }
   if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'doctor-failed' }
-  return { ok: true, lsp: parsed.value?.lsp === true }
+  return {
+    ok: true,
+    lsp: parsed.value?.lsp === true,
+    mavenRepo: typeof parsed.value?.mavenRepo === 'string' ? parsed.value.mavenRepo : '',
+    mavenRepoExists: parsed.value?.mavenRepoExists === true,
+  }
 }
 
 /** The Java-kind route, resolved against the page base. */
@@ -8669,6 +8839,11 @@ async function ideKindsQuery(root, paths) {
   return { ok: true, kinds: parsed.value?.kinds ?? {} }
 }
 
+/** The repository the reader configured, or '' to let the Host decide. */
+function ideMavenRepoSetting() {
+  return typeof ideMavenRepoOfState === 'function' ? ideMavenRepoOfState() : ''
+}
+
 /** The jar-source route, resolved against the page base. */
 function ideJarUrl() {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
@@ -8691,7 +8866,7 @@ async function ideJarSourceQuery(className, signal) {
     response = await fetch(ideJarUrl(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ className }),
+      body: JSON.stringify({ className, mavenRepo: ideMavenRepoSetting() }),
       signal,
     })
   } catch (error) {
@@ -8707,6 +8882,8 @@ async function ideJarSourceQuery(className, signal) {
     found: value.found === true,
     jar: typeof value.jar === 'string' ? value.jar : '',
     text: typeof value.text === 'string' ? value.text : '',
+    repository: typeof value.repository === 'string' ? value.repository : '',
+    reason: typeof value.reason === 'string' ? value.reason : '',
   }
 }
 

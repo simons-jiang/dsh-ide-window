@@ -193,5 +193,13 @@
   "lspLicense": "已在浏览器打开 JetBrains 授权页；完成授权后重启 DSH",
   "paletteActionLicenseRelogin": "JetBrains 授权：退出当前账号并重新登录",
   "lspReloginRunning": "正在退出当前 JetBrains 账号并打开登录页…",
-  "lspReloginOpened": "已打开 JetBrains 登录页：登录有授权的账号后重启 DSH"
+  "lspReloginOpened": "已打开 JetBrains 登录页：登录有授权的账号后重启 DSH",
+  "settingsMavenRepo": "Maven 本地仓库",
+  "settingsMavenRepoHint": "依赖源码（-sources.jar）从这里读取；留空则自动检测 Maven 的 settings.xml 与 ~/.m2/repository",
+  "settingsMavenRepoAuto": "自动检测",
+  "mavenRepoMissing": "Maven 本地仓库不存在",
+  "settingsMavenRepoInUse": "当前使用",
+  "settingsMavenRepoManual": "设置项",
+  "settingsMavenRepoDetecting": "正在检测仓库位置…",
+  "settingsMavenRepoMissingDir": "目录不存在"
 }

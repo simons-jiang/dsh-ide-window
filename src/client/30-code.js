@@ -1040,7 +1040,11 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     if (fqn === '') return false
     const found = await ideJarSourceQuery(fqn)
     if (found.ok !== true || found.found !== true) {
-      if (found.ok === true) store.setNotice(`${tr('noSourceInJar')}: ${owner}`)
+      if (found.ok === true) {
+        store.setNotice(found.reason === 'missing-repository'
+          ? `${tr('mavenRepoMissing')}: ${found.repository}`
+          : `${tr('noSourceInJar')}: ${owner}`)
+      }
       return found.ok === true
     }
     const fieldName = ideBeanFieldName(name)

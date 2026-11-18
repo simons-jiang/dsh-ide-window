@@ -193,5 +193,13 @@
   "lspLicense": "Opened the JetBrains licence page in your browser; restart DSH after signing in",
   "paletteActionLicenseRelogin": "JetBrains licence: sign out and sign in again",
   "lspReloginRunning": "Signing out of the current JetBrains account and opening the sign-in page…",
-  "lspReloginOpened": "Opened the JetBrains sign-in page; restart DSH after signing in"
+  "lspReloginOpened": "Opened the JetBrains sign-in page; restart DSH after signing in",
+  "settingsMavenRepo": "Maven repository",
+  "settingsMavenRepoHint": "Dependency sources (-sources.jar) are read from here; leave empty to use Maven settings.xml and ~/.m2/repository",
+  "settingsMavenRepoAuto": "Detected automatically",
+  "mavenRepoMissing": "Maven repository not found",
+  "settingsMavenRepoInUse": "In use",
+  "settingsMavenRepoManual": "from settings",
+  "settingsMavenRepoDetecting": "Detecting the repository…",
+  "settingsMavenRepoMissingDir": "directory not found"
 }

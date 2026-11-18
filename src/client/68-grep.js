@@ -178,7 +178,12 @@ async function ideDoctorQuery() {
   const parsed = await response.json().catch(() => null)
   if (parsed === null) return { ok: false, error: `http-${response.status}` }
   if (parsed.ok !== true) return { ok: false, error: parsed.error?.code ?? 'doctor-failed' }
-  return { ok: true, lsp: parsed.value?.lsp === true }
+  return {
+    ok: true,
+    lsp: parsed.value?.lsp === true,
+    mavenRepo: typeof parsed.value?.mavenRepo === 'string' ? parsed.value.mavenRepo : '',
+    mavenRepoExists: parsed.value?.mavenRepoExists === true,
+  }
 }
 
 /** The Java-kind route, resolved against the page base. */
@@ -211,6 +216,11 @@ async function ideKindsQuery(root, paths) {
   return { ok: true, kinds: parsed.value?.kinds ?? {} }
 }
 
+/** The repository the reader configured, or '' to let the Host decide. */
+function ideMavenRepoSetting() {
+  return typeof ideMavenRepoOfState === 'function' ? ideMavenRepoOfState() : ''
+}
+
 /** The jar-source route, resolved against the page base. */
 function ideJarUrl() {
   const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
@@ -233,7 +243,7 @@ async function ideJarSourceQuery(className, signal) {
     response = await fetch(ideJarUrl(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ className }),
+      body: JSON.stringify({ className, mavenRepo: ideMavenRepoSetting() }),
       signal,
     })
   } catch (error) {
@@ -249,5 +259,7 @@ async function ideJarSourceQuery(className, signal) {
     found: value.found === true,
     jar: typeof value.jar === 'string' ? value.jar : '',
     text: typeof value.text === 'string' ? value.text : '',
+    repository: typeof value.repository === 'string' ? value.repository : '',
+    reason: typeof value.reason === 'string' ? value.reason : '',
   }
 }

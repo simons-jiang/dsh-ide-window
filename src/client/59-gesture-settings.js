@@ -89,6 +89,28 @@ function IdeShortcutRow(props) {
  * Inline rather than a dialog: `shell.overlay` renders below the settings dialog,
  * so a dialog opened from here would be covered by it.
  */
+/**
+ * The line under the repository field.
+ *
+ * A placeholder alone is too faint to confirm a detection, so the row states the
+ * path that is really in use, where it came from, and whether it exists.
+ */
+function mavenRowHint(tr, state) {
+  const detected = typeof state.mavenRepoDetected === 'string' ? state.mavenRepoDetected : ''
+  const manual = typeof state.mavenRepo === 'string' ? state.mavenRepo : ''
+  const inUse = manual !== '' ? manual : detected
+  if (inUse === '') {
+    return h('div', { key: 'mavenhint', className: 'iw-settings-hint' }, tr('settingsMavenRepoDetecting'))
+  }
+  const source = manual !== '' ? tr('settingsMavenRepoManual') : tr('settingsMavenRepoAuto')
+  const missing = manual === '' && detected !== '' && state.mavenRepoDetectedExists !== true
+  return h('div', { key: 'mavenhint', className: `iw-settings-hint${missing ? ' warn' : ''}` }, [
+    h('span', { key: 's' }, `${tr('settingsMavenRepoInUse')}（${source}）：`),
+    h('span', { key: 'p', className: 'iw-settings-hint-path' }, inUse),
+    missing ? h('span', { key: 'm', className: 'iw-settings-hint-warn' }, ` · ${tr('settingsMavenRepoMissingDir')}`) : null,
+  ])
+}
+
 function IdeWorkspaceSettingsItem(props) {
   const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
@@ -96,6 +118,18 @@ function IdeWorkspaceSettingsItem(props) {
   const open = state.gestureEditorOpen === true
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
+  // The detected repository is only known after the Host answers; ask once if
+  // the panel was never mounted, so the row can show what is really in use.
+  React.useEffect(() => {
+    if (state.mavenRepoDetected !== '') return undefined
+    let cancelled = false
+    void ideDoctorQuery().then((found) => {
+      if (!cancelled && found.ok === true && found.mavenRepo !== '') {
+        store.setMavenRepoDetected(found.mavenRepo, found.mavenRepoExists === true)
+      }
+    })
+    return () => { cancelled = true }
+  }, [state.mavenRepoDetected, store])
   const gestures = state.gestures ?? { definition: 'double', usages: 'meta', chain: 'alt' }
   const bindings = state.shortcutBindings ?? {}
 
@@ -221,6 +255,27 @@ function IdeWorkspaceSettingsItem(props) {
             stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
           ])
           : null,
+        // Dependency sources come from a Maven repository; the Host detects the
+        // usual places, and this field covers repositories kept anywhere else.
+        h('div', { key: 'maven', className: 'iw-settings-maven' }, [
+          h('div', { key: 'row', className: 'iw-settings-maven-row' }, [
+            h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsMavenRepo')),
+            h('input', {
+              key: 'i',
+              className: 'iw-settings-input',
+              type: 'text',
+              spellCheck: false,
+              defaultValue: state.mavenRepo,
+              placeholder: tr('settingsMavenRepoAuto'),
+              title: tr('settingsMavenRepoHint'),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              },
+              onBlur: (event) => store.setMavenRepo(event.target.value),
+            }),
+          ]),
+          mavenRowHint(tr, state),
+        ]),
       ])
       : null,
   ])
