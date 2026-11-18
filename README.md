@@ -8,27 +8,47 @@ DeepSeek Harness（DSH）的 **IDEA 风格代码工作区**插件：把中央区
 
 ---
 
-## 一、安装（最短路径）
+## 一、安装（一条命令）
 
-前提：**已安装并能正常登录 DSH**，命令行里 `dsh --version` 能打印版本。插件是本地 link 包，`client.js` 已随仓库提交，**安装方不需要 Node、pnpm 或构建**。
+前提：**已安装并能正常登录 DSH**、机器上有 `git`。插件是本地 link 包，`client.js` 已随仓库提交，**安装方不需要 Node、pnpm 或构建**。
 
-### macOS
+脚本会把「克隆仓库 → 装进 profile → 登记 bundle → 校验」一次做完，可重复执行（已存在就更新）。
+
+**macOS**
+
+```sh
+git clone https://github.com/simons-jiang/dsh-ide-window.git ~/dev/dsh-ide-window \
+  && ~/dev/dsh-ide-window/install.sh
+```
+
+**Windows（PowerShell）**
+
+```powershell
+git clone https://github.com/simons-jiang/dsh-ide-window.git "$env:USERPROFILE\dev\dsh-ide-window"
+& "$env:USERPROFILE\dev\dsh-ide-window\install.ps1"
+```
+
+装完**完全退出 DSH 再打开**（macOS 用 `⌘Q`，Windows 从托盘退出）——左侧导航或左下角出现「代码工作区」即成功。
+
+脚本参数（两种系统同名）：
+
+| 参数 | 作用 |
+|---|---|
+| `--profile <名字>` / `-Profile <名字>` | 装进哪个 profile，默认 `desktop` |
+| `--dir <路径>` / `-Dir <路径>` | 仓库放哪，默认 `~/dev/dsh-ide-window` |
+| `--with-lsp` / `-WithLsp` | 顺带装 LSP 管道包（语言服务器仍要另外准备，见第五节） |
+| `--no-pull` / `-NoPull` | 不更新已有仓库，直接用当前代码 |
+| `-h` / `--help` | macOS 脚本的用法说明 |
+
+### 手动安装（脚本做的就是这三步）
 
 ```sh
 git clone https://github.com/simons-jiang/dsh-ide-window.git ~/dev/dsh-ide-window
 dsh plugin --profile desktop add "link:$HOME/dev/dsh-ide-window"
+# 若 profile 的 package.json 里 dsh.profile.bundles 没有 @local/dsh-ide-window，手动加一行
 ```
 
-装完**完全退出 DSH 再打开**（`⌘Q`，不是关窗口）。左侧导航或左下角出现「代码工作区」即成功。
-
-### Windows（PowerShell）
-
-```powershell
-git clone https://github.com/simons-jiang/dsh-ide-window.git "$env:USERPROFILE\dev\dsh-ide-window"
-dsh plugin --profile desktop add "link:$env:USERPROFILE\dev\dsh-ide-window"
-```
-
-同样**完全退出 DSH 再打开**。若提示 `dsh` 找不到，先确认 DSH 安装时带的命令行工具在 `PATH` 里（新开一个 PowerShell 窗口再试）。
+Windows 把路径换成 `"$env:USERPROFILE\dev\dsh-ide-window"`。`dsh` 不在 `PATH` 时，脚本会自动改用应用自带的 CLI，无需额外配置。
 
 ### 不想 clone：直接按 commit 装
 

@@ -19,7 +19,9 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "AGENTS.md"
+    "AGENTS.md",
+    "install.sh",
+    "install.ps1"
   ],
   "scripts": {
     "build": "node build.mjs",
