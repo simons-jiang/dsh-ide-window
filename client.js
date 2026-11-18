@@ -206,6 +206,7 @@ window.__ModuleLoader__.load({
     "settingsMavenRepoDetecting": "Detecting the repository…",
     "settingsMavenRepoMissingDir": "directory not found",
     "treeLocate": "Locate the open file",
+    "gestureAltWin": "Alt+Click",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -405,6 +406,7 @@ window.__ModuleLoader__.load({
     "settingsMavenRepoDetecting": "正在检测仓库位置…",
     "settingsMavenRepoMissingDir": "目录不存在",
     "treeLocate": "定位到当前文件",
+    "gestureAltWin": "Alt+单击",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -2178,9 +2180,7 @@ const IDE_GESTURE_KEYS = { double: 'gestureDouble', meta: 'gestureMeta', ctrl: '
  * *is* Ctrl, so a separate Ctrl entry would be the same physical gesture.
  */
 function ideGestureChoices(platform) {
-  return platform === 'macos'
-    ? ['double', 'meta', 'ctrl', 'alt']
-    : ['double', 'meta', 'alt']
+  return idePlatformOf(platform).gestureChoices()
 }
 
 /**
@@ -2297,9 +2297,7 @@ function ideBindingMatches(binding, event, platform) {
 /** One binding's keycaps, in the order the platform prints them. */
 function ideBindingKeys(binding, platform) {
   if (binding === null || typeof binding?.code !== 'string') return []
-  const glyphs = platform === 'macos'
-    ? { control: '⌃', alt: '⌥', shift: '⇧', meta: '⌘' }
-    : { control: 'Ctrl', alt: 'Alt', shift: 'Shift', meta: 'Win' }
+  const glyphs = idePlatformOf(platform).bindingGlyphs()
   const held = new Set(binding.modifiers.map((modifier) => (
     modifier === 'primary' ? (platform === 'macos' ? 'meta' : 'control') : modifier
   )))
@@ -2355,6 +2353,55 @@ function ideShortcutDefault(command, runtime) {
   const table = command?.defaults ?? {}
   return (runtime === 'web' ? table.web : table.desktop) ?? table.desktop ?? null
 }
+
+// ---- 06-platform.js ------------------------------------------------------
+/**
+ * The platform differences the reader can see.
+ *
+ * Everything the panel does differently on macOS and Windows lives here: the
+ * separator rules, the root header, and how a pointer gesture or a key is
+ * printed. `apply()` swaps the instance at startup, so a third system is one
+ * more factory rather than another branch in every component.
+ *
+ * Paths inside the panel are POSIX (forward slashes): the Host and every route
+ * speak that form, and a path copied out for the user is converted back with
+ * `toNative`.
+ */
+function idePlatformOf(name) {
+  // Only macOS is treated as macOS; every other value means Windows.
+  const windows = name !== 'macos' && name !== 'mac' && name !== 'darwin'
+  const toPosix = (path) => {
+    const text = String(path ?? '')
+    return windows ? text.replace(/\\/g, '/') : text
+  }
+  return {
+    name: windows ? 'windows' : 'macos',
+    /** Native or mixed path → the slash form every helper works in. */
+    toPosix,
+    /** Slash form → the form the user's own tools accept. */
+    toNative: (path) => (windows ? String(path ?? '').replace(/\//g, '\\') : String(path ?? '')),
+    isAbsolutePath: (path) => {
+      const text = toPosix(path)
+      return windows ? /^[A-Za-z]:\//.test(text) || text.startsWith('//') || text.startsWith('/') : text.startsWith('/')
+    },
+    /** Which pointer gestures the settings dropdown offers here. */
+    gestureChoices: () => (windows ? ['double', 'meta', 'alt'] : ['double', 'meta', 'ctrl', 'alt']),
+    /** The locale key that prints one gesture for this system. */
+    gestureLabelKey: (gesture) => {
+      if (gesture === 'double') return 'gestureDouble'
+      // Windows has no ⌘: the primary-modifier click is Ctrl there.
+      if (gesture === 'meta' || gesture === 'ctrl') return windows ? 'gestureCtrl' : 'gestureMeta'
+      return windows ? 'gestureAltWin' : 'gestureAlt'
+    },
+    /** Keycap glyphs for one binding. */
+    bindingGlyphs: () => (windows
+      ? { control: 'Ctrl', alt: 'Alt', shift: 'Shift', meta: 'Win' }
+      : { control: '⌃', alt: '⌥', shift: '⇧', meta: '⌘' }),
+  }
+}
+
+/** Replaced in `apply()` with the runtime platform; macOS until then. */
+let idePlatform = idePlatformOf('macos')
 
 // ---- 10-core.js ----------------------------------------------------------
 /**
@@ -2491,11 +2538,12 @@ function ideWriteViewMap(map) {
   }
 }
 
-/** Join an absolute directory and a workspace-relative path. */
+/** Join an absolute directory and a workspace-relative path (POSIX result). */
 function ideAbs(root, path) {
-  if (path === '' || path === undefined || path === null) return root
-  if (root === '') return path
-  return `${root.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+  const base = idePlatform.toPosix(root)
+  if (path === '' || path === undefined || path === null) return base
+  if (base === '') return idePlatform.toPosix(path)
+  return `${base.replace(/\/+$/, '')}/${idePlatform.toPosix(path).replace(/^\/+/, '')}`
 }
 
 /**
@@ -2506,22 +2554,24 @@ function ideAbs(root, path) {
  */
 function ideRelativeTo(root, path) {
   if (typeof path !== 'string' || path === '') return null
-  const trimmedRoot = String(root ?? '').replace(/\/+$/, '')
-  if (trimmedRoot === '') return path.startsWith('/') ? null : path
-  if (path === trimmedRoot) return ''
-  if (path.startsWith(`${trimmedRoot}/`)) return path.slice(trimmedRoot.length + 1)
-  return path.startsWith('/') ? null : path
+  const text = idePlatform.toPosix(path)
+  const trimmedRoot = idePlatform.toPosix(root).replace(/\/+$/, '')
+  if (trimmedRoot === '') return text.startsWith('/') ? null : text
+  if (text === trimmedRoot) return ''
+  if (text.startsWith(`${trimmedRoot}/`)) return text.slice(trimmedRoot.length + 1)
+  return idePlatform.isAbsolutePath(text) ? null : text
 }
 
 /** Split a path into its dimmed directory and the file name. */
 function ideSplitPath(path) {
-  const index = path.lastIndexOf('/')
-  return index < 0 ? { dir: '', name: path } : { dir: path.slice(0, index + 1), name: path.slice(index + 1) }
+  const text = idePlatform.toPosix(path)
+  const index = text.lastIndexOf('/')
+  return index < 0 ? { dir: '', name: text } : { dir: text.slice(0, index + 1), name: text.slice(index + 1) }
 }
 
 /** Ancestors of a workspace path, shallowest first: `a/b/C.java` → `a`, `a/b`. */
 function ideAncestorDirs(path) {
-  const parts = String(path ?? '').split('/')
+  const parts = idePlatform.toPosix(path).split('/')
   parts.pop()
   const dirs = []
   for (let index = 1; index <= parts.length; index += 1) {
@@ -2535,13 +2585,14 @@ const IDE_MAX_EXPANDED_DIRS = 200
 
 /** Directory of a workspace path (`` for a top-level entry). */
 function ideParent(path) {
-  const index = path.lastIndexOf('/')
-  return index < 0 ? '' : path.slice(0, index)
+  const text = idePlatform.toPosix(path)
+  const index = text.lastIndexOf('/')
+  return index < 0 ? '' : text.slice(0, index)
 }
 
 /** Basename of an absolute or workspace path. */
 function ideBasename(path) {
-  const trimmed = String(path ?? '').replace(/\/+$/, '')
+  const trimmed = idePlatform.toPosix(path).replace(/\/+$/, '')
   const index = trimmed.lastIndexOf('/')
   return index < 0 ? trimmed : trimmed.slice(index + 1)
 }
@@ -3217,7 +3268,9 @@ function ideCreateStore(refs) {
    * covered the panel for one frame before the new workspace appeared.
    */
   function enterProject(rootPath, sessionId) {
-    const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
+    // The panel speaks POSIX paths everywhere; a Session may report a native
+    // one (`C:\work\app`), so it is normalised on the way in.
+    const nextRoot = typeof rootPath === 'string' ? idePlatform.toPosix(rootPath).replace(/\/+$/, '') : ''
     if (nextRoot === '') return
     const nextSession = typeof sessionId === 'string' && sessionId !== '' ? sessionId : state.sessionId
     if (nextRoot === state.rootPath && nextSession === state.sessionId) return
@@ -3227,7 +3280,7 @@ function ideCreateStore(refs) {
 
   /** Adopt the absolute workspace root the Session list reports for that Session. */
   function setRoot(rootPath) {
-    const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
+    const nextRoot = typeof rootPath === 'string' ? idePlatform.toPosix(rootPath).replace(/\/+$/, '') : ''
     if (nextRoot === '' || state.rootPath === nextRoot) return
     patch({ rootPath: nextRoot })
     restart({ restore: true })
@@ -4358,10 +4411,11 @@ function ideCopyToClipboard(text) {
   }
 }
 
-/** Absolute path of one workspace-relative path. */
+/** Absolute path of one workspace-relative path, in the platform's own form. */
 function ideAbsolutePath(root, path) {
-  const base = String(root ?? '').replace(/\/+$/, '')
-  return path === '' ? base : `${base}/${path}`
+  const base = idePlatform.toPosix(root).replace(/\/+$/, '')
+  const joined = path === '' ? base : `${base}/${idePlatform.toPosix(path)}`
+  return idePlatform.toNative(joined)
 }
 
 /** Copy a value and say so in the banner. */
@@ -6632,7 +6686,7 @@ function ideNextGesture(current, taken) {
 
 /** Locale label for one gesture choice. */
 function ideGestureLabel(choice, platform, tr) {
-  if (choice === 'meta') return platform === 'macos' ? tr('gestureMeta') : tr('gestureCtrl')
+  if (choice === 'meta' || choice === 'ctrl') return tr(idePlatformOf(platform).gestureLabelKey(choice))
   return tr(IDE_GESTURE_KEYS[choice])
 }
 
@@ -8924,7 +8978,7 @@ function ideIsCodePath(path) {
 
 /** `src/main/java/com/x/Y.java` → `com.x.Y`; any other path keeps its shape. */
 function ideFqnOf(path) {
-  const text = String(path ?? '')
+  const text = idePlatform.toPosix(path)
   const match = /(?:^|\/)src\/(?:main|test)\/(?:java|kotlin|kts|scala|groovy)\/(.+)$/i.exec(text)
   const tail = match === null ? text : match[1]
   return tail.replace(/\.[^./]+$/, '').replace(/\//g, '.')
@@ -9950,12 +10004,15 @@ function apply(ctx) {
    * in this plugin's preferences, one capture-phase listener dispatches them, and
    * the section below edits both kinds.
    */
-  const shortcutPlatform = ctx.shortcuts?.platform === 'windows' || ctx.shortcuts?.platform === 'linux'
-    ? ctx.shortcuts.platform
-    : 'macos'
+  // Only macOS counts as macOS; anything else takes the Windows behaviour.
+  const reportedPlatform = typeof ctx.shortcuts?.platform === 'string' ? ctx.shortcuts.platform : ''
+  const shortcutPlatform = reportedPlatform === 'macos' || reportedPlatform === 'mac' || reportedPlatform === 'darwin'
+    ? 'macos'
+    : 'windows'
   const shortcutRuntime = ctx.shortcuts?.runtime === 'web' ? 'web' : 'desktop'
   ideRuntimeContext.platform = shortcutPlatform
   ideRuntimeContext.runtime = shortcutRuntime
+  idePlatform = idePlatformOf(shortcutPlatform)
 
   /** The binding in force for one registry command. */
   const shortcutBindingOf = (command) => (

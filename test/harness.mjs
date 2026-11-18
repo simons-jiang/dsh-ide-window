@@ -642,6 +642,13 @@ function sourceFunction(name, file = undefined) {
   throw new Error(`unbalanced ${name}`)
 }
 
+// The client's path helpers read `idePlatform` from their module; extracted
+// functions evaluate in the global scope, so give them the macOS instance once.
+{
+  const platformOf = new Function(`${sourceFunction('idePlatformOf', '06-platform.js')}\nreturn idePlatformOf`)()
+  globalThis.idePlatform = platformOf('macos')
+}
+
 // ---- content-search extension scoping --------------------------------------
 {
   const globs = new Function(`const MAX_GREP_EXTENSIONS = 40\n${sourceFunction('grepExtensionGlobs')}\nreturn grepExtensionGlobs`)()
@@ -812,6 +819,42 @@ function sourceFunction(name, file = undefined) {
   const controllerLines = ['        return DataResponse.ok(paymentRecordService.selectPage(query));']
   check(isReferenceDeclaration(controllerLines, 1, 'selectPage') === false,
     'a call row is a caller', 'controller call')
+}
+
+// ---- the client platform layer ---------------------------------------------
+{
+  const platformOf = new Function(`${sourceFunction('idePlatformOf', '06-platform.js')}\nreturn idePlatformOf`)()
+  const windows = platformOf('windows')
+  const mac = platformOf('macos')
+
+  check(windows.toPosix('C:\\work\\app\\A.java') === 'C:/work/app/A.java', 'windows paths fold to slashes', windows.toPosix('C:\\work\\app\\A.java'))
+  check(windows.toNative('C:/work/app/A.java') === 'C:\\work\\app\\A.java', 'windows paths expand back to native', windows.toNative('C:/work/app/A.java'))
+  check(mac.toPosix('/work/app/A.java') === '/work/app/A.java', 'macOS paths are untouched', mac.toPosix('/work/app/A.java'))
+  check(windows.isAbsolutePath('C:\\work') === true, 'windows accepts a drive path', windows.isAbsolutePath('C:\\work'))
+  check(windows.isAbsolutePath('work\\app') === false, 'windows refuses a relative path', windows.isAbsolutePath('work\\app'))
+  check(mac.isAbsolutePath('/work') === true && mac.isAbsolutePath('work') === false, 'macOS distinguishes rooted paths', mac.isAbsolutePath('/work'))
+  check(platformOf('linux').name === 'windows', 'anything that is not macOS takes the Windows behaviour', platformOf('linux').name)
+  check(JSON.stringify(windows.gestureChoices()) === JSON.stringify(['double', 'meta', 'alt']), 'windows offers no separate Ctrl gesture', JSON.stringify(windows.gestureChoices()))
+  check(windows.gestureLabelKey('meta') === 'gestureCtrl', 'windows prints the primary click as Ctrl', windows.gestureLabelKey('meta'))
+  check(windows.gestureLabelKey('alt') === 'gestureAltWin', 'windows prints Alt rather than ⌥', windows.gestureLabelKey('alt'))
+  check(mac.gestureLabelKey('meta') === 'gestureMeta' && mac.gestureLabelKey('alt') === 'gestureAlt', 'macOS keeps its own glyphs', mac.gestureLabelKey('alt'))
+  check(windows.bindingGlyphs().control === 'Ctrl', 'windows keycaps say Ctrl', windows.bindingGlyphs().control)
+
+  // The path helpers take the platform from the closure; injecting the Windows
+  // one proves a native path from a Windows Session still resolves.
+  const withPlatform = (source, name) => new Function('idePlatform', `${source}\nreturn ${name}`)(windows)
+  const fqnOf = withPlatform(sourceFunction('ideFqnOf', '70-palette.js'), 'ideFqnOf')
+  check(fqnOf('C:\\ws\\src\\main\\java\\com\\x\\Y.java') === 'com.x.Y', 'a Windows source path yields its FQN', fqnOf('C:\\ws\\src\\main\\java\\com\\x\\Y.java'))
+
+  const splitPath = withPlatform(sourceFunction('ideSplitPath', '10-core.js'), 'ideSplitPath')
+  check(JSON.stringify(splitPath('C:\\ws\\a\\B.java')) === JSON.stringify({ dir: 'C:/ws/a/', name: 'B.java' }), 'a Windows path splits on its own separator', JSON.stringify(splitPath('C:\\ws\\a\\B.java')))
+
+  const abs = withPlatform(sourceFunction('ideAbs', '10-core.js'), 'ideAbs')
+  check(abs('C:\\ws', 'src\\main\\A.java') === 'C:/ws/src/main/A.java', 'the absolute join stays POSIX', abs('C:\\ws', 'src\\main\\A.java'))
+
+  const relativeTo = withPlatform(sourceFunction('ideRelativeTo', '10-core.js'), 'ideRelativeTo')
+  check(relativeTo('C:\\ws', 'C:\\ws\\a\\B.java') === 'a/B.java', 'a Windows absolute path resolves against the root', String(relativeTo('C:\\ws', 'C:\\ws\\a\\B.java')))
+  check(relativeTo('/ws', 'C:\\other\\B.java') === null, 'a path outside the root is refused', String(relativeTo('/ws', 'C:\\other\\B.java')))
 }
 
 // ---- LSP licence refusal ---------------------------------------------------

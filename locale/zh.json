@@ -199,5 +199,6 @@
   "settingsMavenRepoManual": "设置项",
   "settingsMavenRepoDetecting": "正在检测仓库位置…",
   "settingsMavenRepoMissingDir": "目录不存在",
-  "treeLocate": "定位到当前文件"
+  "treeLocate": "定位到当前文件",
+  "gestureAltWin": "Alt+单击"
 }

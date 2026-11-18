@@ -506,12 +506,15 @@ function apply(ctx) {
    * in this plugin's preferences, one capture-phase listener dispatches them, and
    * the section below edits both kinds.
    */
-  const shortcutPlatform = ctx.shortcuts?.platform === 'windows' || ctx.shortcuts?.platform === 'linux'
-    ? ctx.shortcuts.platform
-    : 'macos'
+  // Only macOS counts as macOS; anything else takes the Windows behaviour.
+  const reportedPlatform = typeof ctx.shortcuts?.platform === 'string' ? ctx.shortcuts.platform : ''
+  const shortcutPlatform = reportedPlatform === 'macos' || reportedPlatform === 'mac' || reportedPlatform === 'darwin'
+    ? 'macos'
+    : 'windows'
   const shortcutRuntime = ctx.shortcuts?.runtime === 'web' ? 'web' : 'desktop'
   ideRuntimeContext.platform = shortcutPlatform
   ideRuntimeContext.runtime = shortcutRuntime
+  idePlatform = idePlatformOf(shortcutPlatform)
 
   /** The binding in force for one registry command. */
   const shortcutBindingOf = (command) => (

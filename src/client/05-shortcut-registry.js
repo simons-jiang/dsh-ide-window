@@ -33,9 +33,7 @@ const IDE_GESTURE_KEYS = { double: 'gestureDouble', meta: 'gestureMeta', ctrl: '
  * *is* Ctrl, so a separate Ctrl entry would be the same physical gesture.
  */
 function ideGestureChoices(platform) {
-  return platform === 'macos'
-    ? ['double', 'meta', 'ctrl', 'alt']
-    : ['double', 'meta', 'alt']
+  return idePlatformOf(platform).gestureChoices()
 }
 
 /**
@@ -152,9 +150,7 @@ function ideBindingMatches(binding, event, platform) {
 /** One binding's keycaps, in the order the platform prints them. */
 function ideBindingKeys(binding, platform) {
   if (binding === null || typeof binding?.code !== 'string') return []
-  const glyphs = platform === 'macos'
-    ? { control: '⌃', alt: '⌥', shift: '⇧', meta: '⌘' }
-    : { control: 'Ctrl', alt: 'Alt', shift: 'Shift', meta: 'Win' }
+  const glyphs = idePlatformOf(platform).bindingGlyphs()
   const held = new Set(binding.modifiers.map((modifier) => (
     modifier === 'primary' ? (platform === 'macos' ? 'meta' : 'control') : modifier
   )))

@@ -199,5 +199,6 @@
   "settingsMavenRepoManual": "from settings",
   "settingsMavenRepoDetecting": "Detecting the repository…",
   "settingsMavenRepoMissingDir": "directory not found",
-  "treeLocate": "Locate the open file"
+  "treeLocate": "Locate the open file",
+  "gestureAltWin": "Alt+Click"
 }

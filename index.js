@@ -19,6 +19,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
+import { platform } from './platform/index.js'
 import { join } from 'node:path'
 import { open as openFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
@@ -60,12 +61,11 @@ function resolveRipgrep() {
     `${resources}/app.asar.unpacked/dsh/node_modules`,
     `${resources}/app.asar/dsh/node_modules`,
   ]
-  const suffixes = [
-    '@vscode/ripgrep-darwin-arm64/bin/rg',
-    '@vscode/ripgrep-darwin-x64/bin/rg',
-    '@vscode/ripgrep-linux-arm64/bin/rg',
-    '@vscode/ripgrep-linux-x64/bin/rg',
-  ]
+  // A platform lists the binaries it can execute; macOS keeps the Linux builds
+  // as a last resort so a profile that moved still resolves.
+  const suffixes = platform.name === 'mac'
+    ? [...platform.ripgrepSuffixes, '@vscode/ripgrep-linux-arm64/bin/rg', '@vscode/ripgrep-linux-x64/bin/rg']
+    : platform.ripgrepSuffixes
   for (const base of bases) {
     for (const suffix of suffixes) {
       const candidate = `${base}/${suffix}`
@@ -171,10 +171,7 @@ function mavenSettingsRepository() {
       .replace(/<!--[\s\S]*?-->/g, '')
     const match = /<localRepository>\s*([^<]+?)\s*<\/localRepository>/.exec(xml)
     if (match === null) return ''
-    return match[1]
-      .replace(/\$\{user\.home\}/g, homedir())
-      .replace(/^~(?=\/)/, homedir())
-      .trim()
+    return platform.expandUserPath(match[1].trim())
   } catch (error) {
     void error
     return ''
@@ -212,7 +209,7 @@ function listSourcesJars(repository) {
       return
     }
     for (const entry of entries) {
-      const path = `${directory}/${entry.name}`
+      const path = platform.toPosix(`${directory}/${entry.name}`)
       if (entry.isDirectory()) {
         walk(path, depth + 1)
         continue
@@ -253,7 +250,7 @@ function jarSource(payload) {
   if (cached !== undefined) {
     const hit = readZipIndex(cached.jar, entryPath)
     const text = hit === undefined ? undefined : readZipEntry(cached.jar, hit)
-    if (text !== undefined) return { found: true, jar: cached.jar, entry: entryPath, text, repository }
+    if (text !== undefined) return { found: true, jar: platform.toPosix(cached.jar), entry: entryPath, text, repository }
     jarLookups.delete(cacheKey)
   }
   const jars = listSourcesJars(repository)
@@ -265,7 +262,7 @@ function jarSource(payload) {
     const text = readZipEntry(file, entry)
     if (text === undefined) continue
     jarLookups.set(cacheKey, { jar: file })
-    return { found: true, jar: file, entry: entryPath, text, repository }
+    return { found: true, jar: platform.toPosix(file), entry: entryPath, text, repository }
   }
   return { found: false, repository, scanned: budget }
 }
@@ -380,11 +377,8 @@ const MAX_BLAME_LINES = 20000
 /** The last commit that touched each line of one workspace file. */
 export async function blameWorkspace(payload) {
   const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
-  const rel = typeof payload?.path === 'string' ? payload.path.trim() : ''
+  const rel = safeRelativePath(payload?.path)
   if (root === '' || rel === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot and path are required')
-  if (rel.startsWith('/') || rel.split('/').includes('..')) {
-    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
-  }
   const result = await runCommand('git', ['blame', '--line-porcelain', '--', rel], root)
   // An untracked file has no history yet: no rows, and no failure to report.
   if (result.code !== 0) return { failed: true, lines: [] }
@@ -403,11 +397,8 @@ export async function statusWorkspace(payload) {
 
 async function diffWorkspace(payload) {
   const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot : ''
-  const rel = typeof payload?.path === 'string' ? payload.path.trim() : ''
+  const rel = safeRelativePath(payload?.path)
   if (root === '' || rel === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot and path are required')
-  if (rel.startsWith('/') || rel.split('/').includes('..')) {
-    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
-  }
   const tracked = await runCommand('git', ['ls-files', '--error-unmatch', '--', rel], root)
   if (tracked.code !== 0) return { untracked: true, hunks: [] }
   const diff = await runCommand('git', ['diff', 'HEAD', '-U0', '--no-color', '--no-ext-diff', '--', rel], root)
@@ -442,20 +433,33 @@ const MAX_PATCH_CHARS = 400000
 const MAX_COPY_CHARS = 512000
 
 /**
+ * Validate one workspace-relative path, in the POSIX form routes speak.
+ *
+ * Windows sends `a\b`, macOS `a/b`; both become `a/b`. An absolute path or one
+ * that climbs with `..` is refused instead of resolved.
+ */
+function safeRelativePath(value) {
+  const rel = platform.toPosix(typeof value === 'string' ? value.trim() : '')
+  if (rel !== '' && (platform.isAbsolutePath(rel) || rel.split('/').includes('..'))) {
+    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
+  }
+  return rel
+}
+
+/**
  * Validate the workspace root and the relative path a route may touch.
  *
- * `rel` may be empty for routes that speak about the repository itself.
+ * `rel` may be empty for routes that speak about the repository itself. The
+ * root keeps its platform form (a drive letter on Windows); the relative path
+ * is always POSIX.
  */
 function scopeOf(payload) {
   const root = typeof payload?.workspaceRoot === 'string' ? payload.workspaceRoot.trim() : ''
-  const rel = typeof payload?.path === 'string' ? payload.path.trim() : ''
-  if (root === '' || !root.startsWith('/')) {
+  if (root === '' || !platform.isAbsolutePath(root)) {
     throw new RouteError(400, 'invalid-arguments', 'workspaceRoot must be absolute')
   }
-  if (rel !== '' && (rel.startsWith('/') || rel.split('/').includes('..'))) {
-    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
-  }
-  return { root: root.replace(/\/+$/, ''), rel }
+  const rel = safeRelativePath(payload?.path)
+  return { root: root.replace(/[\\/]+$/, ''), rel }
 }
 
 /** Parse `git log --pretty=format:%h%x09%an%x09%ad%x09%s` output. */
@@ -598,11 +602,8 @@ function grepWorkspace(payload) {
   if (root === '') throw new RouteError(400, 'invalid-arguments', 'workspaceRoot is required')
   // Optional scope: one workspace-relative file or directory. Anything that
   // escapes the workspace is refused rather than resolved.
-  const rawScope = typeof payload?.path === 'string' ? payload.path.trim() : ''
-  if (rawScope.startsWith('/') || rawScope.split('/').includes('..')) {
-    throw new RouteError(400, 'invalid-scope', 'path must stay inside the workspace')
-  }
-  const scope = rawScope === '' ? '.' : rawScope
+  const relScope = safeRelativePath(payload?.path)
+  const scope = relScope === '' ? '.' : relScope
   const caseFlag = payload?.caseSensitive === true ? '--case-sensitive' : '--smart-case'
 
   return new Promise((resolve, reject) => {
@@ -742,8 +743,10 @@ function licenseBinary() {
       .sort()
       .reverse()
     for (const name of names) {
-      const candidate = join(base, name, 'bin', 'intellij-server')
-      if (existsSync(candidate)) return candidate
+      for (const launcher of platform.serverLauncherNames) {
+        const candidate = join(base, name, 'bin', launcher)
+        if (existsSync(candidate)) return candidate
+      }
     }
   } catch (error) {
     void error
@@ -792,11 +795,7 @@ function runLicenseCommand(binary, argv, timeoutMs) {
 function openInBrowser(url) {
   const target = String(url ?? '')
   if (!/^https?:\/\//.test(target)) return false
-  const [command, args] = process.platform === 'darwin'
-    ? ['open', [target]]
-    : process.platform === 'win32'
-      ? ['explorer', [target]]
-      : ['xdg-open', [target]]
+  const { command, args } = platform.openUrlCommand(target)
   try {
     spawn(command, args, { stdio: 'ignore', detached: true }).unref()
     return true
@@ -874,7 +873,9 @@ async function query(ctx, payload) {
   }
   let result
   try {
-    result = await lsp.query({ operation, filePath, position, workspaceRoot })
+    // The provider runs on this machine, so it gets the platform's own path
+    // form; the browser gets POSIX paths back.
+    result = await lsp.query({ operation, filePath: platform.toNative(filePath), position, workspaceRoot })
   } catch (error) {
     // The seam reports its own stable codes; hand them to the browser verbatim.
     const code = typeof error?.code === 'string' ? error.code : 'lsp-failed'
@@ -892,7 +893,7 @@ async function query(ctx, payload) {
     return relativize(resolvedRoot, absolute)
   }
   const locations = (result?.locations ?? []).map((location) => ({
-    path: relative(uriToPath(location.uri)),
+    path: platform.toPosix(relative(uriToPath(location.uri))),
     uri: location.uri,
     line: location.range.start.line + 1,
     character: location.range.start.character,
@@ -1050,8 +1051,14 @@ export async function kindsWorkspace(payload) {
   const wanted = []
   for (const value of Array.isArray(payload?.paths) ? payload.paths : []) {
     if (typeof value !== 'string' || !value.endsWith('.java')) continue
-    if (value.startsWith('/') || value.split('/').includes('..')) continue
-    wanted.push(value)
+    let rel
+    try {
+      rel = safeRelativePath(value)
+    } catch (error) {
+      continue
+    }
+    if (rel === '') continue
+    wanted.push(rel)
   }
   const unique = [...new Set(wanted)].slice(0, MAX_KIND_PATHS)
   if (unique.length === 0) return { kinds: {} }

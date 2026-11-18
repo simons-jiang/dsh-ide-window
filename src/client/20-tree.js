@@ -425,10 +425,11 @@ function ideCopyToClipboard(text) {
   }
 }
 
-/** Absolute path of one workspace-relative path. */
+/** Absolute path of one workspace-relative path, in the platform's own form. */
 function ideAbsolutePath(root, path) {
-  const base = String(root ?? '').replace(/\/+$/, '')
-  return path === '' ? base : `${base}/${path}`
+  const base = idePlatform.toPosix(root).replace(/\/+$/, '')
+  const joined = path === '' ? base : `${base}/${idePlatform.toPosix(path)}`
+  return idePlatform.toNative(joined)
 }
 
 /** Copy a value and say so in the banner. */

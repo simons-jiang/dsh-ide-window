@@ -24,7 +24,7 @@ function ideNextGesture(current, taken) {
 
 /** Locale label for one gesture choice. */
 function ideGestureLabel(choice, platform, tr) {
-  if (choice === 'meta') return platform === 'macos' ? tr('gestureMeta') : tr('gestureCtrl')
+  if (choice === 'meta' || choice === 'ctrl') return tr(idePlatformOf(platform).gestureLabelKey(choice))
   return tr(IDE_GESTURE_KEYS[choice])
 }
 

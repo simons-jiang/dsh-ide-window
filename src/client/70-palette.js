@@ -54,7 +54,7 @@ function ideIsCodePath(path) {
 
 /** `src/main/java/com/x/Y.java` → `com.x.Y`; any other path keeps its shape. */
 function ideFqnOf(path) {
-  const text = String(path ?? '')
+  const text = idePlatform.toPosix(path)
   const match = /(?:^|\/)src\/(?:main|test)\/(?:java|kotlin|kts|scala|groovy)\/(.+)$/i.exec(text)
   const tail = match === null ? text : match[1]
   return tail.replace(/\.[^./]+$/, '').replace(/\//g, '.')

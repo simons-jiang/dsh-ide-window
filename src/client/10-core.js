@@ -132,11 +132,12 @@ function ideWriteViewMap(map) {
   }
 }
 
-/** Join an absolute directory and a workspace-relative path. */
+/** Join an absolute directory and a workspace-relative path (POSIX result). */
 function ideAbs(root, path) {
-  if (path === '' || path === undefined || path === null) return root
-  if (root === '') return path
-  return `${root.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+  const base = idePlatform.toPosix(root)
+  if (path === '' || path === undefined || path === null) return base
+  if (base === '') return idePlatform.toPosix(path)
+  return `${base.replace(/\/+$/, '')}/${idePlatform.toPosix(path).replace(/^\/+/, '')}`
 }
 
 /**
@@ -147,22 +148,24 @@ function ideAbs(root, path) {
  */
 function ideRelativeTo(root, path) {
   if (typeof path !== 'string' || path === '') return null
-  const trimmedRoot = String(root ?? '').replace(/\/+$/, '')
-  if (trimmedRoot === '') return path.startsWith('/') ? null : path
-  if (path === trimmedRoot) return ''
-  if (path.startsWith(`${trimmedRoot}/`)) return path.slice(trimmedRoot.length + 1)
-  return path.startsWith('/') ? null : path
+  const text = idePlatform.toPosix(path)
+  const trimmedRoot = idePlatform.toPosix(root).replace(/\/+$/, '')
+  if (trimmedRoot === '') return text.startsWith('/') ? null : text
+  if (text === trimmedRoot) return ''
+  if (text.startsWith(`${trimmedRoot}/`)) return text.slice(trimmedRoot.length + 1)
+  return idePlatform.isAbsolutePath(text) ? null : text
 }
 
 /** Split a path into its dimmed directory and the file name. */
 function ideSplitPath(path) {
-  const index = path.lastIndexOf('/')
-  return index < 0 ? { dir: '', name: path } : { dir: path.slice(0, index + 1), name: path.slice(index + 1) }
+  const text = idePlatform.toPosix(path)
+  const index = text.lastIndexOf('/')
+  return index < 0 ? { dir: '', name: text } : { dir: text.slice(0, index + 1), name: text.slice(index + 1) }
 }
 
 /** Ancestors of a workspace path, shallowest first: `a/b/C.java` → `a`, `a/b`. */
 function ideAncestorDirs(path) {
-  const parts = String(path ?? '').split('/')
+  const parts = idePlatform.toPosix(path).split('/')
   parts.pop()
   const dirs = []
   for (let index = 1; index <= parts.length; index += 1) {
@@ -176,13 +179,14 @@ const IDE_MAX_EXPANDED_DIRS = 200
 
 /** Directory of a workspace path (`` for a top-level entry). */
 function ideParent(path) {
-  const index = path.lastIndexOf('/')
-  return index < 0 ? '' : path.slice(0, index)
+  const text = idePlatform.toPosix(path)
+  const index = text.lastIndexOf('/')
+  return index < 0 ? '' : text.slice(0, index)
 }
 
 /** Basename of an absolute or workspace path. */
 function ideBasename(path) {
-  const trimmed = String(path ?? '').replace(/\/+$/, '')
+  const trimmed = idePlatform.toPosix(path).replace(/\/+$/, '')
   const index = trimmed.lastIndexOf('/')
   return index < 0 ? trimmed : trimmed.slice(index + 1)
 }
@@ -858,7 +862,9 @@ function ideCreateStore(refs) {
    * covered the panel for one frame before the new workspace appeared.
    */
   function enterProject(rootPath, sessionId) {
-    const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
+    // The panel speaks POSIX paths everywhere; a Session may report a native
+    // one (`C:\work\app`), so it is normalised on the way in.
+    const nextRoot = typeof rootPath === 'string' ? idePlatform.toPosix(rootPath).replace(/\/+$/, '') : ''
     if (nextRoot === '') return
     const nextSession = typeof sessionId === 'string' && sessionId !== '' ? sessionId : state.sessionId
     if (nextRoot === state.rootPath && nextSession === state.sessionId) return
@@ -868,7 +874,7 @@ function ideCreateStore(refs) {
 
   /** Adopt the absolute workspace root the Session list reports for that Session. */
   function setRoot(rootPath) {
-    const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
+    const nextRoot = typeof rootPath === 'string' ? idePlatform.toPosix(rootPath).replace(/\/+$/, '') : ''
     if (nextRoot === '' || state.rootPath === nextRoot) return
     patch({ rootPath: nextRoot })
     restart({ restore: true })

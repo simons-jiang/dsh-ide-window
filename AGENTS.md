@@ -52,6 +52,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `00-css.js` | 全部 `.iw-*` 样式（单文件注入 `<style>`） |
 | `05-icons.js` | 内联 SVG 图标（`ideSvg` 统一 16 网格） |
 | `05-shortcut-registry.js` | **所有快捷键的唯一登记处** `IDE_SHORTCUTS` |
+| `06-platform.js` | **客户端平台层**：`toPosix/toNative`、`isAbsolutePath`、手势选项与按键文案（`apply()` 里按 `ctx.shortcuts.platform` 换实例） |
 | `10-core.js` | store（`useSyncExternalStore` 订阅）、偏好持久化、标签页/历史/视图状态 |
 | `20-tree.js` | 文件树（展开、筛选、拖宽、`⌘P` 定位） |
 | `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
@@ -65,7 +66,26 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
 
-### 3.2 宿主路由（`index.js`）
+### 3.2 平台层（`platform/`，只支持 macOS + Windows）
+
+**所有与操作系统相关的行为都在这里**，上层只调 `platform.*`，不再出现 `process.platform` 分支：
+
+| 文件 | 职责 |
+|---|---|
+| `platform/contract.js` | 接口文档 + `PLATFORM_METHODS`（测试用它断言实现完整） |
+| `platform/macos.js` | `toPosix` 恒等、`open` 打开浏览器、`.../rg`、`intellij-server` |
+| `platform/windows.js` | `\` ↔ `/` 互转、`explorer`、`rg.exe`、`intellij-server.bat` |
+| `platform/index.js` | `createPlatform(os)`：**只有 macOS（`darwin`/`macos`/`mac`）用 macOS 实现，其他一律 Windows** |
+
+接口：`name`、`toPosix()`、`toNative()`、`isAbsolutePath()`、`expandUserPath()`、`ripgrepSuffixes`、`serverLauncherNames`、`openUrlCommand()`。
+
+根路径不是平台差异：需要时用 `node:path` 的 `parse(path).root`。
+
+**路径约定**：插件内部（路由、偏好、浏览器、LSP 结果、jar 路径）**一律 POSIX 斜杠**；平台只在边界转换（`toPosix` 进、`toNative` 出），所以文件树、FQN、工作区判定这些逻辑不用关心系统。宿主：`scopeOf()` 用 `platform.isAbsolutePath()` 判根路径、`safeRelativePath()` 统一相对路径；客户端：`ideAbs/ideRelativeTo/ideSplitPath/ideAncestorDirs/ideParent/ideBasename/ideFqnOf` 先过 `idePlatform.toPosix()`，`enterProject/setRoot` 在入口归一化根路径。
+
+新增一个系统 = 实现 `contract.js` 的接口 + 在 `platform/index.js` 注册；新增一处系统差异 = 接口加一个成员 + 两个实现各写一遍。
+
+### 3.3 宿主路由（`index.js`）
 
 | 路由 | 作用 | 关键实现 |
 |---|---|---|
@@ -83,7 +103,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
 | `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
 
-### 3.3 用到的 DSH 槽位
+### 3.4 用到的 DSH 槽位
 
 | 槽 | 用途 |
 |---|---|
@@ -252,12 +272,17 @@ src/client/10-core.js         store / 偏好 / 标签页 / 视图持久化
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
 src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
 src/client/90-apply.js        全部注册 + 入口
-test/harness.mjs              VM 夹具测试（当前 212 项断言）
+platform/{contract,macos,windows,index}.js  平台层（macOS / Windows 的差异都在这里）
+test/platform.mjs            平台层测试：两个实现满足同一契约
+test/harness.mjs             VM 夹具测试（含客户端平台层）
 test/inference.mjs            归属推断（bean 字段）
 test/maven.mjs                真实 ~/.m2 jar 端到端
-check-dsh-untouched.sh        本体完整性自检
-restore-profile.sh            恢复 profile 到可用状态
+check-dsh-untouched.sh        本体完整性自检（macOS/Linux）
+restore-profile.sh            恢复 profile 到可用状态（macOS/Linux）
 start-test-instance.sh        起独立自测实例（固定端口 + 复用本机账号，不再弹登录框）
+check-dsh-untouched.ps1       ↑ 三个脚本的 PowerShell 版本（Windows 开发用）
+restore-profile.ps1
+start-test-instance.ps1
 README.md                     面向使用者的说明（功能/手势/安装）
 ```
 
