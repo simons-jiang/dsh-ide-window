@@ -58,16 +58,30 @@ function Fail([string]$Text) {
 if (-not (Test-Path (Join-Path $profileDir 'package.json'))) {
   Fail "profile ${Profile}还没有初始化：先启动一次 DSH 再重跑。"
 }
-if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-  Fail '需要 pnpm：npm i -g pnpm（DSH 的插件安装也依赖它）'
+# pnpm from PATH, otherwise the copy DSH ships next to its own Node runtime.
+$pnpmCommand = $null
+$pnpmArgs = @()
+$onPath = Get-Command pnpm -ErrorAction SilentlyContinue
+if ($onPath) {
+  $pnpmCommand = $onPath.Source
+} else {
+  $runtime = Join-Path $dshHome 'dsh-runtimes\dsh-primary-runtime\dependencies'
+  $nodeExe = Join-Path $runtime 'node\node.exe'
+  $pnpmCjs = Join-Path $runtime 'pnpm\bin\pnpm.cjs'
+  if ((Test-Path $nodeExe) -and (Test-Path $pnpmCjs)) {
+    $pnpmCommand = $nodeExe
+    $pnpmArgs = @($pnpmCjs)
+  }
 }
+if (-not $pnpmCommand) { Fail '需要 pnpm：npm i -g pnpm（也可以先启动一次 DSH，它会自带一份 pnpm）。' }
 
 # ---- 1. pipeline packages ---------------------------------------------------
 
 Step "安装 LSP 管道包（$lspVersion）"
 Push-Location $profileDir
 try {
-  pnpm add @packages | Out-Null
+  $all = @($pnpmArgs) + @('add') + @($packages)
+  & $pnpmCommand @all | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail 'pnpm add 失败，请检查网络或代理。' }
 } finally {
   Pop-Location
