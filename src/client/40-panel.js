@@ -188,8 +188,34 @@ let ideSetupDismissed = false
  * what is missing, how to install the pinned LSP packages, where the JetBrains
  * licence lives, and re-checks on demand.
  */
-function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
+function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
   if (open !== true) return null
+  const mac = ideRuntimeContext.platform === 'macos'
+  // The commands are the whole point of this page: copy-paste, in order.
+  const commands = mac
+    ? [
+      '~/dev/dsh-ide-window/enable-navigation.sh',
+      '~/.dsh/lsp-bin/*/bin/intellij-server license login',
+    ]
+    : [
+      'cd $env:USERPROFILE\.dsh\profiles\desktop',
+      'pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3',
+    ]
+  const steps = mac
+    ? [
+      { key: 's1', label: tr('setupStepScript'), code: commands[0] },
+      { key: 's2', label: tr('setupStepLicence'), code: commands[1] },
+    ]
+    : [
+      { key: 's1', label: tr('setupStepPackages'), code: `${commands[0]}\n${commands[1]}` },
+      { key: 's2', label: tr('setupStepServer'), code: '' },
+    ]
+  const copyAll = () => {
+    const text = mac
+      ? `${commands[0]}\n${commands[1]}`
+      : `${commands[0]}\n${commands[1]}\n# ${tr('setupStepServer')}`
+    ideCopyWithNotice(store, tr, text)
+  }
   return h('div', {
     key: 'backdrop',
     className: 'iw-setup-backdrop',
@@ -203,16 +229,16 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
     onPointerDown: (event) => event.stopPropagation(),
   }, [
     h('div', { key: 'title', className: 'iw-setup-title' }, tr('setupTitle')),
-    h('div', { key: 'body', className: 'iw-setup-body' }, [
-      h('p', { key: 'p' }, tr('setupBody')),
-      h('ol', { key: 'steps', className: 'iw-setup-steps' }, [
-        h('li', { key: 's1' }, tr('setupStep1')),
-        h('li', { key: 's2' }, tr('setupStep2')),
-        h('li', { key: 's3' }, tr('setupStep3')),
-      ]),
+    h('div', { key: 'body', className: 'iw-setup-body' }, h('p', { key: 'p' }, tr('setupBody'))),
+    h('ol', { key: 'steps', className: 'iw-setup-steps' }, steps.map((step) => h('li', { key: step.key }, [
+      h('div', { key: 'l', className: 'iw-setup-step-label' }, step.label),
+      step.code === ''
+        ? null
+        : h('pre', { key: 'c', className: 'iw-setup-code' }, step.code),
+    ]))),
+    h('ol', { key: 'restart', className: 'iw-setup-steps', start: steps.length + 1 }, [
+      h('li', { key: 's3' }, tr('setupStepRestart')),
     ]),
-    h('pre', { key: 'code', className: 'iw-setup-code' },
-      'dsh plugin --profile desktop add \\\n  @deepseek-ai/dsh-lsp@0.2.2-rc.3 \\\n  @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3'),
     h('div', { key: 'licence', className: 'iw-setup-link' }, [
       `${tr('setupLicence')} `,
       h('a', {
@@ -226,6 +252,12 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
       ? h('div', { key: 'still', className: 'iw-setup-still' }, tr('setupStill'))
       : null,
     h('div', { key: 'actions', className: 'iw-setup-actions' }, [
+      h('button', {
+        key: 'copy',
+        type: 'button',
+        className: 'iw-btn',
+        onClick: copyAll,
+      }, tr('setupCopyAll')),
       h('button', {
         key: 'check',
         type: 'button',
@@ -535,6 +567,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeSetupDialog, {
       key: 'setup',
       tr,
+      store,
       open: setupOpen,
       busy: setupBusy,
       still: setupStill,

@@ -138,7 +138,11 @@ fi
 
 if [ "$WITH_LSP" = 1 ]; then
   step "安装 LSP 管道包（语言服务器本身还要另外准备）"
-  dsh_cli plugin --profile "$PROFILE" add "${LSP_PACKAGES[@]}"
+  if ! dsh_cli plugin --profile "$PROFILE" add "${LSP_PACKAGES[@]}"; then
+    echo "    该 profile 由应用托管，改用 profile 内的 pnpm"
+    command -v pnpm >/dev/null 2>&1 || fail "需要 pnpm（DSH 安装插件也依赖它）：npm i -g pnpm"
+    ( cd "$PROFILE_DIR" && pnpm add "${LSP_PACKAGES[@]}" )
+  fi
 fi
 
 # ---- 4. make sure the bundle is listed -------------------------------------

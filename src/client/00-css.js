@@ -1322,6 +1322,13 @@ html.iw-select-code .iw-code .iw-vision {
   color: var(--dsw-alias-label-secondary, #98a0ad);
 }
 .iw-setup-steps li { margin-bottom: 6px; }
+.iw-setup-step-label {
+  margin-bottom: 4px;
+  line-height: 1.45;
+}
+.iw-setup-code + .iw-setup-code {
+  margin-top: 6px;
+}
 .iw-setup-code {
   margin: 10px 0 12px;
   padding: 10px 12px;

@@ -140,10 +140,7 @@ window.__ModuleLoader__.load({
     "gutterMenuAnnotate": "Annotate with Git blame",
     "gutterMenuUnannotate": "Close Git annotate",
     "setupTitle": "Code navigation is not ready",
-    "setupBody": "The workspace can browse files; navigation needs the IntelliJ language server (JetBrains licensed build).",
-    "setupStep1": "Install the LSP plumbing packages in the profile, at the version this DSH build uses.",
-    "setupStep2": "Place the licensed IntelliJ server on this machine, then insert the lsp / lsp-stdio rows in the profile cordis.patch.yml (the README has the full YAML).",
-    "setupStep3": "Without a JetBrains licence, activate one at the account page, then fully quit and reopen DSH.",
+    "setupBody": "Browsing, search, Git and copied references already work. Navigation, call chains and usage counts need a JetBrains language server — run the two commands below.",
     "setupLicence": "Licence:",
     "setupRecheck": "Check again",
     "setupChecking": "Checking…",
@@ -219,6 +216,12 @@ window.__ModuleLoader__.load({
     "referenceInserted": "Reference inserted into the chat",
     "referenceInsertedPlain": "Inserted as a plain-text reference",
     "referenceNoEditor": "Composer not found; nothing was inserted",
+    "setupStepScript": "Step 1: install the packages, download the server and write the config (~/dev/dsh-ide-window is the default checkout; use your own path if different)",
+    "setupStepLicence": "Step 2: license the server (opens a browser; an existing license prints \"licensed\")",
+    "setupStepPackages": "Step 1: install the pipeline packages in the profile (PowerShell)",
+    "setupStepServer": "Step 2: unzip intellij-server into %USERPROFILE%\\.dsh\\lsp-bin\\ and add the lsp / lsp-stdio rows to cordis.patch.yml (README section 5)",
+    "setupStepRestart": "Finally: quit DSH completely (⌘Q / tray) and reopen it.",
+    "setupCopyAll": "Copy commands",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -352,10 +355,7 @@ window.__ModuleLoader__.load({
     "gutterMenuAnnotate": "使用 Git 追溯注解",
     "gutterMenuUnannotate": "关闭 Git 追溯注解",
     "setupTitle": "代码导航未就绪",
-    "setupBody": "代码工作区可以浏览文件；跳转、引用和实现需要 IntelliJ 语言服务器（JetBrains 授权版）。",
-    "setupStep1": "在 profile 里安装 LSP 管道包，版本必须与 DSH 一致。",
-    "setupStep2": "把 IntelliJ 授权版服务器放到本机，在 profile 的 cordis.patch.yml 里 insert lsp / lsp-stdio 两行（README「代码导航」有完整 YAML）。",
-    "setupStep3": "没有 JetBrains 授权时，先在账号页激活许可，再完全退出并重开 DSH。",
+    "setupBody": "浏览、搜索、Git、复制引用都能用；跳转、调用链、用法计数需要 JetBrains 语言服务器。按下面两条命令走一遍即可。",
     "setupLicence": "授权入口：",
     "setupRecheck": "重新检测",
     "setupChecking": "检测中…",
@@ -431,6 +431,12 @@ window.__ModuleLoader__.load({
     "referenceInserted": "引用已插入对话",
     "referenceInsertedPlain": "已插入纯文本引用",
     "referenceNoEditor": "未找到对话输入框，引用未插入",
+    "setupStepScript": "第 1 步：装管道包、下载服务器、写好配置（默认装在 ~/dev/dsh-ide-window；换了位置就改成你的路径）",
+    "setupStepLicence": "第 2 步：授权（会打开浏览器；已授权会直接显示 licensed）",
+    "setupStepPackages": "第 1 步：在 profile 里装管道包（PowerShell）",
+    "setupStepServer": "第 2 步：把 intellij-server 解压到 %USERPROFILE%\\.dsh\\lsp-bin\\，并在 cordis.patch.yml 里加 lsp / lsp-stdio 两行（README 第五节）",
+    "setupStepRestart": "最后：完全退出 DSH（⌘Q / 托盘退出）再打开。",
+    "setupCopyAll": "复制命令",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1758,6 +1764,13 @@ html.iw-select-code .iw-code .iw-vision {
   color: var(--dsw-alias-label-secondary, #98a0ad);
 }
 .iw-setup-steps li { margin-bottom: 6px; }
+.iw-setup-step-label {
+  margin-bottom: 4px;
+  line-height: 1.45;
+}
+.iw-setup-code + .iw-setup-code {
+  margin-top: 6px;
+}
 .iw-setup-code {
   margin: 10px 0 12px;
   padding: 10px 12px;
@@ -6356,8 +6369,34 @@ let ideSetupDismissed = false
  * what is missing, how to install the pinned LSP packages, where the JetBrains
  * licence lives, and re-checks on demand.
  */
-function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
+function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
   if (open !== true) return null
+  const mac = ideRuntimeContext.platform === 'macos'
+  // The commands are the whole point of this page: copy-paste, in order.
+  const commands = mac
+    ? [
+      '~/dev/dsh-ide-window/enable-navigation.sh',
+      '~/.dsh/lsp-bin/*/bin/intellij-server license login',
+    ]
+    : [
+      'cd $env:USERPROFILE\.dsh\profiles\desktop',
+      'pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3',
+    ]
+  const steps = mac
+    ? [
+      { key: 's1', label: tr('setupStepScript'), code: commands[0] },
+      { key: 's2', label: tr('setupStepLicence'), code: commands[1] },
+    ]
+    : [
+      { key: 's1', label: tr('setupStepPackages'), code: `${commands[0]}\n${commands[1]}` },
+      { key: 's2', label: tr('setupStepServer'), code: '' },
+    ]
+  const copyAll = () => {
+    const text = mac
+      ? `${commands[0]}\n${commands[1]}`
+      : `${commands[0]}\n${commands[1]}\n# ${tr('setupStepServer')}`
+    ideCopyWithNotice(store, tr, text)
+  }
   return h('div', {
     key: 'backdrop',
     className: 'iw-setup-backdrop',
@@ -6371,16 +6410,16 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
     onPointerDown: (event) => event.stopPropagation(),
   }, [
     h('div', { key: 'title', className: 'iw-setup-title' }, tr('setupTitle')),
-    h('div', { key: 'body', className: 'iw-setup-body' }, [
-      h('p', { key: 'p' }, tr('setupBody')),
-      h('ol', { key: 'steps', className: 'iw-setup-steps' }, [
-        h('li', { key: 's1' }, tr('setupStep1')),
-        h('li', { key: 's2' }, tr('setupStep2')),
-        h('li', { key: 's3' }, tr('setupStep3')),
-      ]),
+    h('div', { key: 'body', className: 'iw-setup-body' }, h('p', { key: 'p' }, tr('setupBody'))),
+    h('ol', { key: 'steps', className: 'iw-setup-steps' }, steps.map((step) => h('li', { key: step.key }, [
+      h('div', { key: 'l', className: 'iw-setup-step-label' }, step.label),
+      step.code === ''
+        ? null
+        : h('pre', { key: 'c', className: 'iw-setup-code' }, step.code),
+    ]))),
+    h('ol', { key: 'restart', className: 'iw-setup-steps', start: steps.length + 1 }, [
+      h('li', { key: 's3' }, tr('setupStepRestart')),
     ]),
-    h('pre', { key: 'code', className: 'iw-setup-code' },
-      'dsh plugin --profile desktop add \\\n  @deepseek-ai/dsh-lsp@0.2.2-rc.3 \\\n  @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3'),
     h('div', { key: 'licence', className: 'iw-setup-link' }, [
       `${tr('setupLicence')} `,
       h('a', {
@@ -6394,6 +6433,12 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
       ? h('div', { key: 'still', className: 'iw-setup-still' }, tr('setupStill'))
       : null,
     h('div', { key: 'actions', className: 'iw-setup-actions' }, [
+      h('button', {
+        key: 'copy',
+        type: 'button',
+        className: 'iw-btn',
+        onClick: copyAll,
+      }, tr('setupCopyAll')),
       h('button', {
         key: 'check',
         type: 'button',
@@ -6703,6 +6748,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeSetupDialog, {
       key: 'setup',
       tr,
+      store,
       open: setupOpen,
       busy: setupBusy,
       still: setupStill,

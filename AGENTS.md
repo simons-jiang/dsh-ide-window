@@ -190,7 +190,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **LSP 报错要说清楚**：`LSP_SERVER_ERROR` 这类错误其实是服务器返回的 JSON-RPC 错误，横幅/提示会带上服务器自己的话和操作名（`LSP_SERVER_ERROR — … (-32601) (findReferences)`）；错误的文本里出现 `-32601`/method not found/not supported 时，该操作会被记为「服务器不支持」并在本次会话内跳过，改用文本匹配并提示「当前语言服务不支持这项查询」，不再反复弹错误横幅
 - **调用方列表里不能出现声明行**：`findReferences` 会把声明一起返回（接口自己的签名行、另一个类的 override 签名行），契约合并（点实现方法时顺带问接口）会把它们混进 references；生成调用方前用 `ideReferenceIsDeclaration` 按行判断并剔除（形状同 `类型 名字(`），否则弹出层会出现「接口 selectPage 是实现的调用方」这种明显错误的行
 - **用量兜底（LSP 无结果时）**：调用方只认同名**调用**（排除声明行）、非静态方法只认 `接收者.名字(` 且接收者的**声明类型**必须是本类/本接口（大写类名当接收者的静态/工具类调用 `ReconBillConverter.toDifferenceResp(…)` 也算本类）（`ideContractNames` 把实现类与其接口都算作 owner，所以实现方法也能找到持有接口的调用方），Java 文件限定；实现方按 `implements 接口` 找类，再在类里找该方法的声明。分节标题都带「（文本匹配）」，不冒充语义结果；三条查询全部失败时提示 `lspFailed`，不再谎报「没有已知调用点」
-- **未装 LSP 的引导页**：进入代码工作区时打 `/dsh-ide/doctor`，`ctx.lsp` 没挂载就弹「代码导航未就绪」（列出管道包版本、服务器、JetBrains 授权三步 + 重新检测）；授权在服务器进程内，插件只引导不登录
+- **未装 LSP 的引导页**：进入代码工作区时打 `/dsh-ide/doctor`，`ctx.lsp` 没挂载就弹「代码导航未就绪」。页面**直接给可复制的命令**（不再是「去做某件事」的描述）：macOS 第 1 步 `~/dev/dsh-ide-window/enable-navigation.sh`（装包 + 下载服务器 + 写 patch），第 2 步 `~/.dsh/lsp-bin/*/bin/intellij-server license login`，最后「完全退出 DSH 再打开」；Windows 显示 profile 内的 `pnpm add` 两条。按钮是「复制命令 / 重新检测 / 关闭」，命令按 `ideRuntimeContext.platform` 切换，复制走 `ideCopyWithNotice`。授权在服务器进程内，插件只引导不登录
 - **Code Vision**：可见的**方法**声明行尾显示「N 个用法 · M 个实现」和该行最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的方法声明，字段与局部变量都不会出现；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
 - **源码里的符号右键菜单**：在方法名、字段、类名等任意符号上右键 →「复制名称」/「复制引用」/「复制引用回对话」。引用统一是 DSH 的 `@相对路径` 形式（目录带尾斜杠、含空格时加引号，规则与 DSH 的 reference codec 一致）；jar 源码标签页只有「复制名称」，因为 jar 内的路径不是工作区路径

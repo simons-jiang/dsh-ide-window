@@ -49,10 +49,29 @@ curl -fsSL https://raw.githubusercontent.com/simons-jiang/dsh-ide-window/main/in
   | bash -s -- --profile desktop --with-lsp
 ```
 
+**`raw.githubusercontent.com` 连不上时**（国内网络常见：报 `curl: (28) SSL connection timeout`），换镜像或先 clone：
+
+```sh
+# 镜像一：jsDelivr（与 raw 内容一致，取 @main 最新）
+curl -fsSL https://cdn.jsdelivr.net/gh/simons-jiang/dsh-ide-window@main/install.sh | bash
+```
+
+```sh
+# 镜像二：先 clone（github.com 通常可达），再跑本地脚本
+git clone https://github.com/simons-jiang/dsh-ide-window.git ~/dev/dsh-ide-window \
+  && ~/dev/dsh-ide-window/install.sh
+```
+
+已经有一份仓库（比如从别处拷来的开发副本）时，完全离线也能装：
+
+```sh
+/path/to/dsh-ide-window/install.sh --dir /path/to/dsh-ide-window --no-pull
+```
+
 注意两点：
 
 1. **插件本体仍然要落到磁盘**——DSH 用 `link:` 目录加载插件，所以脚本会把仓库 clone 到 `~/dev/dsh-ide-window`（或 `-Dir` 指定的位置）。你能省掉的只是"自己 clone + 记住路径 + 手动敲安装命令"，省不掉那一个目录。
-2. `raw.githubusercontent.com` 给的是**最后一次推送**的脚本；改了脚本没提交，一行装拿到的仍是旧版。
+2. `raw.githubusercontent.com` / jsDelivr 给的都是**最后一次推送**的脚本；改了脚本没提交，一行装拿到的仍是旧版。
 
 装完**完全退出 DSH 再打开**（macOS 用 `⌘Q`，Windows 从托盘退出）——左侧导航或左下角出现「代码工作区」即成功。
 
@@ -183,9 +202,34 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 
 ---
 
-## 五、代码导航（可选，需要自己准备）
+## 五、代码导航（可选）
 
-DSH 的 LSP 是可选能力，插件只消费它。没装时进入代码工作区会弹「代码导航未就绪」引导页，列出缺什么。三步：
+DSH 的 LSP 是可选能力，插件只消费它。没装时进入代码工作区会弹「代码导航未就绪」，浏览、搜索、Git、复制引用不受影响，只是跳转会走文本匹配。
+
+### 一条命令（macOS）
+
+```sh
+~/dev/dsh-ide-window/enable-navigation.sh
+```
+
+它会依次完成：装 `@deepseek-ai/dsh-lsp` / `dsh-lsp-stdio` → 下载并解压 JetBrains 服务器（约 1.2 GB）到 `~/.dsh/lsp-bin` → 写好 `cordis.patch.yml` 的两行（路径按本机自动校正）→ 打印授权状态。然后按提示执行一次授权，再**完全退出 DSH 重新打开**：
+
+```sh
+~/.dsh/lsp-bin/*/bin/intellij-server license login
+```
+
+服务器已经在本机时加 `--no-download`；没有 JetBrains 账号/授权时，导航会返回 `-32802`，插件会在横幅里给出授权入口。
+
+### 手动三步（脚本做的事）
+
+1. 管道包：`cd ~/.dsh/profiles/desktop && pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3`
+2. 服务器：[intellij-server 271.2085.0 (aarch64)](https://download.jetbrains.com/language-server/intellij-server/271.2085.0/intellij-server-271.2085.0-aarch64.sit) 下载后 `unzip` 到 `~/.dsh/lsp-bin/`
+3. 授权与重启：`~/.dsh/lsp-bin/*/bin/intellij-server license login`，然后完全退出并重开 DSH
+
+<details>
+<summary>YAML 写法（脚本会自动生成，手改时参考）</summary>
+
+下面三步与上面等价：
 
 **1) 管道包**（版本必须与 DSH 一致）
 
@@ -226,6 +270,8 @@ Windows 上把这两处换成 `C:/Users/<you>/...`：`command` 指向 `...\bin\i
 - 索引目录：macOS `~/Library/Caches/JetBrains/IntelliJServer`（约 1.2 GB）；首次启动建索引要几分钟，期间跳转会返回空结果
 - 想接别的语言：在 `servers` 下再加一项并配 `extensionToLanguage`，插件的点击逻辑与语言无关
 - 回滚到 jdtls：把 `command` 换回 `/opt/homebrew/bin/jdtls`，`args` 用 `[-data, ~/.dsh/lsp-data/java]`
+
+</details>
 
 ---
 

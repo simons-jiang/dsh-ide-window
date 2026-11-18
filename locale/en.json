@@ -134,10 +134,7 @@
   "gutterMenuAnnotate": "Annotate with Git blame",
   "gutterMenuUnannotate": "Close Git annotate",
   "setupTitle": "Code navigation is not ready",
-  "setupBody": "The workspace can browse files; navigation needs the IntelliJ language server (JetBrains licensed build).",
-  "setupStep1": "Install the LSP plumbing packages in the profile, at the version this DSH build uses.",
-  "setupStep2": "Place the licensed IntelliJ server on this machine, then insert the lsp / lsp-stdio rows in the profile cordis.patch.yml (the README has the full YAML).",
-  "setupStep3": "Without a JetBrains licence, activate one at the account page, then fully quit and reopen DSH.",
+  "setupBody": "Browsing, search, Git and copied references already work. Navigation, call chains and usage counts need a JetBrains language server — run the two commands below.",
   "setupLicence": "Licence:",
   "setupRecheck": "Check again",
   "setupChecking": "Checking…",
@@ -212,5 +209,11 @@
   "treeReferenceToChat": "Copy reference to chat",
   "referenceInserted": "Reference inserted into the chat",
   "referenceInsertedPlain": "Inserted as a plain-text reference",
-  "referenceNoEditor": "Composer not found; nothing was inserted"
+  "referenceNoEditor": "Composer not found; nothing was inserted",
+  "setupStepScript": "Step 1: install the packages, download the server and write the config (~/dev/dsh-ide-window is the default checkout; use your own path if different)",
+  "setupStepLicence": "Step 2: license the server (opens a browser; an existing license prints \"licensed\")",
+  "setupStepPackages": "Step 1: install the pipeline packages in the profile (PowerShell)",
+  "setupStepServer": "Step 2: unzip intellij-server into %USERPROFILE%\\.dsh\\lsp-bin\\ and add the lsp / lsp-stdio rows to cordis.patch.yml (README section 5)",
+  "setupStepRestart": "Finally: quit DSH completely (⌘Q / tray) and reopen it.",
+  "setupCopyAll": "Copy commands"
 }
