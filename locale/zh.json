@@ -200,5 +200,9 @@
   "settingsMavenRepoDetecting": "正在检测仓库位置…",
   "settingsMavenRepoMissingDir": "目录不存在",
   "treeLocate": "定位到当前文件",
-  "gestureAltWin": "Alt+单击"
+  "gestureAltWin": "Alt+单击",
+  "paletteActionDiagnostics": "复制诊断信息",
+  "diagCopied": "诊断信息已复制，宿主日志已追加",
+  "diagCopyFailed": "无法写入剪贴板，诊断信息未复制",
+  "diagReported": "诊断信息已写入宿主日志（剪贴板不可用）"
 }

@@ -200,5 +200,9 @@
   "settingsMavenRepoDetecting": "Detecting the repository…",
   "settingsMavenRepoMissingDir": "directory not found",
   "treeLocate": "Locate the open file",
-  "gestureAltWin": "Alt+Click"
+  "gestureAltWin": "Alt+Click",
+  "paletteActionDiagnostics": "Copy diagnostics",
+  "diagCopied": "Diagnostics copied; the host log was appended",
+  "diagCopyFailed": "Clipboard unavailable; diagnostics were not copied",
+  "diagReported": "Diagnostics written to the host log (clipboard unavailable)"
 }

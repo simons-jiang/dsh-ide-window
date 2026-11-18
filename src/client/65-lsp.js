@@ -154,6 +154,11 @@ async function ideLspQuery(payload, signal) {
     if (ideLspUnsupportedBy(failure) && typeof payload?.operation === 'string') {
       ideLspUnsupported.add(payload.operation)
     }
+    ideLogRecord('error', 'lsp', `${payload?.operation ?? 'query'} failed`, {
+      code: failure?.code,
+      message: failure?.message,
+      detail: failure?.detail,
+    })
     if (ideLspNeedsLicense(failure)) {
       // First refusal: start the sign-in so the page is one click away.
       if (!ideLspLicenseMissing) void ideRequestLicenseLogin()

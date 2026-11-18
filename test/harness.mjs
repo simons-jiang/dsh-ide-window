@@ -822,6 +822,27 @@ function sourceFunction(name, file = undefined) {
     'a call row is a caller', 'controller call')
 }
 
+// ---- the client diagnostics ring -------------------------------------------
+{
+  const log = new Function('globalThis', 'ideRuntimeContext', [
+    grabSource('IDE_LOG_LIMIT', '07-log.js'),
+    'const ideLogEntries = []',
+    sourceFunction('ideLogRecord', '07-log.js'),
+    sourceFunction('ideLogSnapshot', '07-log.js'),
+    'return { record: ideLogRecord, snapshot: ideLogSnapshot }',
+  ].join('\n'))(globalThis, { platform: 'windows', runtime: 'desktop' })
+  const { record, snapshot } = log
+
+  const one = record('error', 'route', 'jar failed', { code: 'E1' })
+  check(one.level === 'error' && one.scope === 'route' && one.message === 'jar failed', 'a client entry keeps level, scope and message', JSON.stringify(one))
+  check(typeof one.detail === 'string' && one.detail.includes('E1'), 'a client entry serialises its detail', String(one.detail))
+  for (let index = 0; index < 120; index += 1) record('info', 'ring', `c-${index}`)
+  const shot = snapshot()
+  check(shot.entries.length === 100, 'the client ring is capped at 100 entries', String(shot.entries.length))
+  check(shot.entries[shot.entries.length - 1].message === 'c-119', 'the client ring ends with the newest entry', shot.entries[shot.entries.length - 1].message)
+  check(shot.platform === 'windows' && shot.runtime === 'desktop', 'a snapshot names the platform it came from', JSON.stringify({ platform: shot.platform, runtime: shot.runtime }))
+}
+
 // ---- the client platform layer ---------------------------------------------
 {
   const platformOf = new Function(`${sourceFunction('idePlatformOf', '06-platform.js')}\nreturn idePlatformOf`)()

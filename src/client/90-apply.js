@@ -131,6 +131,47 @@ function apply(ctx) {
     }
   }
 
+  /**
+   * Collect both sides of the log and put the report on the clipboard.
+   *
+   * The client entries are sent first so the Host appends them to its file: a
+   * report that is only on the clipboard would vanish with the page.
+   */
+  const exportDiagnostics = async () => {
+    const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+      ? document.baseURI
+      : 'http://dsh.internal/'
+    const post = async (body) => {
+      const response = await fetch(new URL('dsh-ide/diagnostics', base).href, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      return response.json().catch(() => null)
+    }
+    const client = ideLogSnapshot()
+    let host = null
+    try {
+      await post({ action: 'report', entries: client.entries })
+      host = (await post({ action: 'read' }))?.value ?? null
+    } catch (error) {
+      ideLogRecord('error', 'diagnostics', 'report failed', error?.message ?? String(error))
+    }
+    const report = { generatedAt: new Date().toISOString(), client, host }
+    const text = JSON.stringify(report, null, 2)
+    const file = host?.logFile ?? '~/.dsh/logs/dsh-ide-window.log'
+    // A clipboard write can wait on a permission prompt forever (and does in
+    // some embeddings), so it never gates the report: the Host already has it.
+    const copied = await (async () => {
+      const clipboard = globalThis.navigator?.clipboard
+      if (typeof clipboard?.writeText !== 'function') return false
+      const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 1500))
+      const write = clipboard.writeText(text).then(() => true).catch(() => false)
+      return (await Promise.race([write, timeout])) === true
+    })()
+    store.setNotice(copied ? `${translate('diagCopied')}: ${file}` : `${translate('diagReported')}: ${file}`)
+  }
+
   const paletteActions = [
     { id: 'tree', labelKey: 'paletteActionTree', run: () => store.setTreeVisible(!store.getState().treeVisible) },
     { id: 'refresh', labelKey: 'paletteActionRefresh', run: () => store.refreshAll() },
@@ -138,6 +179,7 @@ function apply(ctx) {
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
     { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
+    { id: 'diagnostics', labelKey: 'paletteActionDiagnostics', run: () => { void exportDiagnostics() } },
   ]
 
 
@@ -224,6 +266,8 @@ function apply(ctx) {
       selectPanel,
       openPanel,
       store,
+      diagnostics: () => ideLogSnapshot(),
+      copyDiagnostics: () => exportDiagnostics(),
       probe: () => ({
         iwRoot: typeof document === 'undefined' ? 0 : document.querySelectorAll('.iw-root').length,
         sessionId: store.getState().sessionId,
@@ -576,6 +620,16 @@ function apply(ctx) {
 
   // One capture-phase listener owns key capture, the two keyboard commands and
   // the two pointer gestures, so nothing here depends on DSH's own catalog.
+  // Page-level failures have no other trace: record them before they vanish.
+  if (typeof globalThis.addEventListener === 'function') {
+    globalThis.addEventListener('error', (event) => {
+      ideLogRecord('error', 'window', event?.message ?? 'uncaught error', event?.filename ?? '')
+    })
+    globalThis.addEventListener('unhandledrejection', (event) => {
+      const reason = event?.reason
+      ideLogRecord('error', 'window', 'unhandled rejection', reason?.message ?? String(reason ?? ''))
+    })
+  }
   if (typeof globalThis.addEventListener === 'function') {
     globalThis.addEventListener('keydown', (event) => {
       const recording = store.getState().gestureRecording

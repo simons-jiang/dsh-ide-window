@@ -207,6 +207,10 @@ window.__ModuleLoader__.load({
     "settingsMavenRepoMissingDir": "directory not found",
     "treeLocate": "Locate the open file",
     "gestureAltWin": "Alt+Click",
+    "paletteActionDiagnostics": "Copy diagnostics",
+    "diagCopied": "Diagnostics copied; the host log was appended",
+    "diagCopyFailed": "Clipboard unavailable; diagnostics were not copied",
+    "diagReported": "Diagnostics written to the host log (clipboard unavailable)",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -407,6 +411,10 @@ window.__ModuleLoader__.load({
     "settingsMavenRepoMissingDir": "目录不存在",
     "treeLocate": "定位到当前文件",
     "gestureAltWin": "Alt+单击",
+    "paletteActionDiagnostics": "复制诊断信息",
+    "diagCopied": "诊断信息已复制，宿主日志已追加",
+    "diagCopyFailed": "无法写入剪贴板，诊断信息未复制",
+    "diagReported": "诊断信息已写入宿主日志（剪贴板不可用）",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -2405,6 +2413,57 @@ function idePlatformOf(name) {
 /** Replaced in `apply()` with the runtime platform; macOS until then. */
 let idePlatform = idePlatformOf('macos')
 
+// ---- 07-log.js -----------------------------------------------------------
+/**
+ * The client's own log.
+ *
+ * The Host cannot see the page, so a failure that only happens in the browser
+ * (a route answer the panel rejects, an exception in a handler) leaves no trace
+ * anywhere. These entries stay in a small ring; 「复制诊断信息」 sends them to the
+ * Host, which appends them to `~/.dsh/logs/dsh-ide-window.log` and answers with
+ * its own recent events.
+ *
+ * `localStorage['dsh-ide:trace'] = '1'` also mirrors every entry to the console.
+ */
+const IDE_LOG_LIMIT = 100
+const ideLogEntries = []
+
+/** Record one client event; never throws, never blocks a handler. */
+function ideLogRecord(level, scope, message, extra) {
+  const entry = {
+    t: new Date().toISOString(),
+    level: String(level ?? 'info'),
+    scope: String(scope ?? 'client'),
+    message: String(message ?? '').slice(0, 500),
+  }
+  if (extra !== undefined && extra !== null) {
+    const detail = typeof extra === 'string' ? extra : (() => { try { return JSON.stringify(extra) } catch (error) { void error; return String(extra) } })()
+    entry.detail = String(detail).slice(0, 1000)
+  }
+  ideLogEntries.push(entry)
+  if (ideLogEntries.length > IDE_LOG_LIMIT) ideLogEntries.shift()
+  try {
+    if (globalThis.localStorage?.getItem('dsh-ide:trace') === '1') {
+      const line = `[dsh-ide] ${entry.level} ${entry.scope} ${entry.message}`
+      if (entry.level === 'error') console.error(line, entry.detail ?? '')
+      else console.info(line, entry.detail ?? '')
+    }
+  } catch (error) {
+    void error
+  }
+  return entry
+}
+
+/** Everything the panel knows about itself, in the shape a report quotes. */
+function ideLogSnapshot() {
+  return {
+    platform: ideRuntimeContext.platform,
+    runtime: ideRuntimeContext.runtime,
+    path: typeof location === 'undefined' ? '' : String(location.pathname ?? ''),
+    entries: [...ideLogEntries],
+  }
+}
+
 // ---- 10-core.js ----------------------------------------------------------
 /**
  * Store, Host Remote face and code tokenizer for the code workspace.
@@ -3940,7 +3999,11 @@ function ideCreateStore(refs) {
       return true
     },
     /** Put a line in the panel's notice banner (empty clears it). */
-    setNotice: (liveNotice) => patch({ liveNotice }),
+    setNotice: (liveNotice) => {
+      // A notice is the only symptom most failures have, so quote it in a report.
+      if (typeof liveNotice === 'string' && liveNotice !== '') ideLogRecord('notice', 'ui', liveNotice)
+      patch({ liveNotice })
+    },
     /** Re-read everything the panel shows; the panel also re-resolves its target. */
     retryResolve: () => restart(),
     toggleDir,
@@ -4366,6 +4429,10 @@ async function ideTreeRoute(name, body) {
     ? document.baseURI
     : 'http://dsh.internal/'
   const url = new URL(`dsh-ide/${name}`, base).href
+  const report = (failure, detail) => {
+    ideLogRecord('error', 'route', `${name} ${failure}`, detail)
+    return failure
+  }
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -4379,14 +4446,14 @@ async function ideTreeRoute(name, body) {
       if (response.status === 404 || response.status === 405) {
         return { ok: false, error: 'route-missing' }
       }
-      return { ok: false, error: `http-${response.status}` }
+      return report(`http-${response.status}`, 'the route answered without JSON')
     }
     if (parsed.ok !== true) {
-      return { ok: false, error: parsed.error?.code ?? 'route-failed', message: parsed.error?.message ?? '' }
+      return report(parsed.error?.code ?? 'route-failed', parsed.error?.message ?? '')
     }
     return { ok: true, value: parsed.value }
-  } catch {
-    return { ok: false, error: 'network' }
+  } catch (error) {
+    return report('network', error?.message ?? 'fetch failed')
   }
 }
 
@@ -7363,6 +7430,11 @@ async function ideLspQuery(payload, signal) {
     if (ideLspUnsupportedBy(failure) && typeof payload?.operation === 'string') {
       ideLspUnsupported.add(payload.operation)
     }
+    ideLogRecord('error', 'lsp', `${payload?.operation ?? 'query'} failed`, {
+      code: failure?.code,
+      message: failure?.message,
+      detail: failure?.detail,
+    })
     if (ideLspNeedsLicense(failure)) {
       // First refusal: start the sign-in so the page is one click away.
       if (!ideLspLicenseMissing) void ideRequestLicenseLogin()
@@ -9631,6 +9703,47 @@ function apply(ctx) {
     }
   }
 
+  /**
+   * Collect both sides of the log and put the report on the clipboard.
+   *
+   * The client entries are sent first so the Host appends them to its file: a
+   * report that is only on the clipboard would vanish with the page.
+   */
+  const exportDiagnostics = async () => {
+    const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+      ? document.baseURI
+      : 'http://dsh.internal/'
+    const post = async (body) => {
+      const response = await fetch(new URL('dsh-ide/diagnostics', base).href, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      return response.json().catch(() => null)
+    }
+    const client = ideLogSnapshot()
+    let host = null
+    try {
+      await post({ action: 'report', entries: client.entries })
+      host = (await post({ action: 'read' }))?.value ?? null
+    } catch (error) {
+      ideLogRecord('error', 'diagnostics', 'report failed', error?.message ?? String(error))
+    }
+    const report = { generatedAt: new Date().toISOString(), client, host }
+    const text = JSON.stringify(report, null, 2)
+    const file = host?.logFile ?? '~/.dsh/logs/dsh-ide-window.log'
+    // A clipboard write can wait on a permission prompt forever (and does in
+    // some embeddings), so it never gates the report: the Host already has it.
+    const copied = await (async () => {
+      const clipboard = globalThis.navigator?.clipboard
+      if (typeof clipboard?.writeText !== 'function') return false
+      const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 1500))
+      const write = clipboard.writeText(text).then(() => true).catch(() => false)
+      return (await Promise.race([write, timeout])) === true
+    })()
+    store.setNotice(copied ? `${translate('diagCopied')}: ${file}` : `${translate('diagReported')}: ${file}`)
+  }
+
   const paletteActions = [
     { id: 'tree', labelKey: 'paletteActionTree', run: () => store.setTreeVisible(!store.getState().treeVisible) },
     { id: 'refresh', labelKey: 'paletteActionRefresh', run: () => store.refreshAll() },
@@ -9638,6 +9751,7 @@ function apply(ctx) {
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
     { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
+    { id: 'diagnostics', labelKey: 'paletteActionDiagnostics', run: () => { void exportDiagnostics() } },
   ]
 
 
@@ -9724,6 +9838,8 @@ function apply(ctx) {
       selectPanel,
       openPanel,
       store,
+      diagnostics: () => ideLogSnapshot(),
+      copyDiagnostics: () => exportDiagnostics(),
       probe: () => ({
         iwRoot: typeof document === 'undefined' ? 0 : document.querySelectorAll('.iw-root').length,
         sessionId: store.getState().sessionId,
@@ -10076,6 +10192,16 @@ function apply(ctx) {
 
   // One capture-phase listener owns key capture, the two keyboard commands and
   // the two pointer gestures, so nothing here depends on DSH's own catalog.
+  // Page-level failures have no other trace: record them before they vanish.
+  if (typeof globalThis.addEventListener === 'function') {
+    globalThis.addEventListener('error', (event) => {
+      ideLogRecord('error', 'window', event?.message ?? 'uncaught error', event?.filename ?? '')
+    })
+    globalThis.addEventListener('unhandledrejection', (event) => {
+      const reason = event?.reason
+      ideLogRecord('error', 'window', 'unhandled rejection', reason?.message ?? String(reason ?? ''))
+    })
+  }
   if (typeof globalThis.addEventListener === 'function') {
     globalThis.addEventListener('keydown', (event) => {
       const recording = store.getState().gestureRecording

@@ -38,10 +38,10 @@
 ### 3.1 两半：宿主 + 客户端
 
 ```
-index.js               宿主（Node ESM）：注册 8 条 HTTP 路由，转发到 DSH 服务
+index.js               宿主（Node ESM）：注册 14 条 HTTP 路由，转发到 DSH 服务
 client.js              客户端产物（build.mjs 生成，**必须提交**）
 src/client/*.js        客户端源码片段（构建时按文件名排序拼接）
-build.mjs              把 15 个片段 + locale 拼成 client.js
+build.mjs              把 17 个片段 + locale 拼成 client.js
 cordis.patch.yml       bundle patch：把插件插入 profile（id: dsh-ide-window）
 locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里读标题/描述
 ```
@@ -54,6 +54,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `05-icons.js` | 内联 SVG 图标（`ideSvg` 统一 16 网格） |
 | `05-shortcut-registry.js` | **所有快捷键的唯一登记处** `IDE_SHORTCUTS` |
 | `06-platform.js` | **客户端平台层**：`toPosix/toNative`、`isAbsolutePath`、手势选项与按键文案（`apply()` 里按 `ctx.shortcuts.platform` 换实例） |
+| `07-log.js` | **客户端日志**：100 条环形缓冲 `ideLogRecord/ideLogSnapshot`，供「复制诊断信息」上报 |
 | `10-core.js` | store（`useSyncExternalStore` 订阅）、偏好持久化、标签页/历史/视图状态 |
 | `20-tree.js` | 文件树（展开、筛选、拖宽、`⌘P` 定位） |
 | `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
@@ -113,6 +114,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/refs` | 分支与标签 | `git for-each-ref refs/heads refs/tags`，返回 `{name, kind}` |
 | `/dsh-ide/patch` | 差异文本 | `git diff -U3 <base> [target] -- <path>`；根提交回退 `git show --patch`；未跟踪文件返回 `untracked` |
 | `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
+| `/dsh-ide/diagnostics` | 诊断日志 | `{action:'read'}` 返回本机最近 100 条事件 + 日志文件路径；`{action:'report', entries}` 接收浏览器缓冲的事件并写入同一文件（`level:'client'`） |
 | `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
 
 ### 3.4 用到的 DSH 槽位
@@ -127,6 +129,33 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `sidebar.footer.action` | 左下角入口 |
 
 > `shell.bottom` 是**单例槽**，已被 git 插件占用，**不要抢**。
+
+### 3.5 诊断日志（出问题先看这里）
+
+**宿主**（`index.js`）：`logEvent(level, scope, message, detail)` 写入两个地方——
+
+1. **内存环形缓冲**（最近 200 条），`POST /dsh-ide/diagnostics {action:'read'}` 返回最近 100 条 + `logFile`；
+2. **JSONL 文件** `$DSH_HOME/logs/dsh-ide-window.log`（默认 `~/.dsh/logs/…`，测试实例落在自己的家目录），超过 512 KB 轮转为 `.1`。
+
+默认会记的：插件启动（平台 + Node 版本）、**每条路由失败**（`level` 按状态码取 warn/error，带路由、状态码、错误码与消息）、`spawn` 起不来、授权命令起不来。写文件失败不会抛（诊断不能反过来弄坏请求）。
+
+**客户端**（`src/client/07-log.js`）：`ideLogRecord` 维护 100 条环形缓冲，记——
+
+- 用户看得到的每条通知（`scope:'ui'`，这就是「点了没反应」的第一手线索）；
+- 路由调用失败（`scope:'route'`：网络、非 JSON、`error.code`）；
+- LSP 查询失败（`scope:'lsp'`：错误码 + 服务器原话）；
+- 页面级异常（`scope:'window'`：`error` / `unhandledrejection`）。
+
+`localStorage['dsh-ide:trace'] = '1'` 会把这些同时打到控制台；`__dshIdeWindow.diagnostics()` 直接取快照。
+
+**上报**：Search Everywhere 里的「复制诊断信息」动作 → 把客户端缓冲 POST 给宿主（追加进同一个文件）→ 读回宿主最近事件 → 复制 JSON 到剪贴板。剪贴板不可用/无响应时**不阻塞**，通知里给出日志文件路径。
+
+**排查姿势**：
+
+```bash
+tail -f ~/.dsh/logs/dsh-ide-window.log            # 桌面端
+tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
+```
 
 ---
 
@@ -213,7 +242,7 @@ cd ~/dev/dsh-ide-window
 # 改完源码后必须构建（client.js 要一起提交，别人安装时不会跑构建）
 node build.mjs && node --check client.js
 
-# 全量测试（三段：VM 夹具 212 项 + 归属推断 + 真实 ~/.m2 jar）
+# 全量测试（平台 / 诊断日志 / 状态 / VM 夹具 / 归属推断 / 真实 ~/.m2 jar）
 npm test
 
 # 本体完整性（签名 + app.asar 哈希基线 + 可疑新文件）
@@ -262,6 +291,8 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 测试提取器截断箭头函数 | 在参数表 `)` 处就判定结束 | 只在 `}`/`]` 收尾 |
 | Windows 上点授权「没反应」 | `spawn` 直接跑 `.bat`/`.cmd`，Node 拒执行抛 EINVAL，被 `child.on('error')` 吞成 `spawn-failed` | `platform.needsShell(path)` + 两个 `spawn` 都传 `shell`（`index.js` 的 `runLicenseCommand`/`openLicenseLogin`） |
 | 客户端与宿主路径规则悄悄分叉 | 两份实现各自演化、没有测试 | harness 的采样对比（6 个样例）锁住 `toPosix`/`isAbsolutePath` |
+| 路由报错返回**空 body**（400/405 无内容） | catch 里引用了 try 内的 `const pathname`，抛 ReferenceError，被 webServer 的 `.catch` 吞成空 400 | 需要在 catch 用的变量提到 try 外面声明；改完用真实实例验证一次错误响应体 |
+| 「复制诊断信息」点了没反应、页面像卡住 | `await navigator.clipboard.writeText()` 在无权限/嵌入式环境下可能永不 resolve | 剪贴板用 `Promise.race` 加 1.5 秒超时，上报日志优先，超时退化为「已写入宿主日志」提示 |
 
 ---
 
@@ -281,18 +312,20 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 ## 九、文件地图（找东西用）
 
 ```
-index.js                      宿主：8 条路由 + jar ZIP 解析 + git 状态/差异/blame/kinds
+index.js                      宿主：14 条路由 + jar ZIP 解析 + git 状态/差异/blame/kinds + 诊断日志
 client.js                     构建产物（提交）
 build.mjs                     拼接 + 注入校验（禁止未声明的 ide* 辅助函数）
 cordis.patch.yml              profile 插入项
 locale/zh.json, en.json       UI 文案（165 键）+ 插件展示信息
 src/client/05-shortcut-registry.js   ★ 快捷键唯一登记处
+src/client/07-log.js         客户端环形日志 + 诊断快照
 src/client/10-core.js         store / 偏好 / 标签页 / 视图持久化
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
 src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
 src/client/90-apply.js        全部注册 + 入口
 platform/{contract,macos,windows,index}.js  平台层（macOS / Windows 的差异都在这里）
 test/platform.mjs            平台层测试：两个实现满足同一契约
+test/diagnostics.mjs         诊断日志：环形缓冲、JSONL 文件、客户端上报
 test/harness.mjs             VM 夹具测试（含客户端平台层）
 test/inference.mjs            归属推断（bean 字段）
 test/maven.mjs                真实 ~/.m2 jar 端到端

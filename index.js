@@ -16,7 +16,7 @@
  * connection service answers whether the request may be served at all.
  */
 import { spawn } from 'node:child_process'
-import { existsSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { platform } from './platform/index.js'
@@ -43,6 +43,93 @@ const ROUTE_REFS = '/dsh-ide/refs'
 const ROUTE_PATCH = '/dsh-ide/patch'
 const ROUTE_TEXT = '/dsh-ide/text'
 const ROUTE_LICENSE = '/dsh-ide/license'
+const ROUTE_DIAG = '/dsh-ide/diagnostics'
+
+/** Entries kept in memory; the file keeps everything up to its size cap. */
+const IDE_LOG_LIMIT = 200
+/** One file's size before it rotates to `.1` and starts over. */
+const IDE_LOG_MAX_BYTES = 512 * 1024
+/** In-memory ring, newest last; the browser reads it through the route. */
+const ideLog = []
+let ideLogDropped = 0
+
+/** The DSH home this Host writes under (`DSH_HOME` wins for test instances). */
+function dshHomeDir() {
+  const configured = typeof process.env.DSH_HOME === 'string' ? process.env.DSH_HOME.trim() : ''
+  return configured !== '' ? configured : join(homedir(), '.dsh')
+}
+
+/** One JSONL file per profile home, so a report survives a page reload. */
+function diagnosticsFile() {
+  return join(dshHomeDir(), 'logs', 'dsh-ide-window.log')
+}
+
+function appendDiagnosticsLine(line) {
+  const file = diagnosticsFile()
+  try {
+    mkdirSync(join(dshHomeDir(), 'logs'), { recursive: true })
+    if (existsSync(file) && statSync(file).size > IDE_LOG_MAX_BYTES) {
+      // Windows refuses to rename onto an existing file, so the backup goes first.
+      try {
+        rmSync(`${file}.1`, { force: true })
+      } catch (error) {
+        void error
+      }
+      renameSync(file, `${file}.1`)
+    }
+    appendFileSync(file, `${line}\n`)
+  } catch (error) {
+    void error
+  }
+}
+
+/**
+ * Record one diagnostic event.
+ *
+ * Every route failure and every client report lands here: the ring answers
+ * `POST /dsh-ide/diagnostics` and the file survives a restart, which is what
+ * makes a Windows report actionable.
+ */
+export function logEvent(level, scope, message, detail) {
+  const entry = {
+    t: new Date().toISOString(),
+    level: String(level ?? 'info'),
+    scope: String(scope ?? 'host'),
+    message: String(message ?? '').slice(0, 1000),
+  }
+  if (detail !== undefined && detail !== null && String(detail) !== '') {
+    entry.detail = String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 2000)
+  }
+  ideLog.push(entry)
+  if (ideLog.length > IDE_LOG_LIMIT) {
+    ideLog.shift()
+    ideLogDropped += 1
+  }
+  appendDiagnosticsLine(JSON.stringify(entry))
+  return entry
+}
+
+/**
+ * The diagnostics route: `read` returns this Host's recent events, `report`
+ * accepts what the browser buffered (client errors never reach the file
+ * otherwise, because the Host cannot see the page).
+ */
+export function diagnosticsReport(payload, options = {}) {
+  const action = payload?.action === 'report' ? 'report' : 'read'
+  if (action === 'report') {
+    const entries = Array.isArray(payload?.entries) ? payload.entries.slice(0, 100) : []
+    for (const entry of entries) {
+      logEvent('client', entry?.scope ?? 'client', entry?.message ?? '', entry?.detail ?? '')
+    }
+    return { accepted: entries.length, logFile: diagnosticsFile() }
+  }
+  return {
+    platform: options.platform ?? platform.name,
+    logFile: diagnosticsFile(),
+    entries: ideLog.slice(-100),
+    dropped: ideLogDropped,
+  }
+}
 
 /** Largest number of content matches returned by one grep. */
 const MAX_GREP_MATCHES = 200
@@ -277,7 +364,10 @@ function runCommand(command, args, cwd) {
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (chunk) => { stdout += chunk })
     child.stderr.on('data', (chunk) => { stderr += chunk })
-    child.on('error', () => resolve({ code: -1, stdout: '', stderr: 'spawn-failed' }))
+    child.on('error', (error) => {
+      logEvent('warn', 'spawn', `${command} could not start`, error?.message ?? 'spawn failed')
+      resolve({ code: -1, stdout: '', stderr: 'spawn-failed' })
+    })
     child.on('close', (code) => resolve({ code: code ?? -1, stdout, stderr }))
   })
 }
@@ -779,11 +869,18 @@ function runLicenseCommand(binary, argv, timeoutMs) {
   return new Promise((resolve) => {
     // On Windows the launcher is a `.bat`; spawning it without a shell is
     // refused (EINVAL) since CVE-2024-27980, which used to look like a dead click.
-    const child = spawn(binary, argv, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: licenseEnv(),
-      shell: platform.needsShell(binary),
-    })
+    let child
+    try {
+      child = spawn(binary, argv, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: licenseEnv(),
+        shell: platform.needsShell(binary),
+      })
+    } catch (error) {
+      logEvent('error', 'license', `${argv.join(' ')} could not start`, error?.message ?? String(error))
+      resolve({ code: -1, output: String(error?.message ?? error) })
+      return
+    }
     let output = ''
     const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
     const collect = (chunk) => {
@@ -832,12 +929,18 @@ function licenseUrlIn(text) {
  * prints guidance instead of a URL, and that text is what the caller shows.
  */
 async function openLicenseLogin(binary) {
-  const child = spawn(binary, ['license', 'login', '--browser', '--timeout=5m'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
-    env: licenseEnv(),
-    shell: platform.needsShell(binary),
-  })
+  let child
+  try {
+    child = spawn(binary, ['license', 'login', '--browser', '--timeout=5m'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+      env: licenseEnv(),
+      shell: platform.needsShell(binary),
+    })
+  } catch (error) {
+    logEvent('error', 'license', 'license login could not start', error?.message ?? String(error))
+    return { url: '', output: String(error?.message ?? error) }
+  }
   child.unref()
   let output = ''
   const collect = (chunk) => {
@@ -1112,6 +1215,8 @@ export function doctorReport(ctx) {
 /** Serve one request. */
 function createHandler(ctx) {
   return async (request, response) => {
+    // The catch reports the route, so the name must outlive the try block.
+    let pathname = ''
     try {
       const connection = ctx.get('connection')
       if (connection !== undefined && connection.requestRejection(request) !== undefined) {
@@ -1122,8 +1227,8 @@ function createHandler(ctx) {
         writeJson(response, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
         return
       }
-      const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE) {
+      pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE && pathname !== ROUTE_DIAG) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -1152,17 +1257,21 @@ function createHandler(ctx) {
                 ? fileText(payload)
               : pathname === ROUTE_LICENSE
                 ? await licenseCommand(payload)
+              : pathname === ROUTE_DIAG
+                ? diagnosticsReport(payload)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
       const status = error instanceof RouteError ? error.status : 500
       const code = error instanceof RouteError ? error.code : 'internal'
+      logEvent(status >= 500 ? 'error' : 'warn', 'route', `${pathname} → ${status} ${code}`, error?.message ?? String(error))
       writeJson(response, status, { ok: false, error: { code, message: error?.message ?? String(error) } })
     }
   }
 }
 
 export function apply(ctx) {
+  logEvent('info', 'host', 'plugin loaded', { platform: platform.name, node: process.versions.node })
   const handler = createHandler(ctx)
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
@@ -1229,4 +1338,9 @@ export function apply(ctx) {
     path: ROUTE_LICENSE,
     handler,
   }), 'dsh-ide-window: language server licence route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_DIAG,
+    handler,
+  }), 'dsh-ide-window: diagnostics route')
 }

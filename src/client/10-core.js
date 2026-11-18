@@ -1532,7 +1532,11 @@ function ideCreateStore(refs) {
       return true
     },
     /** Put a line in the panel's notice banner (empty clears it). */
-    setNotice: (liveNotice) => patch({ liveNotice }),
+    setNotice: (liveNotice) => {
+      // A notice is the only symptom most failures have, so quote it in a report.
+      if (typeof liveNotice === 'string' && liveNotice !== '') ideLogRecord('notice', 'ui', liveNotice)
+      patch({ liveNotice })
+    },
     /** Re-read everything the panel shows; the panel also re-resolves its target. */
     retryResolve: () => restart(),
     toggleDir,

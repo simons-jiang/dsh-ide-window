@@ -24,7 +24,7 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "node --check index.js && node --check client.js",
-    "test": "node test/platform.mjs && node test/status.mjs && node test/harness.mjs && node test/inference.mjs && node test/maven.mjs"
+    "test": "node test/platform.mjs && node test/diagnostics.mjs && node test/status.mjs && node test/harness.mjs && node test/inference.mjs && node test/maven.mjs"
   },
   "dsh": {
     "bundle": {

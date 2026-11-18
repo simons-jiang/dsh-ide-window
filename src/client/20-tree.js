@@ -378,6 +378,10 @@ async function ideTreeRoute(name, body) {
     ? document.baseURI
     : 'http://dsh.internal/'
   const url = new URL(`dsh-ide/${name}`, base).href
+  const report = (failure, detail) => {
+    ideLogRecord('error', 'route', `${name} ${failure}`, detail)
+    return failure
+  }
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -391,14 +395,14 @@ async function ideTreeRoute(name, body) {
       if (response.status === 404 || response.status === 405) {
         return { ok: false, error: 'route-missing' }
       }
-      return { ok: false, error: `http-${response.status}` }
+      return report(`http-${response.status}`, 'the route answered without JSON')
     }
     if (parsed.ok !== true) {
-      return { ok: false, error: parsed.error?.code ?? 'route-failed', message: parsed.error?.message ?? '' }
+      return report(parsed.error?.code ?? 'route-failed', parsed.error?.message ?? '')
     }
     return { ok: true, value: parsed.value }
-  } catch {
-    return { ok: false, error: 'network' }
+  } catch (error) {
+    return report('network', error?.message ?? 'fetch failed')
   }
 }
 
