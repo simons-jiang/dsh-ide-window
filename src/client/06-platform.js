@@ -32,8 +32,10 @@ function idePlatformOf(name) {
     /** The locale key that prints one gesture for this system. */
     gestureLabelKey: (gesture) => {
       if (gesture === 'double') return 'gestureDouble'
-      // Windows has no ⌘: the primary-modifier click is Ctrl there.
-      if (gesture === 'meta' || gesture === 'ctrl') return windows ? 'gestureCtrl' : 'gestureMeta'
+      // Windows has no ⌘: the primary-modifier click is Ctrl there. macОS keeps
+      // ⌘ and the distinct control-click, so the two stay separate labels.
+      if (gesture === 'ctrl') return 'gestureCtrl'
+      if (gesture === 'meta') return windows ? 'gestureCtrl' : 'gestureMeta'
       return windows ? 'gestureAltWin' : 'gestureAlt'
     },
     /** Keycap glyphs for one binding. */

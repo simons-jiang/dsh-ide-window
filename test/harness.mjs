@@ -838,6 +838,7 @@ function sourceFunction(name, file = undefined) {
   check(windows.gestureLabelKey('meta') === 'gestureCtrl', 'windows prints the primary click as Ctrl', windows.gestureLabelKey('meta'))
   check(windows.gestureLabelKey('alt') === 'gestureAltWin', 'windows prints Alt rather than ⌥', windows.gestureLabelKey('alt'))
   check(mac.gestureLabelKey('meta') === 'gestureMeta' && mac.gestureLabelKey('alt') === 'gestureAlt', 'macOS keeps its own glyphs', mac.gestureLabelKey('alt'))
+  check(mac.gestureLabelKey('ctrl') === 'gestureCtrl', 'macOS keeps control-click distinct from ⌘-click', mac.gestureLabelKey('ctrl'))
   check(windows.bindingGlyphs().control === 'Ctrl', 'windows keycaps say Ctrl', windows.bindingGlyphs().control)
 
   // The path helpers take the platform from the closure; injecting the Windows
