@@ -27,6 +27,8 @@
  * @property {(path: string) => string} expandUserPath  `${user.home}`, `~` → home.
  * @property {string[]} ripgrepSuffixes     Binary paths inside the bundled packages.
  * @property {string[]} serverLauncherNames Launcher file names, in try order.
+ * @property {(path: string) => boolean} needsShell  `spawn` needs `shell: true`
+ *   for this path (Windows blocks `.bat`/`.cmd` without it since CVE-2024-27980).
  * @property {(url: string) => { command: string, args: string[] }} openUrlCommand
  */
 
@@ -39,5 +41,6 @@ export const PLATFORM_METHODS = [
   'expandUserPath',
   'ripgrepSuffixes',
   'serverLauncherNames',
+  'needsShell',
   'openUrlCommand',
 ]

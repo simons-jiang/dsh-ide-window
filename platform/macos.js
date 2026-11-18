@@ -25,5 +25,6 @@ export const macPlatform = {
     '@vscode/ripgrep-darwin-x64/bin/rg',
   ],
   serverLauncherNames: ['intellij-server'],
+  needsShell: () => false,
   openUrlCommand: (url) => ({ command: 'open', args: [url] }),
 }

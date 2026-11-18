@@ -75,10 +75,10 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 |---|---|
 | `platform/contract.js` | 接口文档 + `PLATFORM_METHODS`（测试用它断言实现完整） |
 | `platform/macos.js` | `toPosix` 恒等、`open` 打开浏览器、`.../rg`、`intellij-server` |
-| `platform/windows.js` | `\` ↔ `/` 互转、`explorer`、`rg.exe`、`intellij-server.bat` |
+| `platform/windows.js` | `\` ↔ `/` 互转、`cmd /c start` 打开 URL、`rg.exe`、`intellij-server.bat`、`.bat/.cmd` 需要 shell |
 | `platform/index.js` | `createPlatform(os)`：**只有 macOS（`darwin`/`macos`/`mac`）用 macOS 实现，其他一律 Windows** |
 
-接口：`name`、`toPosix()`、`toNative()`、`isAbsolutePath()`、`expandUserPath()`、`ripgrepSuffixes`、`serverLauncherNames`、`openUrlCommand()`。
+接口：`name`、`toPosix()`、`toNative()`、`isAbsolutePath()`、`expandUserPath()`、`ripgrepSuffixes`、`serverLauncherNames`、`needsShell()`、`openUrlCommand()`。
 
 根路径不是平台差异：需要时用 `node:path` 的 `parse(path).root`。
 
@@ -89,10 +89,10 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 **新增功能兼容清单（每次加功能/修 bug 都要过一遍）**
 
 1. **碰路径 → 归一化**：任何来自 DSH、Git、LSP、用户输入的路径，先 `toPosix`（宿主 `platform.toPosix` / 客户端 `idePlatform.toPosix`）再比较或拼接；展示/复制给用户时用 `toNative`。不要在代码里写死 `/` 或 `\\` 拼接（源文件里就是反斜杠本身）。
-2. **碰外部命令/二进制/系统目录 → 走平台层**：`spawn` 的命令名、`-sources.jar` 的扫描根、IntelliJ 启动器、ripgrep 二进制、默认浏览器命令，都必须从 `platform.*` 取；发现缺口就在 `contract.js` 加成员，然后 `macos.js` 与 `windows.js` 各实现一份（`test/platform.mjs` 会自动断言实现完整）。
+2. **碰外部命令/二进制/系统目录 → 走平台层**：`spawn` 的命令名、`-sources.jar` 的扫描根、IntelliJ 启动器、ripgrep 二进制、默认浏览器命令，都必须从 `platform.*` 取；发现缺口就在 `contract.js` 加成员，然后 `macos.js` 与 `windows.js` 各实现一份（`test/platform.mjs` 会自动断言实现完整）。**Windows 上 `.bat`/`.cmd` 必须带 `shell: true`**（Node CVE-2024-27980 之后直接抛 EINVAL，被 `stderr: 'spawn-failed'` 吞掉就成了「点了没反应」）——统一用 `platform.needsShell(path)` 判断。
 3. **碰快捷键/手势/菜单文案 → 区分平台**：`⌘`/`⌥` 只属于 macOS，Windows 用 `Ctrl`/`Alt`；客户端统一走 `idePlatformOf(...).gestureLabelKey / gestureChoices / bindingGlyphs`，不要再写 `platform === 'macos' ? ... : ...`。
 4. **碰「在系统里打开」类能力 → 先确认两端都有**：Windows 没有 Finder/终端那种统一入口，拿不准就别做成功能（本次「在 Finder 中显示 / 在终端中打开」就是因此删除的）。
-5. **测试**：`npm test` 必须绿（含 `test/platform.mjs`）；涉及路径解析的功能，在 `test/harness.mjs` 里补一条注入 Windows 平台的用例（`withPlatform`）。
+5. **测试**：`npm test` 必须绿（含 `test/platform.mjs`）；涉及路径解析的功能，在 `test/harness.mjs` 里补一条注入 Windows 平台的用例（`withPlatform`）。客户端与宿主各自实现了一份路径规则（浏览器不能 import 宿主代码），`harness` 里的采样对比（`toPosix`/`isAbsolutePath` 六个样例）就是防漂移的锁，改规则必须两边一起改。
 6. **实测**：macOS 上按第六节跑一遍；Windows 上至少按 `AGENTS.md` 第九节的清单人工过一遍（或等实机验证），**未验证要在交付时明确说明**。
 
 > 规则简化：**只有 macOS 走 macOS 分支，其他系统一律按 Windows 处理**。所以新增分支时只问一句「这是 macOS 特有的吗？」，不是就写进 Windows 实现。
@@ -156,7 +156,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 - 兜底链：LSP → 注解属性 → **工作区内文本声明**（声明形状 `类型 名字(` 的 grep，避免常见名撞上 200 条上限）→ import FQN → jar 源码 → 文本提示。工作区那一步按「接收者声明类型」锁定同名文件（`ideDeclaredType` 容忍 `private final` 修饰符），再按 `ideIsMethodDeclaration` 排除调用行；接收者由 `ideReceiverChain` 解析——返回**点号链的最左段**（`PurchaseOrderStatusEnum.TO_PURCHASE.matches(...)` → 取 `PurchaseOrderStatusEnum`；`field.method(...)` → 取声明类型）；**链式调用换行时（上一行是接收者、本行以 `.` 开头）会往上找 16 行**，这是 `.listByPaymentTradeNos(...)` 这类写法能找到声明的前提；没有接收者时只认本文件里的声明，绝不取工作区里第一个同名方法。它排在 jar 之前，因为工作区文件才是真正的源码
 - **Maven 仓库位置**：发版给别人用的时候**不假设** `~/.m2/repository`——`/dsh-ide/jar` 每次请求按「插件设置 `mavenRepo` → `~/.m2/settings.xml` 的 `<localRepository>`（先剥掉 `<!-- -->` 注释，否则会读到模板里的 `/path/to/local/repo`，且要求路径真实存在）→ `~/.m2/repository`」解析，查找缓存按 `仓库|类路径` 记录；仓库不存在时返回 `{found:false, reason:'missing-repository'}`，界面提示「Maven 本地仓库不存在: <路径>」。设置项在「设置 → 通用设置 → 代码工作区设置 → Maven 本地仓库」，留空=自动检测；**输入框下面一行直接显示实际在用的路径**（`当前使用（自动检测/设置项）：<路径>`，来自 `/dsh-ide/doctor` 的 `mavenRepo` + `mavenRepoExists`），检测到的目录不存在时该行变黄并标「目录不存在」——placeholder 太淡，不能拿它当「检测结果」
 - **Git 追溯注解**：代码左侧（git 变化条 / 行号）右键 →「使用 Git 追溯注解」，逐行显示 `日期 作者`，相邻提交交替底色；同一项可关闭。宿主路由 `/dsh-ide/blame` 一次解析整份文件；缓存按 `root|path|version` 且有 30 秒 TTL，注解开启时在「打开注解」与「窗口聚焦」时强制重读，**不跑定时器**（提交不改内容，不能靠 change 事件）；未提交行（零提交）显示「未提交」。注解开启时隐藏行尾 Code Vision。状态在 store 的 `annotate`（`path → true`）与 `codeMenu`
-- **JetBrains 授权（-32802）**：IntelliJ 语言服务器需要**有效的服务器授权**，没授权时所有查询都会被拒（`-32802: Request refused: no active JetBrains license`）。处理办法在服务器自己的 CLI 里：`~/.dsh/lsp-bin/intellij-server-2027.1/bin/intellij-server license status|login|activate|trial|reset`（也可用 `INTELLIJ_SERVER_LICENSE`/`INTELLIJ_SERVER_LICENSE_FILE`/`JETBRAINS_LICENSE_SERVER` 注入），登录后**必须重启 DSH**（授权状态在服务器进程里缓存）。插件侧：识别到授权拒绝后**自动用系统浏览器打开授权页**——宿主跑 `license login --browser`（这个子命令自己会开浏览器并给 URL，宿主不再重复开）；已登录但无授权时命令只打印提示、不给 URL，此时宿主直接 `open https://account.jetbrains.com/licenses`（macOS `open` / Linux `xdg-open` / Windows `explorer`），不依赖 webview 的 `window.open`（Electron 里常被拒）。同时在本次页面生命周期内不再请求 LSP（调用链/定义/调用方都直接走文本兜底），横幅只给一条授权提示，不给用户刷「未找到定义」
+- **JetBrains 授权（-32802）**：IntelliJ 语言服务器需要**有效的服务器授权**，没授权时所有查询都会被拒（`-32802: Request refused: no active JetBrains license`）。处理办法在服务器自己的 CLI 里：`~/.dsh/lsp-bin/intellij-server-2027.1/bin/intellij-server license status|login|activate|trial|reset`（也可用 `INTELLIJ_SERVER_LICENSE`/`INTELLIJ_SERVER_LICENSE_FILE`/`JETBRAINS_LICENSE_SERVER` 注入），登录后**必须重启 DSH**（授权状态在服务器进程里缓存）。插件侧：识别到授权拒绝后**自动用系统浏览器打开授权页**——宿主跑 `license login --browser`（这个子命令自己会开浏览器并给 URL，宿主不再重复开）；已登录但无授权时命令只打印提示、不给 URL，此时宿主直接 `open https://account.jetbrains.com/licenses`（macOS `open` / Windows `cmd /c start ""`），不依赖 webview 的 `window.open`（Electron 里常被拒）。同时在本次页面生命周期内不再请求 LSP（调用链/定义/调用方都直接走文本兜底），横幅只给一条授权提示，不给用户刷「未找到定义」
 - **LSP 报错要说清楚**：`LSP_SERVER_ERROR` 这类错误其实是服务器返回的 JSON-RPC 错误，横幅/提示会带上服务器自己的话和操作名（`LSP_SERVER_ERROR — … (-32601) (findReferences)`）；错误的文本里出现 `-32601`/method not found/not supported 时，该操作会被记为「服务器不支持」并在本次会话内跳过，改用文本匹配并提示「当前语言服务不支持这项查询」，不再反复弹错误横幅
 - **调用方列表里不能出现声明行**：`findReferences` 会把声明一起返回（接口自己的签名行、另一个类的 override 签名行），契约合并（点实现方法时顺带问接口）会把它们混进 references；生成调用方前用 `ideReferenceIsDeclaration` 按行判断并剔除（形状同 `类型 名字(`），否则弹出层会出现「接口 selectPage 是实现的调用方」这种明显错误的行
 - **用量兜底（LSP 无结果时）**：调用方只认同名**调用**（排除声明行）、非静态方法只认 `接收者.名字(` 且接收者的**声明类型**必须是本类/本接口（大写类名当接收者的静态/工具类调用 `ReconBillConverter.toDifferenceResp(…)` 也算本类）（`ideContractNames` 把实现类与其接口都算作 owner，所以实现方法也能找到持有接口的调用方），Java 文件限定；实现方按 `implements 接口` 找类，再在类里找该方法的声明。分节标题都带「（文本匹配）」，不冒充语义结果；三条查询全部失败时提示 `lspFailed`，不再谎报「没有已知调用点」
@@ -260,6 +260,8 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | `plugins/...client.js?jsrev=… 404` | 我重建了 bundle，已开窗口拿的是旧 rev | 让用户 `⌘R` 或重启；批量 URL 里一个过期整批 404（连官方包也被连坐） |
 | 设置页弹窗看不见 | `shell.overlay` 层级低于设置弹窗 | 内联展开 |
 | 测试提取器截断箭头函数 | 在参数表 `)` 处就判定结束 | 只在 `}`/`]` 收尾 |
+| Windows 上点授权「没反应」 | `spawn` 直接跑 `.bat`/`.cmd`，Node 拒执行抛 EINVAL，被 `child.on('error')` 吞成 `spawn-failed` | `platform.needsShell(path)` + 两个 `spawn` 都传 `shell`（`index.js` 的 `runLicenseCommand`/`openLicenseLogin`） |
+| 客户端与宿主路径规则悄悄分叉 | 两份实现各自演化、没有测试 | harness 的采样对比（6 个样例）锁住 `toPosix`/`isAbsolutePath` |
 
 ---
 

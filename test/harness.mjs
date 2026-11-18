@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
+import { macPlatform, windowsPlatform } from '../platform/index.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bundle = readFileSync(join(here, '..', 'client.js'), 'utf8')
@@ -843,6 +844,25 @@ function sourceFunction(name, file = undefined) {
 
   // The path helpers take the platform from the closure; injecting the Windows
   // one proves a native path from a Windows Session still resolves.
+  // The Client carries its own copy of the path rules (it cannot import the Host
+  // one), so both implementations are compared on the same inputs here: drift
+  // between them is the failure this table catches.
+  const samples = [
+    '/Users/a/src/main/java/com/x/Y.java',
+    'C:\\work\\app\\A.java',
+    'C:/work/app/A.java',
+    '\\\\server\\share\\app',
+    'work\\app',
+    'a/b',
+  ]
+  const drifting = samples.filter((sample) => (
+    windows.toPosix(sample) !== windowsPlatform.toPosix(sample)
+    || windows.isAbsolutePath(sample) !== windowsPlatform.isAbsolutePath(sample)
+    || mac.toPosix(sample) !== macPlatform.toPosix(sample)
+    || mac.isAbsolutePath(sample) !== macPlatform.isAbsolutePath(sample)
+  ))
+  check(drifting.length === 0, 'the Client and Host platform rules agree on every sample', JSON.stringify(drifting))
+
   const withPlatform = (source, name) => new Function('idePlatform', `${source}\nreturn ${name}`)(windows)
   const fqnOf = withPlatform(sourceFunction('ideFqnOf', '70-palette.js'), 'ideFqnOf')
   check(fqnOf('C:\\ws\\src\\main\\java\\com\\x\\Y.java') === 'com.x.Y', 'a Windows source path yields its FQN', fqnOf('C:\\ws\\src\\main\\java\\com\\x\\Y.java'))

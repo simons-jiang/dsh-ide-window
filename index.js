@@ -762,6 +762,12 @@ function licenseBinary() {
  * `license status` readable in every environment.
  */
 function licenseEnv() {
+  // The JVM writes its log under a directory that is read-only in this sandbox
+  // on macOS; pointing it at a temporary one keeps `license status` readable.
+  // On Windows the location is writable and the temporary path may contain a
+  // space (a user name), which `IJ_JAVA_OPTIONS` would split apart — so the
+  // override stays on macOS.
+  if (platform.name !== 'mac') return { ...process.env }
   const logDir = join(tmpdir(), 'dsh-ide-license-logs')
   const extra = `-Didea.log.path=${logDir}`
   const existing = typeof process.env.IJ_JAVA_OPTIONS === 'string' ? process.env.IJ_JAVA_OPTIONS.trim() : ''
@@ -771,7 +777,13 @@ function licenseEnv() {
 /** One licence command's combined output, killed when it overruns. */
 function runLicenseCommand(binary, argv, timeoutMs) {
   return new Promise((resolve) => {
-    const child = spawn(binary, argv, { stdio: ['ignore', 'pipe', 'pipe'], env: licenseEnv() })
+    // On Windows the launcher is a `.bat`; spawning it without a shell is
+    // refused (EINVAL) since CVE-2024-27980, which used to look like a dead click.
+    const child = spawn(binary, argv, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: licenseEnv(),
+      shell: platform.needsShell(binary),
+    })
     let output = ''
     const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
     const collect = (chunk) => {
@@ -824,6 +836,7 @@ async function openLicenseLogin(binary) {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
     env: licenseEnv(),
+    shell: platform.needsShell(binary),
   })
   child.unref()
   let output = ''

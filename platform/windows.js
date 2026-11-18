@@ -27,5 +27,11 @@ export const windowsPlatform = {
     '@vscode/ripgrep/bin/rg.exe',
   ],
   serverLauncherNames: ['intellij-server.bat', 'intellij-server.cmd', 'intellij-server.exe', 'intellij-server'],
-  openUrlCommand: (url) => ({ command: 'explorer', args: [url] }),
+  // Node (CVE-2024-27980) refuses to spawn a .bat/.cmd without a shell. The
+  // licence verbs take no arguments that contain spaces, so a shell is safe.
+  needsShell: (path) => /\.(bat|cmd)$/i.test(String(path ?? '')),
+  // `explorer <url>` opens the browser but reports an unreliable exit code and
+  // goes through a shell layer; `cmd /c start ""` is the documented form and
+  // keeps the empty title argument that `start` needs for a quoted URL.
+  openUrlCommand: (url) => ({ command: 'cmd', args: ['/c', 'start', '', url] }),
 }
