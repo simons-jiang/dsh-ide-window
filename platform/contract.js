@@ -6,6 +6,12 @@
  * of branching on `process.platform`, so adding a system means one more file
  * that satisfies this contract — not another `if` scattered through the Host.
  *
+ * **Every new feature must be checked on both systems.** If a feature touches a
+ * path, an external command, a binary, a system directory or a shortcut label,
+ * the difference belongs here: add a member to this contract, implement it in
+ * `macos.js` and `windows.js`, and list it in `PLATFORM_METHODS` so the test
+ * fails until both implementations answer.
+ *
  * A filesystem root is not a platform difference: `node:path` already knows it
  * (`parse(path).root`), so the contract does not carry one.
  *

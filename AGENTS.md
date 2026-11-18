@@ -29,6 +29,7 @@
 | 5 | **编译/测试失败禁止推送** | 先报告失败原因 |
 | 6 | **UI 必须与 DSH 一致** | 一律用 DSH 的设计 token（`--dsw-alias-*`、`--dsw-specific-menu`、`--dsw-elevation-prominent`、`--dsw-radius-*`），不自己造色值 |
 | 7 | **诚实报告** | 做不到就说做不到，不假装实现（例如 DSH 没有「插入对话草稿」的插件 API，就不要假装能一键加进上下文） |
+| 8 | **每个功能都要过系统兼容** | 插件同时支持 **macOS + Windows**。任何新功能（含修 bug）在交付前都必须走一遍下面的「新增功能兼容清单」：碰路径就归一化、碰外部命令/二进制就走平台层、碰文案就区分 ⌘/Ctrl，不能只在 macOS 上验证就完事 |
 
 ---
 
@@ -84,6 +85,17 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 **路径约定**：插件内部（路由、偏好、浏览器、LSP 结果、jar 路径）**一律 POSIX 斜杠**；平台只在边界转换（`toPosix` 进、`toNative` 出），所以文件树、FQN、工作区判定这些逻辑不用关心系统。宿主：`scopeOf()` 用 `platform.isAbsolutePath()` 判根路径、`safeRelativePath()` 统一相对路径；客户端：`ideAbs/ideRelativeTo/ideSplitPath/ideAncestorDirs/ideParent/ideBasename/ideFqnOf` 先过 `idePlatform.toPosix()`，`enterProject/setRoot` 在入口归一化根路径。
 
 新增一个系统 = 实现 `contract.js` 的接口 + 在 `platform/index.js` 注册；新增一处系统差异 = 接口加一个成员 + 两个实现各写一遍。
+
+**新增功能兼容清单（每次加功能/修 bug 都要过一遍）**
+
+1. **碰路径 → 归一化**：任何来自 DSH、Git、LSP、用户输入的路径，先 `toPosix`（宿主 `platform.toPosix` / 客户端 `idePlatform.toPosix`）再比较或拼接；展示/复制给用户时用 `toNative`。不要在代码里写死 `/` 或 `\\` 拼接（源文件里就是反斜杠本身）。
+2. **碰外部命令/二进制/系统目录 → 走平台层**：`spawn` 的命令名、`-sources.jar` 的扫描根、IntelliJ 启动器、ripgrep 二进制、默认浏览器命令，都必须从 `platform.*` 取；发现缺口就在 `contract.js` 加成员，然后 `macos.js` 与 `windows.js` 各实现一份（`test/platform.mjs` 会自动断言实现完整）。
+3. **碰快捷键/手势/菜单文案 → 区分平台**：`⌘`/`⌥` 只属于 macOS，Windows 用 `Ctrl`/`Alt`；客户端统一走 `idePlatformOf(...).gestureLabelKey / gestureChoices / bindingGlyphs`，不要再写 `platform === 'macos' ? ... : ...`。
+4. **碰「在系统里打开」类能力 → 先确认两端都有**：Windows 没有 Finder/终端那种统一入口，拿不准就别做成功能（本次「在 Finder 中显示 / 在终端中打开」就是因此删除的）。
+5. **测试**：`npm test` 必须绿（含 `test/platform.mjs`）；涉及路径解析的功能，在 `test/harness.mjs` 里补一条注入 Windows 平台的用例（`withPlatform`）。
+6. **实测**：macOS 上按第六节跑一遍；Windows 上至少按 `AGENTS.md` 第九节的清单人工过一遍（或等实机验证），**未验证要在交付时明确说明**。
+
+> 规则简化：**只有 macOS 走 macOS 分支，其他系统一律按 Windows 处理**。所以新增分支时只问一句「这是 macOS 特有的吗？」，不是就写进 Windows 实现。
 
 ### 3.3 宿主路由（`index.js`）
 
@@ -206,7 +218,12 @@ npm test
 
 # 本体完整性（签名 + app.asar 哈希基线 + 可疑新文件）
 ./check-dsh-untouched.sh
+
+# 平台兼容（每个功能都要过，清单见 3.2）
+node test/platform.mjs
 ```
+
+Windows 开发者把上面三条换成 `.ps1` 版本：`.\check-dsh-untouched.ps1`、`.\start-test-instance.ps1`。
 
 ### 浏览器自测（用户明确要求「每次改一个功能就自己去测」）
 
