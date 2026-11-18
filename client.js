@@ -7682,7 +7682,11 @@ async function ideTextualCallers(store, tabPath, position, symbolName, limit, op
     if (receiver === '') return false
     const owners = Array.isArray(options.ownerNames) && options.ownerNames.length > 0 ? options.ownerNames : ['']
     const declared = ideDeclaredType(lines, receiver)
-    return owners.includes('') || owners.includes(declared)
+    if (owners.includes('') || owners.includes(declared)) return true
+    // `ReconBillConverter.toDifferenceResp(…)` keeps the class name as the
+    // receiver (a static call, or Lombok's @UtilityClass); the class itself is
+    // the owner, so the receiver is one.
+    return /^[A-Z]/.test(receiver) && owners.includes(receiver)
   }
   const collect = async (pattern, names, requireReceiver) => {
     const found = await ideGrepQuery(root, pattern, { caseSensitive: true, extensions: IDE_CODE_EXTENSIONS })
