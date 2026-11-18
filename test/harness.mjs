@@ -650,6 +650,33 @@ function sourceFunction(name, file = undefined) {
   globalThis.idePlatform = platformOf('macos')
 }
 
+// ---- which host the guide page writes commands for -------------------------
+{
+  const hostIsMac = new Function(`${sourceFunction('ideHostIsMacos', '06-platform.js')}\nreturn ideHostIsMacos`)()
+  const previousRuntime = globalThis.ideRuntimeContext
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const cases = [
+    [{ platform: 'macos' }, 'MacIntel', true, 'a desktop macOS profile is macOS'],
+    [{ platform: 'windows' }, 'MacIntel', false, 'a desktop Windows profile stays Windows'],
+    [{ platform: 'web' }, 'MacIntel', true, 'a web profile on macOS reads the browser'],
+    [{ platform: 'web' }, 'Win32', false, 'a web profile on Windows reads the browser'],
+    [{ platform: 'web' }, 'Linux x86_64', false, 'an unknown web host is not mistaken for macOS'],
+  ]
+  for (const [runtime, navPlatform, expected, label] of cases) {
+    globalThis.ideRuntimeContext = runtime
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { platform: navPlatform, userAgent: navPlatform },
+      configurable: true,
+      writable: true,
+    })
+    check(hostIsMac() === expected, label, String(hostIsMac()))
+  }
+  if (previousRuntime === undefined) delete globalThis.ideRuntimeContext
+  else globalThis.ideRuntimeContext = previousRuntime
+  if (previousNavigator === undefined) delete globalThis.navigator
+  else Object.defineProperty(globalThis, 'navigator', previousNavigator)
+}
+
 // ---- content-search extension scoping --------------------------------------
 {
   const globs = new Function(`const MAX_GREP_EXTENSIONS = 40\n${sourceFunction('grepExtensionGlobs')}\nreturn grepExtensionGlobs`)()

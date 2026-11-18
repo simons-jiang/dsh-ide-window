@@ -190,32 +190,16 @@ let ideSetupDismissed = false
  */
 function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
   if (open !== true) return null
-  const mac = ideRuntimeContext.platform === 'macos'
-  // The commands are the whole point of this page: copy-paste, in order.
-  const commands = mac
-    ? [
-      '~/dev/dsh-ide-window/enable-navigation.sh',
-      '~/.dsh/lsp-bin/*/bin/intellij-server license login',
-    ]
-    : [
-      'cd $env:USERPROFILE\.dsh\profiles\desktop',
-      'pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3',
-    ]
-  const steps = mac
-    ? [
-      { key: 's1', label: tr('setupStepScript'), code: commands[0] },
-      { key: 's2', label: tr('setupStepLicence'), code: commands[1] },
-    ]
-    : [
-      { key: 's1', label: tr('setupStepPackages'), code: `${commands[0]}\n${commands[1]}` },
-      { key: 's2', label: tr('setupStepServer'), code: '' },
-    ]
-  const copyAll = () => {
-    const text = mac
-      ? `${commands[0]}\n${commands[1]}`
-      : `${commands[0]}\n${commands[1]}\n# ${tr('setupStepServer')}`
-    ideCopyWithNotice(store, tr, text)
-  }
+  const mac = ideHostIsMacos()
+  // The commands are the whole point of this page: copy-paste, in order, for the
+  // machine that runs DSH — not for the browser's rendering mode.
+  const scriptCommand = mac
+    ? '~/dev/dsh-ide-window/enable-navigation.sh'
+    : '& "$env:USERPROFILE\\dev\\dsh-ide-window\\enable-navigation.ps1"'
+  const licenceCommand = mac
+    ? '~/.dsh/lsp-bin/*/bin/intellij-server license login'
+    : '& "$env:USERPROFILE\\.dsh\\lsp-bin\\intellij-server-2027.1\\bin\\intellij-server.exe" license login'
+  const copyAll = () => ideCopyWithNotice(store, tr, `${scriptCommand}\n${licenceCommand}`)
   return h('div', {
     key: 'backdrop',
     className: 'iw-setup-backdrop',
@@ -230,13 +214,15 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
   }, [
     h('div', { key: 'title', className: 'iw-setup-title' }, tr('setupTitle')),
     h('div', { key: 'body', className: 'iw-setup-body' }, h('p', { key: 'p' }, tr('setupBody'))),
-    h('ol', { key: 'steps', className: 'iw-setup-steps' }, steps.map((step) => h('li', { key: step.key }, [
-      h('div', { key: 'l', className: 'iw-setup-step-label' }, step.label),
-      step.code === ''
-        ? null
-        : h('pre', { key: 'c', className: 'iw-setup-code' }, step.code),
-    ]))),
-    h('ol', { key: 'restart', className: 'iw-setup-steps', start: steps.length + 1 }, [
+    h('ol', { key: 'steps', className: 'iw-setup-steps' }, [
+      h('li', { key: 's1' }, [
+        h('div', { key: 'l', className: 'iw-setup-step-label' }, tr('setupStepScript')),
+        h('pre', { key: 'c', className: 'iw-setup-code' }, scriptCommand),
+      ]),
+      h('li', { key: 's2' }, [
+        h('div', { key: 'l', className: 'iw-setup-step-label' }, tr('setupStepLicence')),
+        h('pre', { key: 'c', className: 'iw-setup-code' }, licenceCommand),
+      ]),
       h('li', { key: 's3' }, tr('setupStepRestart')),
     ]),
     h('div', { key: 'licence', className: 'iw-setup-link' }, [

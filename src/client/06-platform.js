@@ -45,5 +45,21 @@ function idePlatformOf(name) {
   }
 }
 
+/**
+ * Whether the machine running this page is macOS.
+ *
+ * A desktop profile names its platform. A web profile only says `web`, so the
+ * browser's own platform string is the remaining clue — without it a macOS
+ * browser would be handed the PowerShell instructions.
+ */
+function ideHostIsMacos() {
+  const runtime = String(ideRuntimeContext.platform ?? '')
+  if (runtime === 'macos' || runtime === 'mac' || runtime === 'darwin') return true
+  if (runtime !== '' && runtime !== 'web') return false
+  const nav = globalThis.navigator
+  const probe = `${nav?.userAgentData?.platform ?? ''} ${nav?.platform ?? ''} ${nav?.userAgent ?? ''}`
+  return /mac/i.test(probe)
+}
+
 /** Replaced in `apply()` with the runtime platform; macOS until then. */
 let idePlatform = idePlatformOf('macos')

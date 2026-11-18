@@ -210,10 +210,8 @@
   "referenceInserted": "引用已插入对话",
   "referenceInsertedPlain": "已插入纯文本引用",
   "referenceNoEditor": "未找到对话输入框，引用未插入",
-  "setupStepScript": "第 1 步：装管道包、下载服务器、写好配置（默认装在 ~/dev/dsh-ide-window；换了位置就改成你的路径）",
+  "setupStepScript": "第 1 步：运行安装脚本（装管道包、下载服务器、写好配置；脚本不在默认位置就改成你的路径）",
   "setupStepLicence": "第 2 步：授权（会打开浏览器；已授权会直接显示 licensed）",
-  "setupStepPackages": "第 1 步：在 profile 里装管道包（PowerShell）",
-  "setupStepServer": "第 2 步：把 intellij-server 解压到 %USERPROFILE%\\.dsh\\lsp-bin\\，并在 cordis.patch.yml 里加 lsp / lsp-stdio 两行（README 第五节）",
   "setupStepRestart": "最后：完全退出 DSH（⌘Q / 托盘退出）再打开。",
   "setupCopyAll": "复制命令"
 }

@@ -838,6 +838,12 @@ function licenseBinary() {
         if (existsSync(candidate)) return candidate
       }
     }
+    // The Windows archive has no top-level folder: extracted straight into
+    // `lsp-bin`, the launcher sits one level up from the layout above.
+    for (const launcher of platform.serverLauncherNames) {
+      const candidate = join(base, 'bin', launcher)
+      if (existsSync(candidate)) return candidate
+    }
   } catch (error) {
     void error
   }

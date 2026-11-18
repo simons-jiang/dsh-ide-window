@@ -68,6 +68,15 @@ git clone https://github.com/simons-jiang/dsh-ide-window.git ~/dev/dsh-ide-windo
 /path/to/dsh-ide-window/install.sh --dir /path/to/dsh-ide-window --no-pull
 ```
 
+Windows 对应：
+
+```powershell
+cd $env:USERPROFILE\dev\dsh-ide-window
+.\enable-navigation.ps1
+```
+
+它会装管道包、下载 `-win.zip`、解压到 `%USERPROFILE%\.dsh\lsp-bin`、写好 `cordis.patch.yml`（`command` 指向 `bin\intellij-server.exe`，UTF-8 无 BOM 写回），最后打印授权命令。
+
 注意两点：
 
 1. **插件本体仍然要落到磁盘**——DSH 用 `link:` 目录加载插件，所以脚本会把仓库 clone 到 `~/dev/dsh-ide-window`（或 `-Dir` 指定的位置）。你能省掉的只是"自己 clone + 记住路径 + 手动敲安装命令"，省不掉那一个目录。
@@ -205,6 +214,19 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 ## 五、代码导航（可选）
 
 DSH 的 LSP 是可选能力，插件只消费它。没装时进入代码工作区会弹「代码导航未就绪」，浏览、搜索、Git、复制引用不受影响，只是跳转会走文本匹配。
+
+### 支持情况
+
+| 系统 | 服务器包 | 脚本 |
+|---|---|---|
+| macOS（Apple Silicon） | `intellij-server-271.2085.0-aarch64.sit`（387 MB） | `enable-navigation.sh` |
+| macOS（Intel） | `intellij-server-271.2085.0.sit` | 同上 |
+| **Windows x64** | `intellij-server-271.2085.0.win.zip`（389 MB，含 `bin\intellij-server.exe`） | `enable-navigation.ps1` |
+| **Windows ARM64** | `intellij-server-271.2085.0-aarch64.win.zip` | 同上 |
+
+下载地址统一是 `https://download.jetbrains.com/language-server/intellij-server/271.2085.0/<包名>`：**必须走 `download.jetbrains.com`**，直接访问 `download-cdn.jetbrains.com` 的同名路径会 404（CDN 只接受签名链接）。
+
+「代码导航未就绪」引导页会按**运行 DSH 的机器**给命令：macOS 给 `enable-navigation.sh`，Windows 给 `enable-navigation.ps1`（Web profile 只知道自己的平台是 `web`，所以再看浏览器报告的宿主系统）。授权命令两端是同一套子命令（`license status|login|activate|trial|reset`），Windows 上换成 `…\bin\intellij-server.exe` 而已。
 
 ### 一条命令（macOS）
 
@@ -374,6 +396,7 @@ Windows 另有 `check-dsh-untouched.ps1`、`restore-profile.ps1`，与对应的 
 - 左侧导航行可能被折叠进「更多」菜单，此时用左下角按钮进入
 - 引用回对话依赖对话输入框的 DOM（Lexical 编辑器 + `@` 触发菜单）；DSH 升级若改结构会退化为纯文本引用，不会插错文件
 - Windows 未做完整实机回归（平台层、菜单定位、引用插入已按 Windows 规则实现并有单测）
+- **Windows 上的代码导航脚本未实机验证**：`enable-navigation.ps1` 按 Windows x64/ARM64 的服务器包写成（包内容已核对：`bin\intellij-server.exe` + `lsp-router.exe` + JBR），但还没在 Windows 机器上跑过；失败时把输出发出来即可
 
 ---
 

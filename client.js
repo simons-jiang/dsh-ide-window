@@ -216,10 +216,8 @@ window.__ModuleLoader__.load({
     "referenceInserted": "Reference inserted into the chat",
     "referenceInsertedPlain": "Inserted as a plain-text reference",
     "referenceNoEditor": "Composer not found; nothing was inserted",
-    "setupStepScript": "Step 1: install the packages, download the server and write the config (~/dev/dsh-ide-window is the default checkout; use your own path if different)",
+    "setupStepScript": "Step 1: run the install script (packages, server download, config; use your own path if it is not at the default location)",
     "setupStepLicence": "Step 2: license the server (opens a browser; an existing license prints \"licensed\")",
-    "setupStepPackages": "Step 1: install the pipeline packages in the profile (PowerShell)",
-    "setupStepServer": "Step 2: unzip intellij-server into %USERPROFILE%\\.dsh\\lsp-bin\\ and add the lsp / lsp-stdio rows to cordis.patch.yml (README section 5)",
     "setupStepRestart": "Finally: quit DSH completely (⌘Q / tray) and reopen it.",
     "setupCopyAll": "Copy commands",
   }
@@ -431,10 +429,8 @@ window.__ModuleLoader__.load({
     "referenceInserted": "引用已插入对话",
     "referenceInsertedPlain": "已插入纯文本引用",
     "referenceNoEditor": "未找到对话输入框，引用未插入",
-    "setupStepScript": "第 1 步：装管道包、下载服务器、写好配置（默认装在 ~/dev/dsh-ide-window；换了位置就改成你的路径）",
+    "setupStepScript": "第 1 步：运行安装脚本（装管道包、下载服务器、写好配置；脚本不在默认位置就改成你的路径）",
     "setupStepLicence": "第 2 步：授权（会打开浏览器；已授权会直接显示 licensed）",
-    "setupStepPackages": "第 1 步：在 profile 里装管道包（PowerShell）",
-    "setupStepServer": "第 2 步：把 intellij-server 解压到 %USERPROFILE%\\.dsh\\lsp-bin\\，并在 cordis.patch.yml 里加 lsp / lsp-stdio 两行（README 第五节）",
     "setupStepRestart": "最后：完全退出 DSH（⌘Q / 托盘退出）再打开。",
     "setupCopyAll": "复制命令",
   }
@@ -2439,6 +2435,22 @@ function idePlatformOf(name) {
       ? { control: 'Ctrl', alt: 'Alt', shift: 'Shift', meta: 'Win' }
       : { control: '⌃', alt: '⌥', shift: '⇧', meta: '⌘' }),
   }
+}
+
+/**
+ * Whether the machine running this page is macOS.
+ *
+ * A desktop profile names its platform. A web profile only says `web`, so the
+ * browser's own platform string is the remaining clue — without it a macOS
+ * browser would be handed the PowerShell instructions.
+ */
+function ideHostIsMacos() {
+  const runtime = String(ideRuntimeContext.platform ?? '')
+  if (runtime === 'macos' || runtime === 'mac' || runtime === 'darwin') return true
+  if (runtime !== '' && runtime !== 'web') return false
+  const nav = globalThis.navigator
+  const probe = `${nav?.userAgentData?.platform ?? ''} ${nav?.platform ?? ''} ${nav?.userAgent ?? ''}`
+  return /mac/i.test(probe)
 }
 
 /** Replaced in `apply()` with the runtime platform; macOS until then. */
@@ -6378,32 +6390,16 @@ let ideSetupDismissed = false
  */
 function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
   if (open !== true) return null
-  const mac = ideRuntimeContext.platform === 'macos'
-  // The commands are the whole point of this page: copy-paste, in order.
-  const commands = mac
-    ? [
-      '~/dev/dsh-ide-window/enable-navigation.sh',
-      '~/.dsh/lsp-bin/*/bin/intellij-server license login',
-    ]
-    : [
-      'cd $env:USERPROFILE\.dsh\profiles\desktop',
-      'pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3',
-    ]
-  const steps = mac
-    ? [
-      { key: 's1', label: tr('setupStepScript'), code: commands[0] },
-      { key: 's2', label: tr('setupStepLicence'), code: commands[1] },
-    ]
-    : [
-      { key: 's1', label: tr('setupStepPackages'), code: `${commands[0]}\n${commands[1]}` },
-      { key: 's2', label: tr('setupStepServer'), code: '' },
-    ]
-  const copyAll = () => {
-    const text = mac
-      ? `${commands[0]}\n${commands[1]}`
-      : `${commands[0]}\n${commands[1]}\n# ${tr('setupStepServer')}`
-    ideCopyWithNotice(store, tr, text)
-  }
+  const mac = ideHostIsMacos()
+  // The commands are the whole point of this page: copy-paste, in order, for the
+  // machine that runs DSH — not for the browser's rendering mode.
+  const scriptCommand = mac
+    ? '~/dev/dsh-ide-window/enable-navigation.sh'
+    : '& "$env:USERPROFILE\\dev\\dsh-ide-window\\enable-navigation.ps1"'
+  const licenceCommand = mac
+    ? '~/.dsh/lsp-bin/*/bin/intellij-server license login'
+    : '& "$env:USERPROFILE\\.dsh\\lsp-bin\\intellij-server-2027.1\\bin\\intellij-server.exe" license login'
+  const copyAll = () => ideCopyWithNotice(store, tr, `${scriptCommand}\n${licenceCommand}`)
   return h('div', {
     key: 'backdrop',
     className: 'iw-setup-backdrop',
@@ -6418,13 +6414,15 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
   }, [
     h('div', { key: 'title', className: 'iw-setup-title' }, tr('setupTitle')),
     h('div', { key: 'body', className: 'iw-setup-body' }, h('p', { key: 'p' }, tr('setupBody'))),
-    h('ol', { key: 'steps', className: 'iw-setup-steps' }, steps.map((step) => h('li', { key: step.key }, [
-      h('div', { key: 'l', className: 'iw-setup-step-label' }, step.label),
-      step.code === ''
-        ? null
-        : h('pre', { key: 'c', className: 'iw-setup-code' }, step.code),
-    ]))),
-    h('ol', { key: 'restart', className: 'iw-setup-steps', start: steps.length + 1 }, [
+    h('ol', { key: 'steps', className: 'iw-setup-steps' }, [
+      h('li', { key: 's1' }, [
+        h('div', { key: 'l', className: 'iw-setup-step-label' }, tr('setupStepScript')),
+        h('pre', { key: 'c', className: 'iw-setup-code' }, scriptCommand),
+      ]),
+      h('li', { key: 's2' }, [
+        h('div', { key: 'l', className: 'iw-setup-step-label' }, tr('setupStepLicence')),
+        h('pre', { key: 'c', className: 'iw-setup-code' }, licenceCommand),
+      ]),
       h('li', { key: 's3' }, tr('setupStepRestart')),
     ]),
     h('div', { key: 'licence', className: 'iw-setup-link' }, [
