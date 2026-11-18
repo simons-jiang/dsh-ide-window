@@ -1305,6 +1305,23 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       if (typeof target?.closest !== 'function') return
       const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
       if (gutter === null) {
+        // macOS delivers Ctrl+click as a secondary click. When that gesture is
+        // configured for navigation it belongs to the source — checked before
+        // the symbol menu, otherwise Ctrl+click on a symbol only opens the menu.
+        // A real right click has `button === 2` and must keep the menu.
+        const ctrlGesture = event.ctrlKey === true
+          && event.button === 0
+          && ideRuntimeContext.platform === 'macos'
+          ? gestureActionOf('ctrl')
+          : ''
+        if (ctrlGesture !== '') {
+          const hit = resolveSymbolAt(event)
+          if (hit !== undefined) {
+            event.preventDefault()
+            runGestureAction(ctrlGesture, hit, event)
+            return
+          }
+        }
         // A symbol under the pointer gets IDEA's editor menu: name, reference,
         // and the reference handed to the conversation.
         const symbol = target.closest('[data-iw-sym]')
@@ -1318,16 +1335,6 @@ function IdeCodeView({ tab, tr, store, navigate }) {
             y: event.clientY,
           })
           return
-        }
-        // macOS delivers Ctrl+click as a secondary click: when that gesture is
-        // configured for navigation, it belongs to the source, not to a menu.
-        if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
-          const action = gestureActionOf('ctrl')
-          if (action === '') return
-          const hit = resolveSymbolAt(event)
-          if (hit === undefined) return
-          event.preventDefault()
-          runGestureAction(action, hit, event)
         }
         return
       }

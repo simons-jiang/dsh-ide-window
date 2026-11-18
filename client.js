@@ -6098,6 +6098,23 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       if (typeof target?.closest !== 'function') return
       const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
       if (gutter === null) {
+        // macOS delivers Ctrl+click as a secondary click. When that gesture is
+        // configured for navigation it belongs to the source — checked before
+        // the symbol menu, otherwise Ctrl+click on a symbol only opens the menu.
+        // A real right click has `button === 2` and must keep the menu.
+        const ctrlGesture = event.ctrlKey === true
+          && event.button === 0
+          && ideRuntimeContext.platform === 'macos'
+          ? gestureActionOf('ctrl')
+          : ''
+        if (ctrlGesture !== '') {
+          const hit = resolveSymbolAt(event)
+          if (hit !== undefined) {
+            event.preventDefault()
+            runGestureAction(ctrlGesture, hit, event)
+            return
+          }
+        }
         // A symbol under the pointer gets IDEA's editor menu: name, reference,
         // and the reference handed to the conversation.
         const symbol = target.closest('[data-iw-sym]')
@@ -6111,16 +6128,6 @@ function IdeCodeView({ tab, tr, store, navigate }) {
             y: event.clientY,
           })
           return
-        }
-        // macOS delivers Ctrl+click as a secondary click: when that gesture is
-        // configured for navigation, it belongs to the source, not to a menu.
-        if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
-          const action = gestureActionOf('ctrl')
-          if (action === '') return
-          const hit = resolveSymbolAt(event)
-          if (hit === undefined) return
-          event.preventDefault()
-          runGestureAction(action, hit, event)
         }
         return
       }
@@ -8795,24 +8802,10 @@ async function ideCallChain(store, root, options = {}) {
   let count = 1
   for (let depth = 1; depth <= IDE_CHAIN_DEPTH && level.length > 0; depth += 1) {
     const next = []
-    for (const node of level) {
-      const [answer, contract] = await Promise.all([
-        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch((error) => {
-          if (failure === '') {
-            failure = ideLspFailureText({
-              operation: 'findReferences',
-              code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
-              detail: String(error?.detail ?? '').slice(0, 160),
-            })
-          }
-          return undefined
-        }),
-        ideContractReferences(store, node.path, await linesOf(node.path), node.name),
-      ])
-      const semantic = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
-      const locations = semantic.length > 0 ? semantic : await textualCallersOf(node)
+    /** Turn caller locations into child nodes; returns how many were added. */
+    const attach = async (node, list) => {
       let added = 0
-      for (const location of locations) {
+      for (const location of list) {
         if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
         if (typeof location?.path !== 'string' || typeof location?.line !== 'number') continue
         // The declaration of the method we are walking is not a call to it.
@@ -8839,6 +8832,38 @@ async function ideCallChain(store, root, options = {}) {
         }
         node.children.push(child)
         next.push(child)
+      }
+      return added
+    }
+    for (const node of level) {
+      const [answer, contract] = await Promise.all([
+        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch((error) => {
+          if (failure === '') {
+            failure = ideLspFailureText({
+              operation: 'findReferences',
+              code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
+              detail: String(error?.detail ?? '').slice(0, 160),
+            })
+          }
+          return undefined
+        }),
+        ideContractReferences(store, node.path, await linesOf(node.path), node.name),
+      ])
+      const semantic = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      let locationList = semantic
+      // `textualCallersOf` flags the tree itself when it actually finds rows.
+      if (semantic.length === 0) locationList = await textualCallersOf(node)
+      let added = await attach(node, locationList)
+      // `findReferences` answers with declarations too (the interface's own
+      // signature, the override being walked). When nothing but declarations
+      // came back, the semantic answer cannot show a single caller — text
+      // matching is the honest answer, not "this is the entry point".
+      if (added === 0 && semantic.length > 0) {
+        const textualRows = await textualCallersOf(node)
+        if (textualRows.length > 0) {
+          textual = true
+          added = await attach(node, textualRows)
+        }
       }
     }
     level = next

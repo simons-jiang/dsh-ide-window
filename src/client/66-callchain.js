@@ -190,24 +190,10 @@ async function ideCallChain(store, root, options = {}) {
   let count = 1
   for (let depth = 1; depth <= IDE_CHAIN_DEPTH && level.length > 0; depth += 1) {
     const next = []
-    for (const node of level) {
-      const [answer, contract] = await Promise.all([
-        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch((error) => {
-          if (failure === '') {
-            failure = ideLspFailureText({
-              operation: 'findReferences',
-              code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
-              detail: String(error?.detail ?? '').slice(0, 160),
-            })
-          }
-          return undefined
-        }),
-        ideContractReferences(store, node.path, await linesOf(node.path), node.name),
-      ])
-      const semantic = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
-      const locations = semantic.length > 0 ? semantic : await textualCallersOf(node)
+    /** Turn caller locations into child nodes; returns how many were added. */
+    const attach = async (node, list) => {
       let added = 0
-      for (const location of locations) {
+      for (const location of list) {
         if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
         if (typeof location?.path !== 'string' || typeof location?.line !== 'number') continue
         // The declaration of the method we are walking is not a call to it.
@@ -234,6 +220,38 @@ async function ideCallChain(store, root, options = {}) {
         }
         node.children.push(child)
         next.push(child)
+      }
+      return added
+    }
+    for (const node of level) {
+      const [answer, contract] = await Promise.all([
+        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch((error) => {
+          if (failure === '') {
+            failure = ideLspFailureText({
+              operation: 'findReferences',
+              code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
+              detail: String(error?.detail ?? '').slice(0, 160),
+            })
+          }
+          return undefined
+        }),
+        ideContractReferences(store, node.path, await linesOf(node.path), node.name),
+      ])
+      const semantic = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      let locationList = semantic
+      // `textualCallersOf` flags the tree itself when it actually finds rows.
+      if (semantic.length === 0) locationList = await textualCallersOf(node)
+      let added = await attach(node, locationList)
+      // `findReferences` answers with declarations too (the interface's own
+      // signature, the override being walked). When nothing but declarations
+      // came back, the semantic answer cannot show a single caller — text
+      // matching is the honest answer, not "this is the entry point".
+      if (added === 0 && semantic.length > 0) {
+        const textualRows = await textualCallersOf(node)
+        if (textualRows.length > 0) {
+          textual = true
+          added = await attach(node, textualRows)
+        }
       }
     }
     level = next
