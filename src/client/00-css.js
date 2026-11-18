@@ -482,6 +482,14 @@ html.iw-select-code .iw-code .iw-vision {
   color: var(--dsw-alias-label-tertiary, #6f7783);
   font-size: 11px;
 }
+
+/* Shown when the chain was built from text matches instead of the engine. */
+.iw-chain-note {
+  padding: 0 8px 6px;
+  color: var(--dsw-alias-label-tertiary, #6f7783);
+  font-size: 11px;
+  opacity: 0.9;
+}
 .iw-chain-node { position: relative; }
 .iw-chain-node + .iw-chain-node { margin-top: 2px; }
 .iw-chain-children {

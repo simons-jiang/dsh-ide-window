@@ -18,7 +18,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { open as openFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
@@ -42,6 +42,7 @@ const ROUTE_LOG = '/dsh-ide/log'
 const ROUTE_REFS = '/dsh-ide/refs'
 const ROUTE_PATCH = '/dsh-ide/patch'
 const ROUTE_TEXT = '/dsh-ide/text'
+const ROUTE_LICENSE = '/dsh-ide/license'
 
 /** Largest number of content matches returned by one grep. */
 const MAX_GREP_MATCHES = 200
@@ -720,6 +721,131 @@ function relativize(root, path) {
   return path
 }
 
+/**
+ * The installed IntelliJ language server launcher, newest first.
+ *
+ * The licence verbs live in the same binary the language server runs from, so
+ * the plugin reads it from the same place the profile config does.
+ */
+function licenseBinary() {
+  const base = join(homedir(), '.dsh', 'lsp-bin')
+  try {
+    const names = readdirSync(base)
+      .filter((name) => name.startsWith('intellij-server-'))
+      .sort()
+      .reverse()
+    for (const name of names) {
+      const candidate = join(base, name, 'bin', 'intellij-server')
+      if (existsSync(candidate)) return candidate
+    }
+  } catch (error) {
+    void error
+  }
+  return ''
+}
+
+/**
+ * Environment for the licence verbs.
+ *
+ * Their JVM writes a log under ~/Library/Logs by default, which fails outright
+ * when the host runs without that permission; a temporary log directory keeps
+ * `license status` readable in every environment.
+ */
+function licenseEnv() {
+  const logDir = join(tmpdir(), 'dsh-ide-license-logs')
+  const extra = `-Didea.log.path=${logDir}`
+  const existing = typeof process.env.IJ_JAVA_OPTIONS === 'string' ? process.env.IJ_JAVA_OPTIONS.trim() : ''
+  return { ...process.env, IJ_JAVA_OPTIONS: existing === '' ? extra : `${existing} ${extra}` }
+}
+
+/** One licence command's combined output, killed when it overruns. */
+function runLicenseCommand(binary, argv, timeoutMs) {
+  return new Promise((resolve) => {
+    const child = spawn(binary, argv, { stdio: ['ignore', 'pipe', 'pipe'], env: licenseEnv() })
+    let output = ''
+    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
+    const collect = (chunk) => {
+      output += String(chunk)
+      if (output.length > 20000) output = output.slice(-20000)
+    }
+    child.stdout.on('data', collect)
+    child.stderr.on('data', collect)
+    child.on('error', () => {
+      clearTimeout(timer)
+      resolve({ code: -1, output })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve({ code: code ?? -1, output })
+    })
+  })
+}
+
+/** Open one URL in the user's default browser. */
+function openInBrowser(url) {
+  const target = String(url ?? '')
+  if (!/^https?:\/\//.test(target)) return false
+  const [command, args] = process.platform === 'darwin'
+    ? ['open', [target]]
+    : process.platform === 'win32'
+      ? ['explorer', [target]]
+      : ['xdg-open', [target]]
+  try {
+    spawn(command, args, { stdio: 'ignore', detached: true }).unref()
+    return true
+  } catch (error) {
+    void error
+    return false
+  }
+}
+
+/** The first https URL in a licence command's output. */
+function licenseUrlIn(text) {
+  const match = /https:\/\/[^\s"'<>]+/.exec(String(text ?? ''))
+  return match === null ? '' : match[0]
+}
+
+/**
+ * Start the JetBrains sign-in and hand the browser URL back.
+ *
+ * `license login --browser` opens the account flow and waits for the loopback
+ * redirect, so the child is left running; the URL is reported as soon as it is
+ * printed. When the machine is already signed in but unlicensed the command
+ * prints guidance instead of a URL, and that text is what the caller shows.
+ */
+async function openLicenseLogin(binary) {
+  const child = spawn(binary, ['license', 'login', '--browser', '--timeout=5m'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+    env: licenseEnv(),
+  })
+  child.unref()
+  let output = ''
+  const collect = (chunk) => {
+    output += String(chunk)
+    if (output.length > 4000) output = output.slice(-4000)
+  }
+  child.stdout.on('data', collect)
+  child.stderr.on('data', collect)
+  const url = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(licenseUrlIn(output)), 6000)
+    const poll = setInterval(() => {
+      const found = licenseUrlIn(output)
+      if (found !== '') {
+        clearInterval(poll)
+        clearTimeout(timer)
+        resolve(found)
+      }
+    }, 200)
+    child.on('exit', () => {
+      clearInterval(poll)
+      clearTimeout(timer)
+      resolve(licenseUrlIn(output))
+    })
+  })
+  return { url, output: output.trim() }
+}
+
 /** Run one query against the seam and normalize the result for the browser. */
 async function query(ctx, payload) {
   const lsp = ctx.get('lsp')
@@ -765,6 +891,45 @@ async function query(ctx, payload) {
     character: location.range.start.character,
   })).filter((location) => typeof location.path === 'string' && location.path !== '')
   return { kind: 'locations', locations }
+}
+
+/**
+ * `status` prints this machine's licensing state; `open` starts the browser
+ * sign-in and returns the URL to open.
+ */
+async function licenseCommand(payload) {
+  const requested = payload?.action
+  const action = requested === 'status' || requested === 'open' || requested === 'relogin' ? requested : ''
+  if (action === '') throw new RouteError(400, 'invalid-action', 'action must be status, open or relogin')
+  const binary = licenseBinary()
+  if (binary === '') throw new RouteError(503, 'license-tool-missing', 'intellij-server is not installed under ~/.dsh/lsp-bin')
+  if (action === 'status') {
+    const result = await runLicenseCommand(binary, ['license', 'status'], 8000)
+    return { text: result.output.trim(), code: result.code }
+  }
+  if (action === 'relogin') {
+    // The machine holds an account sign-in without an entitlement; the tool
+    // will not prompt again until that sign-in is gone. Signing out is the
+    // documented way to switch accounts, so this is the user-triggered repair.
+    const reset = await runLicenseCommand(binary, ['license', 'reset', '--account'], 15000)
+    const login = await openLicenseLogin(binary)
+    const target = login.url !== '' ? login.url : 'https://account.jetbrains.com.cn/oauth/login'
+    return {
+      opened: login.url !== '' ? true : openInBrowser(target),
+      url: target,
+      output: `${reset.output}\n${login.output}`.trim().slice(-800),
+    }
+  }
+  const started = await openLicenseLogin(binary)
+  // With `--browser` the tool opens the default browser itself; opening the
+  // same URL again would only add a second tab. When it printed no URL it gave
+  // up on the account flow (already signed in, licence missing), so the account
+  // page is opened here — from the host, because a webview's `window.open` is
+  // routinely refused.
+  if (started.url !== '') return { opened: true, url: started.url, via: 'login', output: started.output.slice(-600) }
+  const accountPage = 'https://account.jetbrains.com/licenses'
+  const opened = openInBrowser(accountPage)
+  return { opened, url: accountPage, via: 'account', output: started.output.slice(-600) }
 }
 
 /** Largest number of Java files one kind request may cover. */
@@ -922,7 +1087,7 @@ function createHandler(ctx) {
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_OPEN && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_OPEN && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -951,6 +1116,8 @@ function createHandler(ctx) {
                 ? await patchWorkspace(payload)
               : pathname === ROUTE_TEXT
                 ? fileText(payload)
+              : pathname === ROUTE_LICENSE
+                ? await licenseCommand(payload)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -1028,4 +1195,9 @@ export function apply(ctx) {
     path: ROUTE_TEXT,
     handler,
   }), 'dsh-ide-window: file text route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_LICENSE,
+    handler,
+  }), 'dsh-ide-window: language server licence route')
 }

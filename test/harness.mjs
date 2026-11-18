@@ -795,6 +795,43 @@ function sourceFunction(name, file = undefined) {
   check(JSON.stringify(fn('a/b/c/D.java')) === '["a","a/b","a/b/c"]', 'every level is an ancestor', JSON.stringify(fn('a/b/c/D.java')))
 }
 
+// ---- reference rows that are declarations ----------------------------------
+{
+  const isReferenceDeclaration = new Function([
+    sourceFunction('ideRegexEscape', '65-lsp.js'),
+    sourceFunction('ideTextualIsDeclaration', '65-lsp.js'),
+    sourceFunction('ideReferenceIsDeclaration', '65-lsp.js'),
+  ].join('\n') + '\nreturn ideReferenceIsDeclaration')()
+
+  const interfaceLines = ['    PageRespVo<PaymentRecordResp> selectPage(PaymentRecordPageQuery query);']
+  check(isReferenceDeclaration(interfaceLines, 1, 'selectPage') === true,
+    "the contract's signature row is not a caller", 'interface declaration')
+  const implLines = ['    public PageRespVo<PaymentRecordResp> selectPage(PaymentRecordPageQuery query) {']
+  check(isReferenceDeclaration(implLines, 1, 'selectPage') === true,
+    "an override's signature row is not a caller", 'impl declaration')
+  const controllerLines = ['        return DataResponse.ok(paymentRecordService.selectPage(query));']
+  check(isReferenceDeclaration(controllerLines, 1, 'selectPage') === false,
+    'a call row is a caller', 'controller call')
+}
+
+// ---- LSP licence refusal ---------------------------------------------------
+{
+  const needsLicense = new Function([
+    sourceFunction('ideLspNeedsLicense', '65-lsp.js'),
+  ].join('\n') + '\nreturn ideLspNeedsLicense')()
+  check(needsLicense({ detail: 'Request refused: no active JetBrains license. Run \'intellij-server license login\'' }) === true,
+    'a licence refusal is recognised', 'no active JetBrains license')
+  check(needsLicense({ detail: 'server rejected textDocument/references with JSON-RPC error -32603: boom' }) === false,
+    'an ordinary server error is not a licence refusal', '-32603')
+
+  const failureText = new Function([
+    sourceFunction('ideLspNeedsLicense', '65-lsp.js'),
+    sourceFunction('ideLspFailureText', '65-lsp.js'),
+  ].join('\n') + '\nreturn ideLspFailureText')()
+  const licenceNotice = failureText({ code: 'LSP_SERVER_ERROR', detail: 'Request refused: no active JetBrains license' })
+  check(licenceNotice.startsWith('license:'), 'the failure text marks a licence refusal', licenceNotice)
+}
+
 // ---- Code Vision: method declarations and counts ---------------------------
 {
   const source = [
@@ -1087,19 +1124,41 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   // 这段逻辑是组件内的闭包，之前没有用例真正跑过它，所以 `outcome is not defined`
   // 这类引用错误只在真实跳转时炸出来。这里把函数体取出来，用桩跑一遍。
   const source = grabSource('jumpToDefinition', '30-code.js')
-  const build = (navigate, opened) => {
+  const fallback = grabSource('openLocalDeclaration', '30-code.js')
+  const accessor = grabSource('openAccessorProperty', '30-code.js')
+  const typeLookup = grabSource('openLocalType', '30-code.js')
+  const implementation = grabSource('openImplementation', '30-code.js')
+  const matcher = new Function(`${grabSource('ideIsMethodDeclaration', '30-code.js')}\nreturn ideIsMethodDeclaration`)()
+  const receiverOf = new Function(`${sourceFunction('ideReceiverToken', '65-lsp.js')}\nreturn ideReceiverToken`)()
+  const declaredTypeOf = new Function(`${sourceFunction('ideDeclaredType', '65-lsp.js')}\nreturn ideDeclaredType`)()
+  const accessorProperty = new Function(`${sourceFunction('ideAccessorProperty', '65-lsp.js')}\nreturn ideAccessorProperty`)()
+  const receiverOfCall = new Function(`${sourceFunction('ideReceiverToken', '65-lsp.js')}\n${sourceFunction('ideReceiverOfCall', '65-lsp.js')}\nreturn ideReceiverOfCall`)()
+  const receiverChain = new Function(`${sourceFunction('ideReceiverChain', '65-lsp.js')}\nreturn ideReceiverChain`)()
+  const fieldDeclaration = new Function(`${sourceFunction('ideRegexEscape', '65-lsp.js')}\n${sourceFunction('ideIsFieldDeclaration', '65-lsp.js')}\nreturn ideIsFieldDeclaration`)()
+  const typeDeclaration = new Function(`${sourceFunction('ideRegexEscape', '65-lsp.js')}\n${sourceFunction('ideIsTypeDeclaration', '65-lsp.js')}\nreturn ideIsTypeDeclaration`)()
+  const build = (navigate, opened, options = {}) => {
     const notices = []
     const popups = []
+    const lines = options.lines ?? ['class B {}']
+    const greps = options.greps ?? []
     const factory = new Function(
       'store', 'tab', 'tr', 'navigate', 'setPopup', 'openFromJar', 'popupAt', 'ideBasename',
       'ideAnnotationTypeAt', 'openAnnotationAttribute', 'lines',
-      `${source}
+      'ideIsMethodDeclaration', 'ideReceiverToken', 'ideDeclaredType', 'ideGrepQuery',
+      'ideLspQuery', 'ideTextualImplementations', 'ideAccessorProperty', 'ideIsFieldDeclaration', 'ideIsTypeDeclaration', 'ideAbs', 'ideReceiverOfCall', 'ideReceiverChain', 'ideLspLicenseMissing',
+      `${sourceFunction('ideRegexEscape', '65-lsp.js')}
+      ${sourceFunction('ideDeclarationPattern', '65-lsp.js')}
+      ${fallback}
+      ${accessor}
+      ${typeLookup}
+      ${implementation}
+      ${source}
       return { jump: jumpToDefinition }`,
     )
     const store = {
       setNotice: (text) => notices.push(text),
       openAt: () => opened,
-      getState: () => ({ lastLoadMs: 7 }),
+      getState: () => ({ lastLoadMs: 7, rootPath: '/ws' }),
     }
     const api = factory(
       store,
@@ -1113,7 +1172,20 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
       // 注解属性走另一条分支：这个桩返回空，表示当前行不在注解参数里。
       () => '',
       async () => false,
-      ['class B {}'],
+      lines,
+      matcher,
+      receiverOf,
+      declaredTypeOf,
+      async () => ({ ok: true, matches: greps }),
+      options.lsp ?? (async () => ({ locations: [] })),
+      options.implementations ?? (async () => []),
+      accessorProperty,
+      fieldDeclaration,
+      typeDeclaration,
+      (root, path) => `${root}/${path}`,
+      receiverOfCall,
+      receiverChain,
+      false,
     )
     return { api, notices, popups }
   }
@@ -1144,6 +1216,159 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'a location inside a dependency jar is not reported as a failed jump', JSON.stringify(outside.notices.slice(-1)))
   check(outside.notices.some((text) => typeof text === 'string' && text.includes('noDefinition')),
     'when no source is readable either, the banner says so', JSON.stringify(outside.notices.slice(-1)))
+
+  // 服务器没答出来、但声明就在工作区里：文本回退要落到接口里的方法。
+  const fallbackJump = build({ definition: async () => ({ locations: [], ms: 4 }) }, true, {
+    lines: [
+      'class B {',
+      '  private final OrderClearingService orderClearingService;',
+      '  void m() { orderClearingService.getDetail(id); }',
+    ],
+    greps: [
+      { path: 'other/CopyService.java', line: 9, text: '    OrderClearingDetailResp getDetail(Long clearingRecordId);' },
+      { path: 'order/service/OrderClearingService.java', line: 230, text: '    OrderClearingDetailResp getDetail(Long clearingRecordId);' },
+    ],
+  })
+  const line = '  void m() { orderClearingService.getDetail(id); }'
+  await fallbackJump.api.jump('getDetail', { line: 2, character: line.indexOf('getDetail') }, { clientX: 10, clientY: 10 })
+  const fallbackNotice = String(fallbackJump.notices.slice(-1)[0] ?? '')
+  check(fallbackNotice.includes('OrderClearingService.java:230') && !fallbackNotice.includes('CopyService'),
+    'an empty server answer falls back to the owner\'s declaration, not the first name match', fallbackNotice)
+
+  // 双击接口方法声明：要进实现，不能跳到别的类里同名的方法。
+  const declarationClick = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'public interface OrderClearingService {',
+      '    PageRespVo<OrderClearingRecordResp> selectPage(OrderClearingPageQuery query);',
+      '}',
+    ],
+    greps: [
+      { path: 'repo/PaymentRefundRecordRepository.java', line: 181, text: '    Page<RefundRecordEntity> selectPage(PaymentRefundQuery query);' },
+    ],
+  })
+  await declarationClick.api.jump('selectPage', { line: 1, character: 40 }, { clientX: 10, clientY: 10 })
+  const declarationNotice = String(declarationClick.notices.slice(-1)[0] ?? '')
+  check(declarationNotice === 'alreadyAtDefinition: selectPage' || declarationNotice.includes('alreadyAtDefinition'),
+    'a declaration click without implementations does not jump to an unrelated class', declarationNotice)
+
+  const withImplementation = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'public interface OrderClearingService {',
+      '    PageRespVo<OrderClearingRecordResp> selectPage(OrderClearingPageQuery query);',
+      '}',
+    ],
+    greps: [],
+    implementations: async () => [{ path: 'service/impl/OrderClearingServiceImpl.java', line: 332 }],
+  })
+  await withImplementation.api.jump('selectPage', { line: 1, character: 40 }, { clientX: 10, clientY: 10 })
+  const implementationNotice = String(withImplementation.notices.slice(-1)[0] ?? '')
+  check(implementationNotice.includes('OrderClearingServiceImpl.java:332') && implementationNotice.includes('implementationLabel'),
+    'a declaration click opens its implementation', implementationNotice)
+
+  // 双击 Lombok 属性访问器：跳到字段，而不是某个同名方法。
+  const propertyClick = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'class B {',
+      '  private final Entity entity;',
+      '  void m() { entity.getName().trim(); }',
+    ],
+    greps: [
+      { path: 'entity/Entity.java', line: 5, text: '    private String name;' },
+      { path: 'entity/Entity.java', line: 20, text: '    public String getName() { return name; }' },
+    ],
+  })
+  const propertyLine = '  void m() { entity.getName().trim(); }'
+  await propertyClick.api.jump('getName', { line: 2, character: propertyLine.indexOf('getName') }, { clientX: 10, clientY: 10 })
+  const propertyNotice = String(propertyClick.notices.slice(-1)[0] ?? '')
+  check(propertyNotice.includes('Entity.java:5') && propertyNotice.includes('propertyLabel'),
+    'an accessor click jumps to the property', propertyNotice)
+
+  // 服务器把点击位置当答案时，同样按「进实现」处理。
+  const samePosition = build({ definition: async () => ({ locations: [{ path: 'pkg/B.java', line: 1 }], ms: 4 }) }, true, {
+    lines: [
+      '  void selectPage() {}',
+      '}',
+    ],
+    greps: [],
+    implementations: async () => [{ path: 'pkg/BImpl.java', line: 9 }],
+  })
+  await samePosition.api.jump('selectPage', { line: 0, character: 7 }, { clientX: 10, clientY: 10 })
+  const sameNotice = String(samePosition.notices.slice(-1)[0] ?? '')
+  check(sameNotice.includes('BImpl.java:9'), 'a server answer pointing at the click opens the implementation', sameNotice)
+
+  // 双击字段声明：它本身已经是定义，不能跳去别的类里的同名成员。
+  const fieldClick = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'class B {',
+      '  private String refundNo;',
+      '}',
+    ],
+    greps: [
+      { path: 'other/Entity.java', line: 9, text: '    private String refundNo;' },
+    ],
+  })
+  const fieldLine = '  private String refundNo;'
+  await fieldClick.api.jump('refundNo', { line: 1, character: fieldLine.indexOf('refundNo') }, { clientX: 10, clientY: 10 })
+  const fieldNotice = String(fieldClick.notices.slice(-1)[0] ?? '')
+  check(fieldNotice.includes('alreadyAtDefinition'), 'a field declaration click stays put', fieldNotice)
+
+  // 链式调用换行：接收者在上一行，双击方法名仍要找到它的声明。
+  const chained = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'class B {',
+      '  private final PaymentRecordOrderRelationRepository paymentRecordOrderRelationRepository;',
+      '  void m() {',
+      '    Map<String, List<String>> map = paymentRecordOrderRelationRepository',
+      '        .listByPaymentTradeNos(tradeNoSet).stream()',
+      '  }',
+      '}',
+    ],
+    greps: [
+      { path: 'repo/Other.java', line: 9, text: '    public List<X> listByPaymentTradeNos(' },
+      { path: 'repository/PaymentRecordOrderRelationRepository.java', line: 49, text: '    public List<PaymentRecordOrderRelationEntity> listByPaymentTradeNos(' },
+    ],
+  })
+  const chainedLine = '        .listByPaymentTradeNos(tradeNoSet).stream()'
+  await chained.api.jump('listByPaymentTradeNos', { line: 4, character: chainedLine.indexOf('listByPaymentTradeNos') }, { clientX: 10, clientY: 10 })
+  const chainedNotice = String(chained.notices.slice(-1)[0] ?? '')
+  check(chainedNotice.includes('PaymentRecordOrderRelationRepository.java:49') && !chainedNotice.includes('Other'),
+    'a call broken across lines resolves the receiver on the line above', chainedNotice)
+
+  // 枚举常量作接收者：`Type.CONSTANT.matches(...)` 的 owner 是最左边的类型。
+  const enumReceiver = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'class PurchaseOrderServiceImpl {',
+      '  void confirm(PurchaseOrderConfirmReq req) {',
+      '    Assert.isTrue(PurchaseOrderStatusEnum.TO_PURCHASE.matches(purchaseOrder.getStatus()), "x");',
+      '  }',
+      '}',
+    ],
+    greps: [
+      { path: 'other/OrderCodeEnum.java', line: 13, text: '    default boolean matches(String code) {' },
+      { path: 'enums/PurchaseOrderStatusEnum.java', line: 85, text: '    public boolean matches(Integer code) {' },
+    ],
+  })
+  const enumLine = '    Assert.isTrue(PurchaseOrderStatusEnum.TO_PURCHASE.matches(purchaseOrder.getStatus()), "x");'
+  await enumReceiver.api.jump('matches', { line: 2, character: enumLine.indexOf('matches') }, { clientX: 10, clientY: 10 })
+  const enumNotice = String(enumReceiver.notices.slice(-1)[0] ?? '')
+  check(enumNotice.includes('PurchaseOrderStatusEnum.java:85') && !enumNotice.includes('OrderCodeEnum'),
+    'an enum constant receiver names its owning type', enumNotice)
+
+  // 类型名：工作区里的类优先于已发布的 sources jar 副本。
+  const typeClick = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {
+    lines: [
+      'class B {',
+      '  PaymentRecordEntity entity = null;',
+      '}',
+    ],
+    greps: [
+      { path: 'entity/PaymentRecordEntity.java', line: 20, text: 'public class PaymentRecordEntity {' },
+    ],
+  })
+  const typeLine = '  PaymentRecordEntity entity = null;'
+  await typeClick.api.jump('PaymentRecordEntity', { line: 1, character: typeLine.indexOf('PaymentRecordEntity') }, { clientX: 10, clientY: 10 })
+  const typeNotice = String(typeClick.notices.slice(-1)[0] ?? '')
+  check(typeNotice.includes('PaymentRecordEntity.java:20'), 'a type name opens its workspace declaration', typeNotice)
 }
 
 // ---- tab context menu ------------------------------------------------------
@@ -1423,6 +1648,59 @@ narrowLeave()
 check(narrow.record.sidebarToggles === undefined, 'a narrow layout never restores it either', String(narrow.record.sidebarToggles))
 narrowInject.store.dispose()
 sandbox.innerWidth = 1440
+
+// ---- textual caller classification -----------------------------------------
+{
+  const api = new Function([
+    sourceFunction('ideRegexEscape', '65-lsp.js'),
+    sourceFunction('ideTextualIsDeclaration', '65-lsp.js'),
+    sourceFunction('ideTextualIsCall', '65-lsp.js'),
+    sourceFunction('ideTextualIsReceiverCall', '65-lsp.js'),
+  ].join('\n') + '\nreturn { ideTextualIsDeclaration, ideTextualIsCall, ideTextualIsReceiverCall }')()
+
+  const chainOf = new Function(`${sourceFunction('ideReceiverChain', '65-lsp.js')}\nreturn ideReceiverChain`)()
+  const enumCall = '    Assert.isTrue(PurchaseOrderStatusEnum.TO_PURCHASE.matches(status), "x");'
+  check(chainOf([enumCall], 0, enumCall.indexOf('matches')) === 'PurchaseOrderStatusEnum.TO_PURCHASE',
+    'a dotted receiver keeps every segment', chainOf([enumCall], 0, enumCall.indexOf('matches')))
+  const broken = ['    list = paymentRecordOrderRelationRepository', '        .listByPaymentTradeNos(set).stream()']
+  check(chainOf(broken, 1, broken[1].indexOf('listByPaymentTradeNos')) === 'paymentRecordOrderRelationRepository',
+    'a broken chain takes the receiver from the line above', chainOf(broken, 1, broken[1].indexOf('listByPaymentTradeNos')))
+
+  const declaration = '    ReconFundDocDetailResp detail(Long docId);'
+  check(api.ideTextualIsDeclaration(declaration, 'detail') === true, 'an interface method declaration is not a call', declaration)
+  check(api.ideTextualIsCall(declaration, 'detail') === false, 'a declaration is excluded from callers', String(api.ideTextualIsCall(declaration, 'detail')))
+
+  const receiverCall = '        ReconFundDocStatisticsResp resp = reconFundDocQueryService.statistics(query);'
+  check(api.ideTextualIsCall(receiverCall, 'statistics') === true, 'a receiver call counts as a caller', receiverCall)
+  check(api.ideTextualIsReceiverCall(receiverCall, 'statistics') === true, 'a receiver call names its receiver', String(api.ideTextualIsReceiverCall(receiverCall, 'statistics')))
+
+  const bareCall = '        ReconFundDocDetailResp resp = detail(bill(BillTypeEnum.SUPPLIER, "1"),'
+  check(api.ideTextualIsCall(bareCall, 'detail') === true && api.ideTextualIsReceiverCall(bareCall, 'detail') === false,
+    'a bare helper call has no receiver', String(api.ideTextualIsReceiverCall(bareCall, 'detail')))
+
+  const getDetail = '        return DataResponse.ok(orderClearingService.getDetail(clearingRecordId));'
+  check(api.ideTextualIsCall(getDetail, 'detail') === false, 'getDetail is not a call of detail', String(api.ideTextualIsCall(getDetail, 'detail')))
+  check(api.ideTextualIsCall(getDetail, 'getDetail') === true && api.ideTextualIsReceiverCall(getDetail, 'getDetail') === true,
+    'getDetail is its own call', getDetail)
+}
+
+// ---- definition text fallback ----------------------------------------------
+{
+  const isDeclaration = new Function(`${sourceFunction('ideIsMethodDeclaration', '30-code.js')}\nreturn ideIsMethodDeclaration`)()
+  check(isDeclaration('    OrderClearingDetailResp getDetail(Long clearingRecordId);', 'getDetail') === true, 'an interface method reads as a declaration', String(isDeclaration('    OrderClearingDetailResp getDetail(Long clearingRecordId);', 'getDetail')))
+  check(isDeclaration('    public DataResponse<OrderClearingDetailResp> getDetail(@PathVariable Long id) {', 'getDetail') === true, 'an annotated public method reads as a declaration', String(isDeclaration('    public DataResponse<OrderClearingDetailResp> getDetail(@PathVariable Long id) {', 'getDetail')))
+  check(isDeclaration('        return DataResponse.ok(orderClearingService.getDetail(clearingRecordId));', 'getDetail') === false, 'a call is not a declaration', String(isDeclaration('        return DataResponse.ok(orderClearingService.getDetail(clearingRecordId));', 'getDetail')))
+  check(isDeclaration('    private final OrderClearingService orderClearingService;', 'getDetail') === false, 'a field is not a declaration', String(isDeclaration('    private final OrderClearingService orderClearingService;', 'getDetail')))
+  // 本类里的裸调用：前面只有缩进，不是声明（否则双击会被当成「当前位置就是定义」）。
+  check(isDeclaration('        fillJobOperatorIfAbsent();', 'fillJobOperatorIfAbsent') === false,
+    'a bare same-class call is not a declaration', String(isDeclaration('        fillJobOperatorIfAbsent();', 'fillJobOperatorIfAbsent')))
+  check(isDeclaration('    private void fillJobOperatorIfAbsent() {', 'fillJobOperatorIfAbsent') === true,
+    'its declaration still reads as one', String(isDeclaration('    private void fillJobOperatorIfAbsent() {', 'fillJobOperatorIfAbsent')))
+  check(isDeclaration('        Map<String, List<X>> build(Map<String, X> input) {', 'build') === true,
+    'a generic return type is still a declaration', String(isDeclaration('        Map<String, List<X>> build(Map<String, X> input) {', 'build')))
+  check(isDeclaration('        page = service.detail(id);', 'detail') === false,
+    'an assignment is not a declaration', String(isDeclaration('        page = service.detail(id);', 'detail')))
+}
 
 // ---- tree VCS colouring ----------------------------------------------------
 {

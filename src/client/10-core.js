@@ -823,6 +823,23 @@ function ideCreateStore(refs) {
     restart({ keepView: state.rootPath !== '' && state.tabs.length > 0 })
   }
 
+  /**
+   * Switch to another project in one step.
+   *
+   * The Session and its root are patched together and restarted once. Patching
+   * the Session first reloaded the old tabs against the new Session's scope,
+   * which the file Remote refused as `outside-workspace` — a red error that
+   * covered the panel for one frame before the new workspace appeared.
+   */
+  function enterProject(rootPath, sessionId) {
+    const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
+    if (nextRoot === '') return
+    const nextSession = typeof sessionId === 'string' && sessionId !== '' ? sessionId : state.sessionId
+    if (nextRoot === state.rootPath && nextSession === state.sessionId) return
+    patch({ rootPath: nextRoot, sessionId: nextSession })
+    restart({ restore: true })
+  }
+
   /** Adopt the absolute workspace root the Session list reports for that Session. */
   function setRoot(rootPath) {
     const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
@@ -1392,6 +1409,7 @@ function ideCreateStore(refs) {
     getState,
     rememberSession,
     setRoot,
+    enterProject,
     layout: () => refs.layout?.current,
     /** List one workspace directory (index support); unwrapped `RemoteResult`. */
     listPath: (sessionId, root, relativePath) => {

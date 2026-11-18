@@ -183,5 +183,15 @@
   "treeTruncated": "Truncated",
   "treeTag": "tag",
   "treeBranch": "branch",
-  "treeRouteMissing": "The route is missing; quit and reopen DSH"
+  "treeRouteMissing": "The route is missing; quit and reopen DSH",
+  "tabImplementsText": "Implementations (text)",
+  "chainTextual": "Language service unavailable — callers are text matches",
+  "propertyLabel": "property",
+  "implementationLabel": "implementation",
+  "alreadyAtDefinition": "Already at the definition",
+  "lspUnsupported": "The language server does not support this query; results are text matches",
+  "lspLicense": "Opened the JetBrains licence page in your browser; restart DSH after signing in",
+  "paletteActionLicenseRelogin": "JetBrains licence: sign out and sign in again",
+  "lspReloginRunning": "Signing out of the current JetBrains account and opening the sign-in page…",
+  "lspReloginOpened": "Opened the JetBrains sign-in page; restart DSH after signing in"
 }

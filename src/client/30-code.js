@@ -694,6 +694,13 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // The query time is only a hint in the banner; a missing value is fine.
       const queryMs = typeof outcome?.ms === 'number' ? outcome.ms : undefined
       store.setNotice('')
+      const lineText = lines[position.line] ?? ''
+      // A click that lands on a declaration asks for the implementation; a click
+      // on a call asks for the declaration. The line itself says which one it is.
+      const declaresHere = ideIsMethodDeclaration(lineText, name)
+      // A field's own line is the definition; jumping to another class's
+      // same-named member is never what that click means.
+      const declaresFieldHere = !declaresHere && ideIsFieldDeclaration(lineText, name)
 
       if (locations.length > 1) {
         setPopup({
@@ -705,6 +712,14 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         return
       }
       if (locations.length === 1) {
+        // The server points at the click itself: this is the declaration of a
+        // contract method, so the useful destination is its implementation.
+        const sameAsClick = locations[0].path === tab.path && locations[0].line === position.line + 1
+        if (sameAsClick && declaresHere) {
+          if (await openImplementation(name, position, event)) return
+          store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
+          return
+        }
         // Say where the jump went: a wrong answer is then one glance away
         // instead of a mystery about whether the gesture did anything.
         if (store.openAt(locations[0].path, locations[0].line)) {
@@ -721,10 +736,31 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // type, so the symbol alone resolves nothing.
       const annotationType = ideAnnotationTypeAt(lines, position)
       if (annotationType !== '' && await openAnnotationAttribute(annotationType, name, position)) return
+      // A declaration click without a server answer still means "the code that
+      // runs", not "the first same-named method in the workspace".
+      if (declaresHere) {
+        if (await openImplementation(name, position, event)) return
+        store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
+        return
+      }
+      if (declaresFieldHere) {
+        store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
+        return
+      }
+      // Lombok-style property: `getName()` has no method in the sources.
+      if (await openAccessorProperty(name, position)) return
+      // A type name: the workspace declaration wins over a published jar copy.
+      if (await openLocalType(name)) return
       // A type from a dependency: its source is readable when the artifact ships
       // `-sources`, which is true for everything this workspace imports.
+      // The server's project model can miss the declaring module; the file is
+      // still in the workspace, so the declaration is one search away. This
+      // comes before the jar copy: the workspace file is the real source.
+      if (await openLocalDeclaration(name, position)) return
       if (await openFromJar(name, position)) return
-      store.setNotice(`${tr('noDefinition')}: ${name}`)
+      // With no licence the engine refused every query, so "not found" is not
+      // the reader's problem to chase — the missing sign-in is.
+      store.setNotice(ideLspLicenseMissing ? tr('lspLicense') : `${tr('noDefinition')}: ${name}`)
     } catch (error) {
       store.setNotice(`${tr('lspFailed')}: ${error?.code ?? error?.message ?? 'unknown'}`)
     }
@@ -746,6 +782,182 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   }
 
   /**
+   * Whether one line declares `name` as a method.
+   *
+   * The language server can answer nothing when its project model does not cover
+   * the module that declares the method; a text search for the declaration is
+   * then the only way to land on it, and it must not mistake a call for one.
+   */
+  function ideIsMethodDeclaration(text, name) {
+    if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+    const trimmed = text.trim()
+    if (/^(?:return|if|for|while|switch|throw|new|else|case|yield|assert)\b/.test(trimmed)) return false
+    const at = text.indexOf(name)
+    if (at < 0) return false
+    // A declaration states a return type right before the name. A bare call
+    // (`fillJobOperatorIfAbsent();`) has nothing but indentation there, and an
+    // assignment or a receiver ends with `=`/`.` instead of a type token.
+    const before = text.slice(0, at).trim()
+    if (before === '') return false
+    // `service.` / `page =` say a call or an assignment, not a return type.
+    if (/[.=(,+\-*/&|!?:]$/.test(before)) return false
+    return /(?:^|\s)[A-Za-z_$][\w$.]*(?:<[^()]*>)?(?:\[\])?$/.test(before)
+  }
+
+  /**
+   * Last resort: find a method declaration by text in the workspace.
+   *
+   * @returns whether a tab was opened.
+   */
+  const openLocalDeclaration = async (name, position) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return false
+    const lineText = lines[position.line] ?? ''
+    // `PurchaseOrderStatusEnum.TO_PURCHASE.matches(...)` names its owner in the
+    // leftmost segment; `field.matches(...)` states a variable whose type is
+    // declared in this file.
+    const chain = ideReceiverChain(lines, position.line, position.character)
+    const head = chain.split('.')[0]
+    const declared = head === '' ? '' : ideDeclaredType(lines, head)
+    const owner = declared !== '' ? declared : (/^[A-Z]/.test(head) ? head : '')
+    // A bare name overflows the route's match cap for common names (`detail`,
+    // `get`), cutting the declaration itself; a declaration-shaped pattern keeps
+    // the answer small and precise.
+    const found = await ideGrepQuery(root, ideDeclarationPattern(name), { extensions: ['java'] })
+    if (found.ok !== true) return false
+    const declarations = found.matches.filter((match) => ideIsMethodDeclaration(match?.text, name))
+    const inThisFile = declarations.filter((match) => match.path === tab.path)
+    const byOwner = owner === ''
+      ? []
+      : declarations.filter((match) => String(match?.path ?? '').split('/').pop() === `${owner}.java`)
+    // Without an owner the declaration may be in this file; picking the first
+    // same-named method in the workspace is how a click on an interface method
+    // used to land in an unrelated class.
+    const pick = byOwner[0] ?? inThisFile[0] ?? undefined
+    if (pick === undefined) return false
+    if (!store.openAt(pick.path, pick.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(pick.path)}:${pick.line}`)
+    return true
+  }
+
+  /**
+   * The workspace file declaring `name`, with its lines, when there is one.
+   *
+   * The same module may also be installed in the local Maven repository; its
+   * `-sources.jar` copy must never win over the file that is being edited.
+   */
+  const openWorkspaceTypeDeclaration = async (name) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return undefined
+    const found = await ideGrepQuery(root, `\\b(?:class|interface|enum|record|@interface)\\s+${ideRegexEscape(name)}\\b`, {
+      extensions: ['java'],
+      caseSensitive: true,
+    })
+    if (found.ok !== true) return undefined
+    const match = found.matches.find((row) => ideIsTypeDeclaration(row?.text, name)
+      && String(row?.path ?? '').split('/').pop() === `${name}.java`)
+    if (match === undefined) return undefined
+    const lines = await store.readLines(match.path).catch(() => undefined)
+    return Array.isArray(lines) ? { path: match.path, lines } : undefined
+  }
+
+  /**
+   * Jump from a type name to the file that declares it.
+   *
+   * A workspace class beats its published `-sources.jar` copy: the module in
+   * this workspace is the source of truth, and the jar is only a fallback for
+   * dependencies.
+   *
+   * @returns whether a tab was opened.
+   */
+  const openLocalType = async (name) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return false
+    const found = await ideGrepQuery(root, `\\b(?:class|interface|enum|record|@interface)\\s+${ideRegexEscape(name)}\\b`, {
+      extensions: ['java'],
+      caseSensitive: true,
+    })
+    if (found.ok !== true) return false
+    const declarations = found.matches.filter((match) => ideIsTypeDeclaration(match?.text, name))
+    const pick = declarations.find((match) => String(match?.path ?? '').split('/').pop() === `${name}.java`) ?? declarations[0]
+    if (pick === undefined) return false
+    if (!store.openAt(pick.path, pick.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(pick.path)}:${pick.line}`)
+    return true
+  }
+
+  /**
+   * Jump from an accessor call (`getName()`) to the field it reads.
+   *
+   * A Lombok class has no accessor in its sources, so the engine answers nothing
+   * and text search finds no method either; the property itself is the answer.
+   * Only a call with a receiver whose type is declared in this file qualifies —
+   * `getDetail()` may be an ordinary method, and it is tried first elsewhere.
+   *
+   * @returns whether a tab was opened.
+   */
+  const openAccessorProperty = async (name, position) => {
+    const root = store.getState().rootPath
+    const property = ideAccessorProperty(name)
+    if (root === '' || property === '') return false
+    const lineText = lines[position.line] ?? ''
+    const head = ideReceiverChain(lines, position.line, position.character).split('.')[0]
+    const declared = head === '' ? '' : ideDeclaredType(lines, head)
+    if (declared === '') return false
+    const found = await ideGrepQuery(root, `\\b${ideRegexEscape(property)}\\s*[;=,]`, { extensions: ['java'], caseSensitive: true })
+    if (found.ok !== true) return false
+    const target = found.matches.find((match) => String(match?.path ?? '').split('/').pop() === `${declared}.java`
+      && ideIsFieldDeclaration(match?.text, property))
+    if (target === undefined) return false
+    if (!store.openAt(target.path, target.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(target.path)}:${target.line} \u00b7 ${tr('propertyLabel')}`)
+    return true
+  }
+
+  /**
+   * The implementation of the method declared at the click.
+   *
+   * A click on an interface (or abstract) method declaration means "take me to
+   * the code that runs"; the engine's implementation query answers it, and the
+   * textual `implements`/`extends` scan covers the case where it does not.
+   *
+   * @returns whether something was opened or offered.
+   */
+  const openImplementation = async (name, position, event) => {
+    const root = store.getState().rootPath
+    if (root === '') return false
+    const implementations = []
+    if (navigate !== undefined) {
+      const answer = await ideLspQuery({
+        operation: 'goToImplementation',
+        filePath: ideAbs(root, tab.path),
+        workspaceRoot: root,
+        position,
+      }).catch(() => undefined)
+      for (const location of answer?.locations ?? []) {
+        if (location?.path === tab.path && location.line === position.line + 1) continue
+        implementations.push(location)
+      }
+    }
+    if (implementations.length === 0) {
+      const textual = await ideTextualImplementations(store, tab.path, lines, name, 8)
+      for (const row of textual) implementations.push({ path: row.path, line: row.line })
+    }
+    if (implementations.length === 0) return false
+    if (implementations.length > 1) {
+      setPopup({
+        name,
+        sections: [{ key: 'impl', title: `${tr('tabImplements')} (${implementations.length})`, rows: implementations.slice(0, 8) }],
+        ...popupAt(event),
+      })
+      return true
+    }
+    if (!store.openAt(implementations[0].path, implementations[0].line)) return false
+    store.setNotice(`\u2192 ${ideBasename(implementations[0].path)}:${implementations[0].line} \u00b7 ${tr('implementationLabel')}`)
+    return true
+  }
+
+  /**
    * Open the definition from a dependency jar's sources.
    *
    * @returns whether a read-only tab was opened.
@@ -762,6 +974,16 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const openAnnotationAttribute = async (typeName, attribute, position) => {
     const fqn = ideImportedFqn(typeName)
     if (fqn === '') return false
+    // An annotation declared in this workspace is the source of truth; the jar
+    // copy of the same module only exists because it was installed locally.
+    const workspace = await openWorkspaceTypeDeclaration(typeName)
+    if (workspace !== undefined) {
+      const index = ideAttributeLineIn(workspace.lines, attribute)
+      if (index >= 0 && store.openAt(workspace.path, index + 1)) {
+        store.setNotice(`\u2192 ${ideBasename(workspace.path)}:${index + 1}`)
+        return true
+      }
+    }
     const found = await ideJarSourceQuery(fqn)
     if (found.ok !== true || found.found !== true) return false
     const index = ideAttributeLineIn(found.text.split('\n'), attribute)
@@ -864,13 +1086,17 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     const anchor = popupAt(event, 620)
     const started = ideNow()
     const root = { name, path: tab.path, line: position.line + 1, position }
+    // A licence refusal is not "this method has no callers"; say what to do.
+    const emptyText = (tree) => (typeof tree?.failed === 'string' && tree.failed.startsWith('license:')
+      ? tr('lspLicense')
+      : tr('chainNone'))
     const paint = (tree, state, ms) => setPopup({
       kind: 'chain',
       name,
       tree,
       state,
       ms,
-      empty: tr('chainNone'),
+      empty: emptyText(tree),
       ...anchor,
     })
     paint({ ...root, children: [] }, 'loading', 0)
@@ -897,6 +1123,9 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         if ((grouped.implementations ?? []).length > 0) {
           sections.push({ key: 'impl', title: `${tr('tabImplements')} (${grouped.implementations.length})`, rows: grouped.implementations })
         }
+        if ((grouped.implementationsText ?? []).length > 0) {
+          sections.push({ key: 'implText', title: `${tr('tabImplementsText')} (${grouped.implementationsText.length})`, rows: grouped.implementationsText })
+        }
         if ((grouped.callers ?? []).length > 0) {
           sections.push({ key: 'callers', title: `${tr('tabCallers')} (${grouped.callers.length})`, rows: grouped.callers })
         }
@@ -916,7 +1145,18 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       })
       const sections = sectionsOf(grouped)
       if (sections.length === 0) {
-        store.setNotice(`${tr('noUsages')}: ${name}${tr('maybeIndexing')}`)
+        // A failed server is not an answer: say so instead of implying the
+        // symbol has no usages. An operation the server does not implement is
+        // not an outage either — it just means this answer is text-only.
+        if (typeof grouped.failed === 'string' && grouped.failed.startsWith('license:')) {
+          store.setNotice(tr('lspLicense'))
+        } else if (typeof grouped.failed === 'string' && grouped.failed.startsWith('lsp-unsupported')) {
+          store.setNotice(`${tr('lspUnsupported')}: ${name}`)
+        } else {
+          store.setNotice(grouped.failed
+            ? `${tr('lspFailed')}: ${grouped.failed}`
+            : `${tr('noUsages')}: ${name}${tr('maybeIndexing')}`)
+        }
         return
       }
       store.setNotice('')
@@ -1027,6 +1267,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     ref: scrollRef,
     tabIndex: 0,
     onClick: (event) => {
+      // A licence page parked after an LSP refusal opens on the next gesture.
+      ideFlushLicenseUrl()
       // A plain click deliberately does nothing unless the user assigns it one.
       // Selecting and copying source is a more frequent gesture than navigating,
       // and a drag that ends on an identifier must not be mistaken for a request.

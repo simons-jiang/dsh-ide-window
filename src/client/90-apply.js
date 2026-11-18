@@ -106,12 +106,38 @@ function apply(ctx) {
    * Only commands this panel actually owns: a searchable list of things that do
    * nothing would be worse than a short one that always works.
    */
+  /**
+   * Switch the language server's licence account: sign the machine out of the
+   * current JetBrains account, then open a fresh sign-in. Only a licence verb
+   * can provision the server, which is why a browser sign-in alone does nothing.
+   */
+  const reloginLicense = async () => {
+    store.setNotice(tr('lspReloginRunning'))
+    try {
+      const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+        ? document.baseURI
+        : 'http://dsh.internal/'
+      const response = await fetch(new URL('dsh-ide/license', base).href, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'relogin' }),
+      })
+      const answer = await response.json()
+      store.setNotice(answer?.value?.opened === true
+        ? tr('lspReloginOpened')
+        : `${tr('lspFailed')}: ${answer?.error?.code ?? 'license-relogin'}`)
+    } catch (error) {
+      store.setNotice(`${tr('lspFailed')}: ${error?.message ?? 'network'}`)
+    }
+  }
+
   const paletteActions = [
     { id: 'tree', labelKey: 'paletteActionTree', run: () => store.setTreeVisible(!store.getState().treeVisible) },
     { id: 'refresh', labelKey: 'paletteActionRefresh', run: () => store.refreshAll() },
     { id: 'jump', labelKey: 'paletteActionJump', run: () => store.setJumpEnabled(!store.getState().jumpEnabled) },
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
+    { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
   ]
 
 

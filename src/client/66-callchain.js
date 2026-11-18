@@ -164,6 +164,27 @@ async function ideCallChain(store, root, options = {}) {
     }
   }
 
+  // The engine may be down (or its project model incomplete). A chain that
+  // silently answers "no callers" in that state is worse than a text-matched
+  // one, so a level with no semantic references falls back to the same
+  // receiver-checked text search the usages popup uses.
+  let textual = false
+  let failure = ''
+  const textualCallersOf = async (node) => {
+    const lines = await linesOf(node.path)
+    const lineText = String(lines[node.position.line] ?? '')
+    const afterName = lineText.slice(node.position.character + String(node.name ?? '').length)
+    if (!afterName.trimStart().startsWith('(')) return []
+    const ownerNames = [ideClassName(node.path), ...ideContractNames(lines)].filter((name) => name !== '')
+    const rows = await ideTextualCallers(store, node.path, node.position, node.name, IDE_CHAIN_CHILDREN, {
+      requireReceiver: !/\bstatic\b/.test(lineText),
+      ownerNames,
+    }).catch(() => [])
+    if (rows.length === 0) return []
+    textual = true
+    return rows.map((row) => ({ path: row.path, line: row.line }))
+  }
+
   const seen = new Set([`${root.path}:${root.line}`])
   let level = [tree]
   let count = 1
@@ -171,10 +192,20 @@ async function ideCallChain(store, root, options = {}) {
     const next = []
     for (const node of level) {
       const [answer, contract] = await Promise.all([
-        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch(() => undefined),
+        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch((error) => {
+          if (failure === '') {
+            failure = ideLspFailureText({
+              operation: 'findReferences',
+              code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
+              detail: String(error?.detail ?? '').slice(0, 160),
+            })
+          }
+          return undefined
+        }),
         ideContractReferences(store, node.path, await linesOf(node.path), node.name),
       ])
-      const locations = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      const semantic = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      const locations = semantic.length > 0 ? semantic : await textualCallersOf(node)
       let added = 0
       for (const location of locations) {
         if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
@@ -208,6 +239,8 @@ async function ideCallChain(store, root, options = {}) {
     level = next
     options.onPartial?.(tree)
   }
+  tree.textual = textual
+  tree.failed = textual ? '' : failure
   return tree
 }
 
@@ -280,8 +313,14 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
     ? tr('chainLoading')
     : `${count}${typeof popup.ms === 'number' ? ` · ${popup.ms}ms` : ''}`
   const forest = root === undefined ? [] : ideChainInverted(root)
+  const note = root === undefined
+    ? ''
+    : (typeof root.failed === 'string' && root.failed.startsWith('license:')
+      ? tr('lspLicense')
+      : (root.textual === true ? tr('chainTextual') : (root.failed ? tr('chainTextual') : '')))
   const body = h(React.Fragment, null, [
     h('div', { key: 'rule', className: 'iw-chain-rule' }, tr('chainRule')),
+    note === '' ? null : h('div', { key: 'note', className: 'iw-chain-note' }, note),
     root === undefined || (count <= 1 && popup.state === 'ready')
       ? h('div', { key: 'empty', className: 'iw-hint' }, popup.empty ?? tr('chainNone'))
       : h('div', { key: 'forest', className: 'iw-chain-roots' }, forest.map((entry, index) => h(IdeChainNode, {

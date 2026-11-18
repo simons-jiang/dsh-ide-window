@@ -26,7 +26,107 @@ function ideLspUrl() {
  * @returns the normalized `{ kind, locations | hover }`.
  * @throws an Error whose `code` is the Host's stable failure code.
  */
+/**
+ * Operations the server answered "not supported" for.
+ *
+ * A JSON-RPC `-32601` (or a message saying so) will not change within a
+ * session; asking again only produces another error banner and another wait
+ * before the text fallback.
+ */
+const ideLspUnsupported = new Set()
+
+/**
+ * Whether one error says the machine has no licence for the language server.
+ *
+ * The JetBrains server refuses every request with `-32802: no active JetBrains
+ * license`; the only cure is signing in with a licensed account outside the
+ * plugin, so this is not retried on every click.
+ */
+function ideLspNeedsLicense(error) {
+  const text = `${error?.detail ?? ''} ${error?.message ?? ''}`
+  return /-32802|no active JetBrains license/i.test(text)
+}
+
+/** Set once the server answered that this machine has no licence. */
+let ideLspLicenseMissing = false
+
+/** The URL the next real click should open, and whether we asked the host already. */
+let ideLicenseUrlPending = ''
+let ideLicenseRequested = false
+
+/**
+ * Start the JetBrains sign-in through the host.
+ *
+ * The host runs `intellij-server license login --browser` and returns the URL
+ * the account flow opened. A popup without a user gesture is easy to block, so
+ * the URL is also parked for the next click (`ideFlushLicenseUrl`). When the
+ * machine is already signed in without a licence the tool prints guidance
+ * instead of a URL; the account's licence page is the useful destination then.
+ */
+async function ideRequestLicenseLogin() {
+  if (ideLicenseRequested) return
+  ideLicenseRequested = true
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  let answer
+  try {
+    const response = await fetch(new URL('dsh-ide/license', base).href, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'open' }),
+    })
+    answer = await response.json()
+  } catch (error) {
+    void error
+    answer = undefined
+  }
+  // The host opens the page with the platform browser (`open`/`xdg-open`),
+  // which is the only reliable way out of a webview. `window.open` stays as a
+  // fallback when the host could not launch anything.
+  if (answer?.value?.opened === true) return
+  const url = typeof answer?.value?.url === 'string' && answer.value.url !== ''
+    ? answer.value.url
+    : 'https://account.jetbrains.com/licenses'
+  ideLicenseUrlPending = url
+  try {
+    const opened = globalThis.open?.(url, '_blank', 'noopener')
+    if (opened !== null && opened !== undefined) ideLicenseUrlPending = ''
+  } catch (error) {
+    void error
+  }
+}
+
+/** Open the parked licence page while a click's user gesture is still fresh. */
+function ideFlushLicenseUrl() {
+  if (ideLicenseUrlPending === '') return
+  const url = ideLicenseUrlPending
+  ideLicenseUrlPending = ''
+  try {
+    globalThis.open?.(url, '_blank', 'noopener')
+  } catch (error) {
+    void error
+  }
+}
+
+/** Whether one error means the server does not implement this operation. */
+function ideLspUnsupportedBy(error) {
+  const text = `${error?.detail ?? ''} ${error?.message ?? ''}`
+  return /-32601|method not found|not supported|unsupported/i.test(text)
+}
+
 async function ideLspQuery(payload, signal) {
+  if (ideLspLicenseMissing) {
+    const refused = new Error('no active JetBrains license')
+    refused.code = 'LSP_NO_LICENSE'
+    refused.detail = 'the language server has no active licence on this machine'
+    throw refused
+  }
+  if (ideLspUnsupported.has(payload?.operation)) {
+    const skipped = new Error('operation not supported by the server')
+    skipped.code = 'lsp-unsupported'
+    throw skipped
+  }
   let response
   try {
     response = await fetch(ideLspUrl(), {
@@ -51,6 +151,14 @@ async function ideLspQuery(payload, signal) {
     const failure = new Error(parsed.error?.code ?? `http-${response.status}`)
     failure.code = parsed.error?.code ?? `http-${response.status}`
     failure.detail = parsed.error?.message ?? ''
+    if (ideLspUnsupportedBy(failure) && typeof payload?.operation === 'string') {
+      ideLspUnsupported.add(payload.operation)
+    }
+    if (ideLspNeedsLicense(failure)) {
+      // First refusal: start the sign-in so the page is one click away.
+      if (!ideLspLicenseMissing) void ideRequestLicenseLogin()
+      ideLspLicenseMissing = true
+    }
     throw failure
   }
   return parsed.value
@@ -409,30 +517,227 @@ function ideAccessorNames(name) {
   return [`get${capitalized}`, `set${capitalized}`, `is${capitalized}`]
 }
 
+/** Files one textual caller search may read while checking receivers. */
+const IDE_MAX_TEXTUAL_FILES = 12
+
+/** Escape one identifier for a regular expression. */
+function ideRegexEscape(text) {
+  return String(text ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** The property an accessor name implies: `getName` → `name`, `isActive` → `active`. */
+function ideAccessorProperty(name) {
+  const match = /^(?:get|set|is)([A-Z][\w$]*)$/.exec(String(name ?? ''))
+  if (match === null) return ''
+  return match[1].charAt(0).toLowerCase() + match[1].slice(1)
+}
+
+/** Whether one line declares a type named `name` (`public class Name {`). */
+function ideIsTypeDeclaration(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  const pattern = new RegExp(`^\\s*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+${ideRegexEscape(name)}\\b`)
+  return pattern.test(text)
+}
+
+/** Whether one line declares a field named `name` (`private String name;`). */
+function ideIsFieldDeclaration(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  // `return refundNo;` states a type-like token before the name too; only a
+  // declaration starts with modifiers/type and nothing else.
+  if (/^(?:return|throw|else|if|for|while|switch|case|yield|assert|System)\b/.test(text.trim())) return false
+  const pattern = new RegExp(`^\\s*(?:(?:public|protected|private|static|final|transient|volatile)\\s+)*[A-Za-z_$][\\w$<>\\[\\],.?]*\\s+${ideRegexEscape(name)}\\s*[;=]`)
+  return pattern.test(text)
+}
+
+/**
+ * The receiver a call is made on, including a chain broken across lines.
+ *
+ * `paymentRecordOrderRelationRepository` on the line above and
+ * `.listByPaymentTradeNos(...)` on this one is one expression; reading only the
+ * current line loses the receiver and the owner of the method with it.
+ */
+function ideReceiverOfCall(lines, line, character) {
+  const text = String((lines ?? [])[line] ?? '')
+  const before = text.slice(0, Math.max(0, character))
+  if (before.trim() !== '' && !/^\s*\./.test(text)) return ideReceiverToken(before)
+  for (let index = line - 1; index >= 0 && index >= line - 16; index -= 1) {
+    const previous = String(lines[index] ?? '').trim()
+    if (previous === '') continue
+    const match = /([A-Za-z_$][\w$]*)\s*$/.exec(previous)
+    if (match !== null) return match[1]
+    if (!/[.([,]\s*$/.test(previous)) return ''
+  }
+  return ''
+}
+
+/**
+ * The dotted expression a call is made on: `PurchaseOrderStatusEnum.TO_PURCHASE`.
+ *
+ * A single identifier is not enough when the receiver is a static call target or
+ * an enum constant — the class that owns the method is the leftmost segment.
+ */
+function ideReceiverChain(lines, line, character) {
+  const text = String((lines ?? [])[line] ?? '')
+  const before = text.slice(0, Math.max(0, character)).replace(/\s+$/, '')
+  const tail = /[A-Za-z0-9_$.]+$/.exec(before.replace(/\($/, ''))
+  const sameLine = tail === null ? '' : tail[0].replace(/\.$/, '')
+  if (sameLine !== '' && !/^\s*\./.test(text)) return sameLine
+  // A chain broken before the dot: the receiver sits on an earlier line.
+  for (let index = line - 1; index >= 0 && index >= line - 16; index -= 1) {
+    const previous = String(lines[index] ?? '').trim()
+    if (previous === '') continue
+    const found = /([A-Za-z0-9_$.]+)\s*$/.exec(previous)
+    if (found !== null) return found[1].replace(/\.$/, '')
+    if (!/[.([,]\s*$/.test(previous)) return ''
+  }
+  return ''
+}
+
+/** Grep pattern for a declaration of `name`: a type token, then the name. */
+function ideDeclarationPattern(name) {
+  return `[A-Za-z0-9_$<>\\[\\],.?]+\\s+${ideRegexEscape(name)}\\s*\\(`
+}
+
+/** Whether one line declares `name` rather than using it. */
+function ideTextualIsDeclaration(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  const use = new RegExp(`\\b${ideRegexEscape(name)}\\s*\\(`)
+  if (!use.test(text)) return false
+  const declaration = new RegExp(
+    `^\\s*(?:(?:public|protected|private|static|final|abstract|synchronized|default|native)\\s+)*[\\w$<>\\[\\],.?\\s]+\\s+${ideRegexEscape(name)}\\s*\\(`,
+  )
+  return declaration.test(text)
+}
+
+/**
+ * Whether one reference row is the method's own declaration.
+ *
+ * `findReferences` answers with declarations too — the contract's signature
+ * line, an override in another class — and those are not call sites.
+ */
+function ideReferenceIsDeclaration(lines, line, name) {
+  const text = String((lines ?? [])[line - 1] ?? '')
+  return ideTextualIsDeclaration(text, name)
+}
+
+/** Whether one line is a call of `name`, rather than its declaration. */
+function ideTextualIsCall(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  const use = new RegExp(`\\b${ideRegexEscape(name)}\\s*\\(`)
+  return use.test(text) && !ideTextualIsDeclaration(text, name)
+}
+
+/** Whether one call line invokes `name` through a receiver (`obj.name(`). */
+function ideTextualIsReceiverCall(text, name) {
+  return new RegExp(`\\.\\s*${ideRegexEscape(name)}\\s*\\(`).test(String(text ?? ''))
+}
+
 /**
  * Text fallback for symbols the engine reports no usages for.
  *
- * A Lombok field has no accessor in the sources, and `textDocument/references`
- * on the field itself returns only its declaration — so a property that is used
- * everywhere would look unused. Searching for its accessors' call sites is a
- * grep, not a semantic answer, and the popup labels it as such.
+ * Two shapes matter:
+ *  - a **method**: search its own name at call sites, and for a non-static one
+ *    keep only receiver calls (`service.detail(...)`) — a bare `detail(...)` is
+ *    usually a different local helper;
+ *  - a **field** (Lombok-style property): the field has no accessor in the
+ *    sources and references on it answer only its declaration, so its
+ *    `getX`/`setX`/`isX` call sites are the closest thing to usages.
+ *
+ * The popup labels these rows as text matches; they are never presented as
+ * semantic references.
  */
-async function ideTextualCallers(store, tabPath, position, symbolName, limit) {
-  const names = ideAccessorNames(symbolName)
-  if (names.length === 0) return []
+async function ideTextualCallers(store, tabPath, position, symbolName, limit, options = {}) {
+  if (typeof symbolName !== 'string' || symbolName === '') return []
   const root = store.getState().rootPath
   if (root === '') return []
-  const pattern = `\\b(?:${names.join('|')})\\s*\\(`
-  const found = await ideGrepQuery(root, pattern, { caseSensitive: true })
-  if (found.ok !== true) return []
   const clicked = `${tabPath}:${position.line + 1}`
-  const seen = new Set()
+  // Files are read once each while checking receivers: a name match in a class
+  // that holds something else is not a call of this method.
+  const fileCache = new Map()
+  const linesOf = async (path) => {
+    if (fileCache.has(path)) return fileCache.get(path)
+    if (fileCache.size >= IDE_MAX_TEXTUAL_FILES) return undefined
+    const result = await store.readText(store.getState().sessionId, root, path).catch(() => undefined)
+    const lines = result?.ok === true && typeof result.value === 'string' ? result.value.split('\n') : undefined
+    fileCache.set(path, lines)
+    return lines
+  }
+  const receiverBelongsTo = async (path, urlLineIndex, text, name) => {
+    const lines = await linesOf(path)
+    if (lines === undefined) return false
+    const line = lines[urlLineIndex] ?? text
+    // The first substring may be another identifier (`statisticsResp`); only the
+    // occurrence that is followed by `(` is the call.
+    const call = new RegExp(`\\b${ideRegexEscape(name)}\\s*\\(`).exec(line)
+    if (call === null) return false
+    const receiver = ideReceiverChain(lines, urlLineIndex, call.index).split('.')[0]
+    if (receiver === '') return false
+    const owners = Array.isArray(options.ownerNames) && options.ownerNames.length > 0 ? options.ownerNames : ['']
+    const declared = ideDeclaredType(lines, receiver)
+    return owners.includes('') || owners.includes(declared)
+  }
+  const collect = async (pattern, names, requireReceiver) => {
+    const found = await ideGrepQuery(root, pattern, { caseSensitive: true, extensions: IDE_CODE_EXTENSIONS })
+    if (found.ok !== true) return []
+    const rows = []
+    const seen = new Set()
+    for (const match of found.matches) {
+      const key = `${match.path}:${match.line}`
+      if (key === clicked || seen.has(key)) continue
+      const text = String(match.text ?? '')
+      const name = names.find((candidate) => ideTextualIsCall(text, candidate))
+      if (name === undefined) continue
+      if (requireReceiver && !ideTextualIsReceiverCall(text, name)) continue
+      if (requireReceiver && !(await receiverBelongsTo(match.path, match.line - 1, text, name))) continue
+      seen.add(key)
+      rows.push({ path: match.path, line: match.line, snippet: match.text })
+    }
+    return rows
+  }
+
+  const exact = await collect(`\\b${ideRegexEscape(symbolName)}\\s*\\(`, [symbolName], options.requireReceiver === true)
+  if (exact.length > 0) return exact.slice(0, limit)
+  // No call of the symbol itself: a property's accessors are the fallback.
+  const accessors = ideAccessorNames(symbolName)
+  if (accessors.length === 0) return []
+  const byAccessor = await collect(`\\b(?:${accessors.map(ideRegexEscape).join('|')})\\s*\\(`, accessors, false)
+  return byAccessor.slice(0, limit)
+}
+
+/**
+ * Textual implementations of an interface method.
+ *
+ * Used only when the engine answered nothing: find the classes that implement
+ * the clicked file's interface, then the declaration of the method inside them.
+ */
+async function ideTextualImplementations(store, tabPath, sourceLines, symbolName, limit) {
+  const root = store.getState().rootPath
+  const className = ideClassName(tabPath)
+  if (root === '' || className === '' || typeof symbolName !== 'string' || symbolName === '') return []
+  // An interface is extended by implementations; an abstract class by
+  // subclasses. Either way the override is what a click on the contract wants.
+  const isInterface = sourceLines.some((line) => new RegExp(`\\binterface\\s+${ideRegexEscape(className)}\\b`).test(line))
+  const isAbstract = !isInterface && sourceLines.some((line) => new RegExp(`\\babstract\\s+class\\s+${ideRegexEscape(className)}\\b`).test(line))
+  if (!isInterface && !isAbstract) return []
+  const relation = isInterface ? 'implements' : 'extends'
+  const typed = await ideGrepQuery(root, `${relation}[^\\n{]*\\b${ideRegexEscape(className)}\\b`, {
+    caseSensitive: true,
+    extensions: IDE_CODE_EXTENSIONS,
+  })
+  if (typed.ok !== true) return []
   const rows = []
-  for (const match of found.matches) {
-    const key = `${match.path}:${match.line}`
-    if (key === clicked || seen.has(key)) continue
+  const seen = new Set()
+  for (const match of typed.matches) {
+    const key = match.path
+    if (seen.has(key)) continue
     seen.add(key)
-    rows.push({ path: match.path, line: match.line, snippet: match.text })
+    const declared = await ideGrepQuery(root, `\\b${ideRegexEscape(symbolName)}\\s*\\(`, { path: match.path, caseSensitive: true })
+    if (declared.ok !== true) continue
+    for (const line of declared.matches) {
+      if (!ideTextualIsDeclaration(line.text, symbolName)) continue
+      rows.push({ path: line.path, line: line.line, snippet: line.text })
+      break
+    }
     if (rows.length >= limit) break
   }
   return rows
@@ -500,6 +805,18 @@ async function ideAccessorReferences(store, tabPath, position, symbolName, timel
   return result.locations ?? []
 }
 
+/** `LSP_SERVER_ERROR — textDocument/references: Method not found (-32601)`. */
+function ideLspFailureText(failure) {
+  if (failure === undefined || failure === null) return ''
+  if (ideLspNeedsLicense(failure) || failure.code === 'LSP_NO_LICENSE') {
+    return `license: ${typeof failure.detail === 'string' ? failure.detail : 'no active JetBrains license'}`
+  }
+  const code = typeof failure.code === 'string' ? failure.code : 'lsp-failed'
+  const operation = typeof failure.operation === 'string' ? `${failure.operation}: ` : ''
+  const detail = typeof failure.detail === 'string' && failure.detail !== '' ? ` — ${failure.detail}` : ''
+  return `${code}${detail === '' ? '' : `${detail}`}${operation === '' ? '' : ` (${operation.replace(/: $/, '')})`}`
+}
+
 /** One location's identity, for set arithmetic between queries. */
 function ideLocationKey(location) {
   return `${location.path}:${location.line}`
@@ -516,11 +833,21 @@ function ideLocationKey(location) {
  * @returns `{ implementations, callers }`, each a list of `{ path, line, snippet }`.
  */
 async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartial, symbolName) {
+  const failures = []
   const run = async (operation, label) => {
     const started = ideNow()
     const result = await ideLspQuery(ideLspPayload(store, operation, tabPath, position))
       .then((value) => value.locations ?? [])
-      .catch(() => [])
+      .catch((error) => {
+        // The server states why; the banner is the only place that reason can
+        // reach the reader, so keep the first one verbatim.
+        failures.push({
+          operation,
+          code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
+          detail: String(error?.detail ?? '').slice(0, 160),
+        })
+        return []
+      })
     timeline?.mark(label, ideNow() - started)
     return result
   }
@@ -530,6 +857,17 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   // whole answer until the slowest query returns.
   const declarations = await run('goToDefinition', 'def')
   const implementations = await run('goToImplementation', 'impl')
+  // The clicked line says what kind of symbol this is: a method is followed by
+  // `(`, and `static` says whether a bare call may reach it.
+  const sourceLines = await store.readLines(tabPath)
+  const clickedLine = String(sourceLines[position.line] ?? '')
+  // The column points at the symbol itself, so what follows the name says
+  // whether this is a method (a `(` next) or a field.
+  const afterName = clickedLine.slice(position.character + String(symbolName ?? '').length)
+  const isMethod = afterName.trimStart().startsWith('(')
+  const isStatic = /\bstatic\b/.test(clickedLine)
+  // A caller may hold the interface type while this file is the implementation.
+  const ownerNames = [ideClassName(tabPath), ...ideContractNames(sourceLines)].filter((name) => name !== '')
 
   const declared = new Set(declarations.map(ideLocationKey))
   const implemented = new Set(implementations.map(ideLocationKey))
@@ -556,7 +894,7 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   // The popup has the same blind spot as the counter: a caller holding the
   // interface never appears among the implementation's references.
   if (typeof symbolName === 'string' && symbolName !== '') {
-    const contract = await ideContractReferences(store, tabPath, await store.readLines(tabPath), symbolName)
+    const contract = await ideContractReferences(store, tabPath, sourceLines, symbolName)
     const known = new Set(references.map(ideLocationKey))
     for (const location of contract) {
       const key = ideLocationKey(location)
@@ -566,11 +904,27 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
     }
   }
 
+  // Reading the files that own the references lets a declaration that came
+  // through the contract merge (the interface's own signature) be dropped: it
+  // is the method, not a caller of it.
+  const referenceLines = new Map()
+  const linesOfReference = async (path) => {
+    let pending = referenceLines.get(path)
+    if (pending === undefined) {
+      pending = Promise.resolve(store.readLines(path)).then((lines) => (Array.isArray(lines) ? lines : [])).catch(() => [])
+      referenceLines.set(path, pending)
+    }
+    return pending
+  }
   const callerRows = []
   const seenCaller = new Set()
   for (const location of references) {
     const key = ideLocationKey(location)
     if (key === clicked || declared.has(key) || implemented.has(key) || seenCaller.has(key)) continue
+    if (typeof symbolName === 'string' && symbolName !== '' && typeof location?.path === 'string' && typeof location?.line === 'number') {
+      const lines = await linesOfReference(location.path)
+      if (ideReferenceIsDeclaration(lines, location.line, symbolName)) continue
+    }
     seenCaller.add(key)
     callerRows.push(location)
   }
@@ -586,8 +940,9 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   const callers = await ideWithSnippets(store, callerRows.slice(0, limits.callers))
   if (implRows.length === 0 && callers.length === 0) {
     // The engine answers for the accessor even though it answers nothing for the
-    // field, so this branch still produces semantic callers.
-    const anchored = await ideAccessorReferences(store, tabPath, position, symbolName, timeline)
+    // field, so this branch still produces semantic callers. It only makes sense
+    // for a field: `detail` and `getDetail` are different methods.
+    const anchored = isMethod ? [] : await ideAccessorReferences(store, tabPath, position, symbolName, timeline)
     const anchoredRows = []
     const seenAnchored = new Set()
     for (const location of anchored) {
@@ -605,16 +960,34 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
         textual: [],
       }
     }
-    const textual = await ideTextualCallers(store, tabPath, position, symbolName, limits.callers)
-    if (textual.length > 0) {
-      return { implementations: partial.implementations, callers: [], declaration: [], textual }
+    const textual = await ideTextualCallers(store, tabPath, position, symbolName, limits.callers, {
+      // A non-static method is reached through a receiver; a bare same-name call
+      // is usually a different local helper, and a receiver of another declared
+      // type is a different method with the same name.
+      requireReceiver: isMethod && !isStatic,
+      ownerNames,
+    })
+    const implementationsText = await ideTextualImplementations(store, tabPath, sourceLines, symbolName, limits.implementations)
+    if (textual.length > 0 || implementationsText.length > 0) {
+      return {
+        implementations: partial.implementations,
+        implementationsText,
+        callers: [],
+        declaration: [],
+        textual,
+        failed: '',
+      }
     }
   }
   return {
     implementations: partial.implementations,
+    implementationsText: [],
     callers,
     declaration: await ideWithSnippets(store, declarationRows.slice(0, 1)),
     textual: [],
+    // Every query failing is a server problem, not "no usages": the popup must
+    // not tell the reader the symbol is unused when nothing answered.
+    failed: failures.length === 3 ? ideLspFailureText(failures[0]) : '',
   }
 }
 
@@ -653,7 +1026,9 @@ function ideReceiverToken(before) {
  * returns without asking the engine anything.
  */
 function ideDeclaredType(lines, name) {
-  const pattern = new RegExp(`^\\s*(?:final\\s+)?([A-Z][\\w$]*(?:<[^;=]*>)?)\\s+${name}\\s*[;=,)]`)
+  // `private final Type field;` is how a controller holds its service; the
+  // modifiers must not stop the declaration from being recognised.
+  const pattern = new RegExp(`^\\s*(?:(?:public|protected|private|static|final|transient|volatile)\\s+)*([A-Z][\\w$]*(?:<[^;=]*>)?)\\s+${name}\\s*[;=,)]`)
   for (const text of lines) {
     const match = pattern.exec(text)
     if (match !== null) return match[1].replace(/<.*$/, '')

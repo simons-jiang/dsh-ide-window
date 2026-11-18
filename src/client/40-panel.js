@@ -352,8 +352,19 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
 
   // The Session decides which workspace the panel shows. Opening the panel from
   // a conversation therefore lands in that conversation's project, every time.
+  // A root change is applied with its Session in one patch: doing it in two
+  // steps reloaded the old tabs out of scope and flashed a red error. The
+  // current root is read, not subscribed: a manual project switch must not be
+  // reverted by this effect re-running on its own patch.
   useEffect(() => {
-    if (typeof resolved.sessionId === 'string') store.rememberSession(resolved.sessionId)
+    if (typeof resolved.sessionId === 'string') {
+      if (resolvedRoot !== '' && store.getState().rootPath !== resolvedRoot) {
+        store.enterProject(resolvedRoot, resolved.sessionId)
+        return
+      }
+      store.rememberSession(resolved.sessionId)
+      return
+    }
     if (resolvedRoot !== '') store.setRoot(resolvedRoot)
   }, [resolved.sessionId, resolvedRoot, store])
 
@@ -364,8 +375,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
       store.setNotice(tr('projectNoSession'))
       return
     }
-    store.rememberSession(sessionId)
-    store.setRoot(path)
+    store.enterProject(path, sessionId)
   }
 
   // Mouse side buttons are the usual back/forward gesture; Chromium would take

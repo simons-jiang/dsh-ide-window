@@ -183,5 +183,15 @@
   "treeTruncated": "内容过长，已截断",
   "treeTag": "标签",
   "treeBranch": "分支",
-  "treeRouteMissing": "新路由未注册，请完全退出并重新打开 DSH"
+  "treeRouteMissing": "新路由未注册，请完全退出并重新打开 DSH",
+  "tabImplementsText": "实现（文本匹配）",
+  "chainTextual": "语言服务不可用，调用链按文本匹配展开",
+  "propertyLabel": "属性",
+  "implementationLabel": "实现",
+  "alreadyAtDefinition": "当前位置就是定义",
+  "lspUnsupported": "当前语言服务不支持这项查询，结果只能按文本匹配",
+  "lspLicense": "已在浏览器打开 JetBrains 授权页；完成授权后重启 DSH",
+  "paletteActionLicenseRelogin": "JetBrains 授权：退出当前账号并重新登录",
+  "lspReloginRunning": "正在退出当前 JetBrains 账号并打开登录页…",
+  "lspReloginOpened": "已打开 JetBrains 登录页：登录有授权的账号后重启 DSH"
 }

@@ -82,6 +82,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/refs` | 分支与标签 | `git for-each-ref refs/heads refs/tags`，返回 `{name, kind}` |
 | `/dsh-ide/patch` | 差异文本 | `git diff -U3 <base> [target] -- <path>`；根提交回退 `git show --patch`；未跟踪文件返回 `untracked` |
 | `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
+| `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
 
 ### 3.3 用到的 DSH 槽位
 
@@ -108,18 +109,25 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
 - **文件树右键菜单**：在代码工作区打开 / 在 Finder 中显示 / 在终端中打开 / 复制文件内容、绝对路径、仓库相对路径、限定类名；**Git 分组**：使用 Git 追溯注解、显示差异（叠加层展示 unified diff）、显示历史记录、与修订比较…（最近提交列表）、与分支或标签比较…（分支/标签列表）；差异弹层与选择器用 `iw-overlay`，Esc 关闭
 - 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带），`git commit` 不改内容也能更新
-- 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）
+- 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）；切换项目走 `enterProject(root, session)`，**会话与根目录一次 patch、一次 restart**（分两步会让旧标签以新会话作用域重读，闪出 `outside-workspace` 红字）；面板里读 `getState()` 判断而非订阅 `rootPath`，避免手动切换被跟随逻辑回滚
 - DSH 自带的「已编辑 N 个文件」卡片：点**文件行**直接在本插件工作区打开（捕获阶段拦截 + 行内隐藏的绝对路径；卡片头部仍打开官方 review）
 - 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
 - 大文件保护：>60000 行或超字节上限时截断并提示
 
 ### 4.2 语义导航（IntelliJ LSP）
-- **双击** → 转到定义；**⌘+单击** → 实现 / 调用方弹层；**⌥+单击方法名** → 调用链（向上递归「谁调用了它」，思维导图浮层，点节点跳转）；`findReferences` 返回的声明位置会被丢弃（否则会把上一层自己的签名行误当成调用点），浮层把入口放在最上面、被点的方法放在最下面（上方调用下方），← 后是它调用下方方法的位置；每个节点都带类名；**实现方法会顺着 `implements` 找到接口里的同名方法，把接口调用方一并纳入调用链、用法计数和 ⌘+单击的调用方列表**（否则实现方法永远显示 0 用法）；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，三个动作互斥）
+- **双击**判定「是不是声明」的关键**不是**看有没有 `(`，而是看名字前面是不是一个**返回类型**：`private void foo(` / `Resp detail(` 算声明；本类里的裸调用 `        foo();`（前面只有缩进）、`page = service.foo(`、`service.foo(` 都不算——之前的正则在裸调用上误判为声明，导致双击本类方法只提示「当前位置就是定义」而不跳转
+- **双击**的三种语义：① 属性访问器（`getX`/`setX`/`isX`，接收者类型在本文件可见）→ 跳该类的**字段**（Lombok 没有源码 getter）；② 接口/抽象类里的方法**声明** → 跳**实现**（`goToImplementation`，没有就按 `implements`/`extends` 文本扫，多个实现弹选择，没有实现提示「当前位置就是定义」）；③ 方法**调用**或具体方法 → 跳声明（工作区文本兜底 / jar 源码）。字段声明、具体方法声明原地不动，**绝不会**因为同名就跳到别的类。**⌘+单击** → 实现 / 调用方弹层；**⌥+单击方法名** → 调用链（向上递归「谁调用了它」，思维导图浮层，点节点跳转）；`findReferences` 返回的声明位置会被丢弃（否则会把上一层自己的签名行误当成调用点），浮层把入口放在最上面、被点的方法放在最下面（上方调用下方），← 后是它调用下方方法的位置；每个节点都带类名；**实现方法会顺着 `implements` 找到接口里的同名方法，把接口调用方一并纳入调用链、用法计数和 ⌘+单击的调用方列表**（否则实现方法永远显示 0 用法）；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，三个动作互斥）
 - 跳转成功后横幅显示 `→ 文件:行 · 查询 xms · 载入 yms`
-- 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明
+- **调用链（⌥+单击）有文本兜底**：某一层 `findReferences` 失败或返回空时，改用「查看调用方」同一套文本搜索（同名调用、接收者声明类型必须是本类/本接口）逐层展开，浮层顶部注明「语言服务不可用，调用链按文本匹配展开」；语言服务正常时不出现这行，仍走语义结果
+- 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明——**先在工作区找同名注解文件**，找不到才去 jar 源码（工作区里被编辑的注解才是真身，jar 副本是被 `mvn install` 出来的）
+- **类型名双击**（类/接口/枚举/record/注解）→ 工作区里 `class|interface|enum|record|@interface <名字>` 的声明文件，其次才是依赖 jar 源码；jar 没有 `-sources` 时提示「该 jar 没有源码」（不反编译）。工作区里的类绝不能再被同模块的 sources jar 副本抢走
 - 定义在依赖 jar 内时 → 自动去 sources jar 找源码（含「跳过 javadoc 里的 `{@link #x()}`」判定）
-- 兜底链：LSP → 注解属性 → import FQN → jar 源码 → 文本提示
+- 兜底链：LSP → 注解属性 → **工作区内文本声明**（声明形状 `类型 名字(` 的 grep，避免常见名撞上 200 条上限）→ import FQN → jar 源码 → 文本提示。工作区那一步按「接收者声明类型」锁定同名文件（`ideDeclaredType` 容忍 `private final` 修饰符），再按 `ideIsMethodDeclaration` 排除调用行；接收者由 `ideReceiverChain` 解析——返回**点号链的最左段**（`PurchaseOrderStatusEnum.TO_PURCHASE.matches(...)` → 取 `PurchaseOrderStatusEnum`；`field.method(...)` → 取声明类型）；**链式调用换行时（上一行是接收者、本行以 `.` 开头）会往上找 16 行**，这是 `.listByPaymentTradeNos(...)` 这类写法能找到声明的前提；没有接收者时只认本文件里的声明，绝不取工作区里第一个同名方法。它排在 jar 之前，因为工作区文件才是真正的源码
 - **Git 追溯注解**：代码左侧（git 变化条 / 行号）右键 →「使用 Git 追溯注解」，逐行显示 `日期 作者`，相邻提交交替底色；同一项可关闭。宿主路由 `/dsh-ide/blame` 一次解析整份文件；缓存按 `root|path|version` 且有 30 秒 TTL，注解开启时在「打开注解」与「窗口聚焦」时强制重读，**不跑定时器**（提交不改内容，不能靠 change 事件）；未提交行（零提交）显示「未提交」。注解开启时隐藏行尾 Code Vision。状态在 store 的 `annotate`（`path → true`）与 `codeMenu`
+- **JetBrains 授权（-32802）**：IntelliJ 语言服务器需要**有效的服务器授权**，没授权时所有查询都会被拒（`-32802: Request refused: no active JetBrains license`）。处理办法在服务器自己的 CLI 里：`~/.dsh/lsp-bin/intellij-server-2027.1/bin/intellij-server license status|login|activate|trial|reset`（也可用 `INTELLIJ_SERVER_LICENSE`/`INTELLIJ_SERVER_LICENSE_FILE`/`JETBRAINS_LICENSE_SERVER` 注入），登录后**必须重启 DSH**（授权状态在服务器进程里缓存）。插件侧：识别到授权拒绝后**自动用系统浏览器打开授权页**——宿主跑 `license login --browser`（这个子命令自己会开浏览器并给 URL，宿主不再重复开）；已登录但无授权时命令只打印提示、不给 URL，此时宿主直接 `open https://account.jetbrains.com/licenses`（macOS `open` / Linux `xdg-open` / Windows `explorer`），不依赖 webview 的 `window.open`（Electron 里常被拒）。同时在本次页面生命周期内不再请求 LSP（调用链/定义/调用方都直接走文本兜底），横幅只给一条授权提示，不给用户刷「未找到定义」
+- **LSP 报错要说清楚**：`LSP_SERVER_ERROR` 这类错误其实是服务器返回的 JSON-RPC 错误，横幅/提示会带上服务器自己的话和操作名（`LSP_SERVER_ERROR — … (-32601) (findReferences)`）；错误的文本里出现 `-32601`/method not found/not supported 时，该操作会被记为「服务器不支持」并在本次会话内跳过，改用文本匹配并提示「当前语言服务不支持这项查询」，不再反复弹错误横幅
+- **调用方列表里不能出现声明行**：`findReferences` 会把声明一起返回（接口自己的签名行、另一个类的 override 签名行），契约合并（点实现方法时顺带问接口）会把它们混进 references；生成调用方前用 `ideReferenceIsDeclaration` 按行判断并剔除（形状同 `类型 名字(`），否则弹出层会出现「接口 selectPage 是实现的调用方」这种明显错误的行
+- **用量兜底（LSP 无结果时）**：调用方只认同名**调用**（排除声明行）、非静态方法只认 `接收者.名字(` 且接收者的**声明类型**必须是本类/本接口（`ideContractNames` 把实现类与其接口都算作 owner，所以实现方法也能找到持有接口的调用方），Java 文件限定；实现方按 `implements 接口` 找类，再在类里找该方法的声明。分节标题都带「（文本匹配）」，不冒充语义结果；三条查询全部失败时提示 `lspFailed`，不再谎报「没有已知调用点」
 - **未装 LSP 的引导页**：进入代码工作区时打 `/dsh-ide/doctor`，`ctx.lsp` 没挂载就弹「代码导航未就绪」（列出管道包版本、服务器、JetBrains 授权三步 + 重新检测）；授权在服务器进程内，插件只引导不登录
 - **Code Vision**：可见的**方法**声明行尾显示「N 个用法 · M 个实现」和该行最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的方法声明，字段与局部变量都不会出现；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
@@ -189,6 +197,8 @@ cd <某个仓库> && dsh --profile web --port 0 --no-open
 ```
 
 - 用浏览器自动化（bsk 工具）打开该 URL 操作；`evaluate` 可以派发 `contextmenu` 等合成事件
+- 用 `./start-test-instance.sh` 起独立实例：固定端口 57999、家目录 `/tmp/dsh-ide-test`、自动把本机 **`~/.dsh/.credentials.yaml`**（真实账号/API Key，`llm-deepseek` 只是附件缓存不是凭据）复制进去，所以打开就是已登录（左下角有头像），不会再弹「开始使用」；「预览版说明」只在全新家目录出现一次，点「继续」后写进该家目录的存储，重启不再弹。带 token 的 URL 追加在 `/tmp/dsh-ide-test/url.log`，随时 `grep` 取最新一条
+- 宿主在启动时缓存客户端 bundle：**重建 client.js 后必须重启这个独立实例**，只刷新页面拿到的还是旧代码
 - **改完客户端代码后**：桌面窗口必须 `⌘R` 刷新；只改宿主路由要**完全退出 DSH 再打开**
 - 判断是否生效：设置里能不能看到新条目 / 控制台有没有 `client.js 404`
 
@@ -247,6 +257,7 @@ test/inference.mjs            归属推断（bean 字段）
 test/maven.mjs                真实 ~/.m2 jar 端到端
 check-dsh-untouched.sh        本体完整性自检
 restore-profile.sh            恢复 profile 到可用状态
+start-test-instance.sh        起独立自测实例（固定端口 + 复用本机账号，不再弹登录框）
 README.md                     面向使用者的说明（功能/手势/安装）
 ```
 

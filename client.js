@@ -190,6 +190,16 @@ window.__ModuleLoader__.load({
     "treeTag": "tag",
     "treeBranch": "branch",
     "treeRouteMissing": "The route is missing; quit and reopen DSH",
+    "tabImplementsText": "Implementations (text)",
+    "chainTextual": "Language service unavailable — callers are text matches",
+    "propertyLabel": "property",
+    "implementationLabel": "implementation",
+    "alreadyAtDefinition": "Already at the definition",
+    "lspUnsupported": "The language server does not support this query; results are text matches",
+    "lspLicense": "Opened the JetBrains licence page in your browser; restart DSH after signing in",
+    "paletteActionLicenseRelogin": "JetBrains licence: sign out and sign in again",
+    "lspReloginRunning": "Signing out of the current JetBrains account and opening the sign-in page…",
+    "lspReloginOpened": "Opened the JetBrains sign-in page; restart DSH after signing in",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -373,6 +383,16 @@ window.__ModuleLoader__.load({
     "treeTag": "标签",
     "treeBranch": "分支",
     "treeRouteMissing": "新路由未注册，请完全退出并重新打开 DSH",
+    "tabImplementsText": "实现（文本匹配）",
+    "chainTextual": "语言服务不可用，调用链按文本匹配展开",
+    "propertyLabel": "属性",
+    "implementationLabel": "实现",
+    "alreadyAtDefinition": "当前位置就是定义",
+    "lspUnsupported": "当前语言服务不支持这项查询，结果只能按文本匹配",
+    "lspLicense": "已在浏览器打开 JetBrains 授权页；完成授权后重启 DSH",
+    "paletteActionLicenseRelogin": "JetBrains 授权：退出当前账号并重新登录",
+    "lspReloginRunning": "正在退出当前 JetBrains 账号并打开登录页…",
+    "lspReloginOpened": "已打开 JetBrains 登录页：登录有授权的账号后重启 DSH",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -859,6 +879,14 @@ html.iw-select-code .iw-code .iw-vision {
   padding: 2px 8px 6px;
   color: var(--dsw-alias-label-tertiary, #6f7783);
   font-size: 11px;
+}
+
+/* Shown when the chain was built from text matches instead of the engine. */
+.iw-chain-note {
+  padding: 0 8px 6px;
+  color: var(--dsw-alias-label-tertiary, #6f7783);
+  font-size: 11px;
+  opacity: 0.9;
 }
 .iw-chain-node { position: relative; }
 .iw-chain-node + .iw-chain-node { margin-top: 2px; }
@@ -3101,6 +3129,23 @@ function ideCreateStore(refs) {
     restart({ keepView: state.rootPath !== '' && state.tabs.length > 0 })
   }
 
+  /**
+   * Switch to another project in one step.
+   *
+   * The Session and its root are patched together and restarted once. Patching
+   * the Session first reloaded the old tabs against the new Session's scope,
+   * which the file Remote refused as `outside-workspace` — a red error that
+   * covered the panel for one frame before the new workspace appeared.
+   */
+  function enterProject(rootPath, sessionId) {
+    const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
+    if (nextRoot === '') return
+    const nextSession = typeof sessionId === 'string' && sessionId !== '' ? sessionId : state.sessionId
+    if (nextRoot === state.rootPath && nextSession === state.sessionId) return
+    patch({ rootPath: nextRoot, sessionId: nextSession })
+    restart({ restore: true })
+  }
+
   /** Adopt the absolute workspace root the Session list reports for that Session. */
   function setRoot(rootPath) {
     const nextRoot = typeof rootPath === 'string' ? rootPath.replace(/\/+$/, '') : ''
@@ -3670,6 +3715,7 @@ function ideCreateStore(refs) {
     getState,
     rememberSession,
     setRoot,
+    enterProject,
     layout: () => refs.layout?.current,
     /** List one workspace directory (index support); unwrapped `RemoteResult`. */
     listPath: (sessionId, root, relativePath) => {
@@ -5171,6 +5217,13 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // The query time is only a hint in the banner; a missing value is fine.
       const queryMs = typeof outcome?.ms === 'number' ? outcome.ms : undefined
       store.setNotice('')
+      const lineText = lines[position.line] ?? ''
+      // A click that lands on a declaration asks for the implementation; a click
+      // on a call asks for the declaration. The line itself says which one it is.
+      const declaresHere = ideIsMethodDeclaration(lineText, name)
+      // A field's own line is the definition; jumping to another class's
+      // same-named member is never what that click means.
+      const declaresFieldHere = !declaresHere && ideIsFieldDeclaration(lineText, name)
 
       if (locations.length > 1) {
         setPopup({
@@ -5182,6 +5235,14 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         return
       }
       if (locations.length === 1) {
+        // The server points at the click itself: this is the declaration of a
+        // contract method, so the useful destination is its implementation.
+        const sameAsClick = locations[0].path === tab.path && locations[0].line === position.line + 1
+        if (sameAsClick && declaresHere) {
+          if (await openImplementation(name, position, event)) return
+          store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
+          return
+        }
         // Say where the jump went: a wrong answer is then one glance away
         // instead of a mystery about whether the gesture did anything.
         if (store.openAt(locations[0].path, locations[0].line)) {
@@ -5198,10 +5259,31 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // type, so the symbol alone resolves nothing.
       const annotationType = ideAnnotationTypeAt(lines, position)
       if (annotationType !== '' && await openAnnotationAttribute(annotationType, name, position)) return
+      // A declaration click without a server answer still means "the code that
+      // runs", not "the first same-named method in the workspace".
+      if (declaresHere) {
+        if (await openImplementation(name, position, event)) return
+        store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
+        return
+      }
+      if (declaresFieldHere) {
+        store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
+        return
+      }
+      // Lombok-style property: `getName()` has no method in the sources.
+      if (await openAccessorProperty(name, position)) return
+      // A type name: the workspace declaration wins over a published jar copy.
+      if (await openLocalType(name)) return
       // A type from a dependency: its source is readable when the artifact ships
       // `-sources`, which is true for everything this workspace imports.
+      // The server's project model can miss the declaring module; the file is
+      // still in the workspace, so the declaration is one search away. This
+      // comes before the jar copy: the workspace file is the real source.
+      if (await openLocalDeclaration(name, position)) return
       if (await openFromJar(name, position)) return
-      store.setNotice(`${tr('noDefinition')}: ${name}`)
+      // With no licence the engine refused every query, so "not found" is not
+      // the reader's problem to chase — the missing sign-in is.
+      store.setNotice(ideLspLicenseMissing ? tr('lspLicense') : `${tr('noDefinition')}: ${name}`)
     } catch (error) {
       store.setNotice(`${tr('lspFailed')}: ${error?.code ?? error?.message ?? 'unknown'}`)
     }
@@ -5223,6 +5305,182 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   }
 
   /**
+   * Whether one line declares `name` as a method.
+   *
+   * The language server can answer nothing when its project model does not cover
+   * the module that declares the method; a text search for the declaration is
+   * then the only way to land on it, and it must not mistake a call for one.
+   */
+  function ideIsMethodDeclaration(text, name) {
+    if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+    const trimmed = text.trim()
+    if (/^(?:return|if|for|while|switch|throw|new|else|case|yield|assert)\b/.test(trimmed)) return false
+    const at = text.indexOf(name)
+    if (at < 0) return false
+    // A declaration states a return type right before the name. A bare call
+    // (`fillJobOperatorIfAbsent();`) has nothing but indentation there, and an
+    // assignment or a receiver ends with `=`/`.` instead of a type token.
+    const before = text.slice(0, at).trim()
+    if (before === '') return false
+    // `service.` / `page =` say a call or an assignment, not a return type.
+    if (/[.=(,+\-*/&|!?:]$/.test(before)) return false
+    return /(?:^|\s)[A-Za-z_$][\w$.]*(?:<[^()]*>)?(?:\[\])?$/.test(before)
+  }
+
+  /**
+   * Last resort: find a method declaration by text in the workspace.
+   *
+   * @returns whether a tab was opened.
+   */
+  const openLocalDeclaration = async (name, position) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return false
+    const lineText = lines[position.line] ?? ''
+    // `PurchaseOrderStatusEnum.TO_PURCHASE.matches(...)` names its owner in the
+    // leftmost segment; `field.matches(...)` states a variable whose type is
+    // declared in this file.
+    const chain = ideReceiverChain(lines, position.line, position.character)
+    const head = chain.split('.')[0]
+    const declared = head === '' ? '' : ideDeclaredType(lines, head)
+    const owner = declared !== '' ? declared : (/^[A-Z]/.test(head) ? head : '')
+    // A bare name overflows the route's match cap for common names (`detail`,
+    // `get`), cutting the declaration itself; a declaration-shaped pattern keeps
+    // the answer small and precise.
+    const found = await ideGrepQuery(root, ideDeclarationPattern(name), { extensions: ['java'] })
+    if (found.ok !== true) return false
+    const declarations = found.matches.filter((match) => ideIsMethodDeclaration(match?.text, name))
+    const inThisFile = declarations.filter((match) => match.path === tab.path)
+    const byOwner = owner === ''
+      ? []
+      : declarations.filter((match) => String(match?.path ?? '').split('/').pop() === `${owner}.java`)
+    // Without an owner the declaration may be in this file; picking the first
+    // same-named method in the workspace is how a click on an interface method
+    // used to land in an unrelated class.
+    const pick = byOwner[0] ?? inThisFile[0] ?? undefined
+    if (pick === undefined) return false
+    if (!store.openAt(pick.path, pick.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(pick.path)}:${pick.line}`)
+    return true
+  }
+
+  /**
+   * The workspace file declaring `name`, with its lines, when there is one.
+   *
+   * The same module may also be installed in the local Maven repository; its
+   * `-sources.jar` copy must never win over the file that is being edited.
+   */
+  const openWorkspaceTypeDeclaration = async (name) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return undefined
+    const found = await ideGrepQuery(root, `\\b(?:class|interface|enum|record|@interface)\\s+${ideRegexEscape(name)}\\b`, {
+      extensions: ['java'],
+      caseSensitive: true,
+    })
+    if (found.ok !== true) return undefined
+    const match = found.matches.find((row) => ideIsTypeDeclaration(row?.text, name)
+      && String(row?.path ?? '').split('/').pop() === `${name}.java`)
+    if (match === undefined) return undefined
+    const lines = await store.readLines(match.path).catch(() => undefined)
+    return Array.isArray(lines) ? { path: match.path, lines } : undefined
+  }
+
+  /**
+   * Jump from a type name to the file that declares it.
+   *
+   * A workspace class beats its published `-sources.jar` copy: the module in
+   * this workspace is the source of truth, and the jar is only a fallback for
+   * dependencies.
+   *
+   * @returns whether a tab was opened.
+   */
+  const openLocalType = async (name) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return false
+    const found = await ideGrepQuery(root, `\\b(?:class|interface|enum|record|@interface)\\s+${ideRegexEscape(name)}\\b`, {
+      extensions: ['java'],
+      caseSensitive: true,
+    })
+    if (found.ok !== true) return false
+    const declarations = found.matches.filter((match) => ideIsTypeDeclaration(match?.text, name))
+    const pick = declarations.find((match) => String(match?.path ?? '').split('/').pop() === `${name}.java`) ?? declarations[0]
+    if (pick === undefined) return false
+    if (!store.openAt(pick.path, pick.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(pick.path)}:${pick.line}`)
+    return true
+  }
+
+  /**
+   * Jump from an accessor call (`getName()`) to the field it reads.
+   *
+   * A Lombok class has no accessor in its sources, so the engine answers nothing
+   * and text search finds no method either; the property itself is the answer.
+   * Only a call with a receiver whose type is declared in this file qualifies —
+   * `getDetail()` may be an ordinary method, and it is tried first elsewhere.
+   *
+   * @returns whether a tab was opened.
+   */
+  const openAccessorProperty = async (name, position) => {
+    const root = store.getState().rootPath
+    const property = ideAccessorProperty(name)
+    if (root === '' || property === '') return false
+    const lineText = lines[position.line] ?? ''
+    const head = ideReceiverChain(lines, position.line, position.character).split('.')[0]
+    const declared = head === '' ? '' : ideDeclaredType(lines, head)
+    if (declared === '') return false
+    const found = await ideGrepQuery(root, `\\b${ideRegexEscape(property)}\\s*[;=,]`, { extensions: ['java'], caseSensitive: true })
+    if (found.ok !== true) return false
+    const target = found.matches.find((match) => String(match?.path ?? '').split('/').pop() === `${declared}.java`
+      && ideIsFieldDeclaration(match?.text, property))
+    if (target === undefined) return false
+    if (!store.openAt(target.path, target.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(target.path)}:${target.line} \u00b7 ${tr('propertyLabel')}`)
+    return true
+  }
+
+  /**
+   * The implementation of the method declared at the click.
+   *
+   * A click on an interface (or abstract) method declaration means "take me to
+   * the code that runs"; the engine's implementation query answers it, and the
+   * textual `implements`/`extends` scan covers the case where it does not.
+   *
+   * @returns whether something was opened or offered.
+   */
+  const openImplementation = async (name, position, event) => {
+    const root = store.getState().rootPath
+    if (root === '') return false
+    const implementations = []
+    if (navigate !== undefined) {
+      const answer = await ideLspQuery({
+        operation: 'goToImplementation',
+        filePath: ideAbs(root, tab.path),
+        workspaceRoot: root,
+        position,
+      }).catch(() => undefined)
+      for (const location of answer?.locations ?? []) {
+        if (location?.path === tab.path && location.line === position.line + 1) continue
+        implementations.push(location)
+      }
+    }
+    if (implementations.length === 0) {
+      const textual = await ideTextualImplementations(store, tab.path, lines, name, 8)
+      for (const row of textual) implementations.push({ path: row.path, line: row.line })
+    }
+    if (implementations.length === 0) return false
+    if (implementations.length > 1) {
+      setPopup({
+        name,
+        sections: [{ key: 'impl', title: `${tr('tabImplements')} (${implementations.length})`, rows: implementations.slice(0, 8) }],
+        ...popupAt(event),
+      })
+      return true
+    }
+    if (!store.openAt(implementations[0].path, implementations[0].line)) return false
+    store.setNotice(`\u2192 ${ideBasename(implementations[0].path)}:${implementations[0].line} \u00b7 ${tr('implementationLabel')}`)
+    return true
+  }
+
+  /**
    * Open the definition from a dependency jar's sources.
    *
    * @returns whether a read-only tab was opened.
@@ -5239,6 +5497,16 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const openAnnotationAttribute = async (typeName, attribute, position) => {
     const fqn = ideImportedFqn(typeName)
     if (fqn === '') return false
+    // An annotation declared in this workspace is the source of truth; the jar
+    // copy of the same module only exists because it was installed locally.
+    const workspace = await openWorkspaceTypeDeclaration(typeName)
+    if (workspace !== undefined) {
+      const index = ideAttributeLineIn(workspace.lines, attribute)
+      if (index >= 0 && store.openAt(workspace.path, index + 1)) {
+        store.setNotice(`\u2192 ${ideBasename(workspace.path)}:${index + 1}`)
+        return true
+      }
+    }
     const found = await ideJarSourceQuery(fqn)
     if (found.ok !== true || found.found !== true) return false
     const index = ideAttributeLineIn(found.text.split('\n'), attribute)
@@ -5341,13 +5609,17 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     const anchor = popupAt(event, 620)
     const started = ideNow()
     const root = { name, path: tab.path, line: position.line + 1, position }
+    // A licence refusal is not "this method has no callers"; say what to do.
+    const emptyText = (tree) => (typeof tree?.failed === 'string' && tree.failed.startsWith('license:')
+      ? tr('lspLicense')
+      : tr('chainNone'))
     const paint = (tree, state, ms) => setPopup({
       kind: 'chain',
       name,
       tree,
       state,
       ms,
-      empty: tr('chainNone'),
+      empty: emptyText(tree),
       ...anchor,
     })
     paint({ ...root, children: [] }, 'loading', 0)
@@ -5374,6 +5646,9 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         if ((grouped.implementations ?? []).length > 0) {
           sections.push({ key: 'impl', title: `${tr('tabImplements')} (${grouped.implementations.length})`, rows: grouped.implementations })
         }
+        if ((grouped.implementationsText ?? []).length > 0) {
+          sections.push({ key: 'implText', title: `${tr('tabImplementsText')} (${grouped.implementationsText.length})`, rows: grouped.implementationsText })
+        }
         if ((grouped.callers ?? []).length > 0) {
           sections.push({ key: 'callers', title: `${tr('tabCallers')} (${grouped.callers.length})`, rows: grouped.callers })
         }
@@ -5393,7 +5668,18 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       })
       const sections = sectionsOf(grouped)
       if (sections.length === 0) {
-        store.setNotice(`${tr('noUsages')}: ${name}${tr('maybeIndexing')}`)
+        // A failed server is not an answer: say so instead of implying the
+        // symbol has no usages. An operation the server does not implement is
+        // not an outage either — it just means this answer is text-only.
+        if (typeof grouped.failed === 'string' && grouped.failed.startsWith('license:')) {
+          store.setNotice(tr('lspLicense'))
+        } else if (typeof grouped.failed === 'string' && grouped.failed.startsWith('lsp-unsupported')) {
+          store.setNotice(`${tr('lspUnsupported')}: ${name}`)
+        } else {
+          store.setNotice(grouped.failed
+            ? `${tr('lspFailed')}: ${grouped.failed}`
+            : `${tr('noUsages')}: ${name}${tr('maybeIndexing')}`)
+        }
         return
       }
       store.setNotice('')
@@ -5504,6 +5790,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     ref: scrollRef,
     tabIndex: 0,
     onClick: (event) => {
+      // A licence page parked after an LSP refusal opens on the next gesture.
+      ideFlushLicenseUrl()
       // A plain click deliberately does nothing unless the user assigns it one.
       // Selecting and copying source is a more frequent gesture than navigating,
       // and a drag that ends on an identifier must not be mistaken for a request.
@@ -5957,8 +6245,19 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
 
   // The Session decides which workspace the panel shows. Opening the panel from
   // a conversation therefore lands in that conversation's project, every time.
+  // A root change is applied with its Session in one patch: doing it in two
+  // steps reloaded the old tabs out of scope and flashed a red error. The
+  // current root is read, not subscribed: a manual project switch must not be
+  // reverted by this effect re-running on its own patch.
   useEffect(() => {
-    if (typeof resolved.sessionId === 'string') store.rememberSession(resolved.sessionId)
+    if (typeof resolved.sessionId === 'string') {
+      if (resolvedRoot !== '' && store.getState().rootPath !== resolvedRoot) {
+        store.enterProject(resolvedRoot, resolved.sessionId)
+        return
+      }
+      store.rememberSession(resolved.sessionId)
+      return
+    }
     if (resolvedRoot !== '') store.setRoot(resolvedRoot)
   }, [resolved.sessionId, resolvedRoot, store])
 
@@ -5969,8 +6268,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
       store.setNotice(tr('projectNoSession'))
       return
     }
-    store.rememberSession(sessionId)
-    store.setRoot(path)
+    store.enterProject(path, sessionId)
   }
 
   // Mouse side buttons are the usual back/forward gesture; Chromium would take
@@ -6736,7 +7034,107 @@ function ideLspUrl() {
  * @returns the normalized `{ kind, locations | hover }`.
  * @throws an Error whose `code` is the Host's stable failure code.
  */
+/**
+ * Operations the server answered "not supported" for.
+ *
+ * A JSON-RPC `-32601` (or a message saying so) will not change within a
+ * session; asking again only produces another error banner and another wait
+ * before the text fallback.
+ */
+const ideLspUnsupported = new Set()
+
+/**
+ * Whether one error says the machine has no licence for the language server.
+ *
+ * The JetBrains server refuses every request with `-32802: no active JetBrains
+ * license`; the only cure is signing in with a licensed account outside the
+ * plugin, so this is not retried on every click.
+ */
+function ideLspNeedsLicense(error) {
+  const text = `${error?.detail ?? ''} ${error?.message ?? ''}`
+  return /-32802|no active JetBrains license/i.test(text)
+}
+
+/** Set once the server answered that this machine has no licence. */
+let ideLspLicenseMissing = false
+
+/** The URL the next real click should open, and whether we asked the host already. */
+let ideLicenseUrlPending = ''
+let ideLicenseRequested = false
+
+/**
+ * Start the JetBrains sign-in through the host.
+ *
+ * The host runs `intellij-server license login --browser` and returns the URL
+ * the account flow opened. A popup without a user gesture is easy to block, so
+ * the URL is also parked for the next click (`ideFlushLicenseUrl`). When the
+ * machine is already signed in without a licence the tool prints guidance
+ * instead of a URL; the account's licence page is the useful destination then.
+ */
+async function ideRequestLicenseLogin() {
+  if (ideLicenseRequested) return
+  ideLicenseRequested = true
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+    ? document.baseURI
+    : 'http://dsh.internal/'
+  let answer
+  try {
+    const response = await fetch(new URL('dsh-ide/license', base).href, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'open' }),
+    })
+    answer = await response.json()
+  } catch (error) {
+    void error
+    answer = undefined
+  }
+  // The host opens the page with the platform browser (`open`/`xdg-open`),
+  // which is the only reliable way out of a webview. `window.open` stays as a
+  // fallback when the host could not launch anything.
+  if (answer?.value?.opened === true) return
+  const url = typeof answer?.value?.url === 'string' && answer.value.url !== ''
+    ? answer.value.url
+    : 'https://account.jetbrains.com/licenses'
+  ideLicenseUrlPending = url
+  try {
+    const opened = globalThis.open?.(url, '_blank', 'noopener')
+    if (opened !== null && opened !== undefined) ideLicenseUrlPending = ''
+  } catch (error) {
+    void error
+  }
+}
+
+/** Open the parked licence page while a click's user gesture is still fresh. */
+function ideFlushLicenseUrl() {
+  if (ideLicenseUrlPending === '') return
+  const url = ideLicenseUrlPending
+  ideLicenseUrlPending = ''
+  try {
+    globalThis.open?.(url, '_blank', 'noopener')
+  } catch (error) {
+    void error
+  }
+}
+
+/** Whether one error means the server does not implement this operation. */
+function ideLspUnsupportedBy(error) {
+  const text = `${error?.detail ?? ''} ${error?.message ?? ''}`
+  return /-32601|method not found|not supported|unsupported/i.test(text)
+}
+
 async function ideLspQuery(payload, signal) {
+  if (ideLspLicenseMissing) {
+    const refused = new Error('no active JetBrains license')
+    refused.code = 'LSP_NO_LICENSE'
+    refused.detail = 'the language server has no active licence on this machine'
+    throw refused
+  }
+  if (ideLspUnsupported.has(payload?.operation)) {
+    const skipped = new Error('operation not supported by the server')
+    skipped.code = 'lsp-unsupported'
+    throw skipped
+  }
   let response
   try {
     response = await fetch(ideLspUrl(), {
@@ -6761,6 +7159,14 @@ async function ideLspQuery(payload, signal) {
     const failure = new Error(parsed.error?.code ?? `http-${response.status}`)
     failure.code = parsed.error?.code ?? `http-${response.status}`
     failure.detail = parsed.error?.message ?? ''
+    if (ideLspUnsupportedBy(failure) && typeof payload?.operation === 'string') {
+      ideLspUnsupported.add(payload.operation)
+    }
+    if (ideLspNeedsLicense(failure)) {
+      // First refusal: start the sign-in so the page is one click away.
+      if (!ideLspLicenseMissing) void ideRequestLicenseLogin()
+      ideLspLicenseMissing = true
+    }
     throw failure
   }
   return parsed.value
@@ -7119,30 +7525,227 @@ function ideAccessorNames(name) {
   return [`get${capitalized}`, `set${capitalized}`, `is${capitalized}`]
 }
 
+/** Files one textual caller search may read while checking receivers. */
+const IDE_MAX_TEXTUAL_FILES = 12
+
+/** Escape one identifier for a regular expression. */
+function ideRegexEscape(text) {
+  return String(text ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** The property an accessor name implies: `getName` → `name`, `isActive` → `active`. */
+function ideAccessorProperty(name) {
+  const match = /^(?:get|set|is)([A-Z][\w$]*)$/.exec(String(name ?? ''))
+  if (match === null) return ''
+  return match[1].charAt(0).toLowerCase() + match[1].slice(1)
+}
+
+/** Whether one line declares a type named `name` (`public class Name {`). */
+function ideIsTypeDeclaration(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  const pattern = new RegExp(`^\\s*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+${ideRegexEscape(name)}\\b`)
+  return pattern.test(text)
+}
+
+/** Whether one line declares a field named `name` (`private String name;`). */
+function ideIsFieldDeclaration(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  // `return refundNo;` states a type-like token before the name too; only a
+  // declaration starts with modifiers/type and nothing else.
+  if (/^(?:return|throw|else|if|for|while|switch|case|yield|assert|System)\b/.test(text.trim())) return false
+  const pattern = new RegExp(`^\\s*(?:(?:public|protected|private|static|final|transient|volatile)\\s+)*[A-Za-z_$][\\w$<>\\[\\],.?]*\\s+${ideRegexEscape(name)}\\s*[;=]`)
+  return pattern.test(text)
+}
+
+/**
+ * The receiver a call is made on, including a chain broken across lines.
+ *
+ * `paymentRecordOrderRelationRepository` on the line above and
+ * `.listByPaymentTradeNos(...)` on this one is one expression; reading only the
+ * current line loses the receiver and the owner of the method with it.
+ */
+function ideReceiverOfCall(lines, line, character) {
+  const text = String((lines ?? [])[line] ?? '')
+  const before = text.slice(0, Math.max(0, character))
+  if (before.trim() !== '' && !/^\s*\./.test(text)) return ideReceiverToken(before)
+  for (let index = line - 1; index >= 0 && index >= line - 16; index -= 1) {
+    const previous = String(lines[index] ?? '').trim()
+    if (previous === '') continue
+    const match = /([A-Za-z_$][\w$]*)\s*$/.exec(previous)
+    if (match !== null) return match[1]
+    if (!/[.([,]\s*$/.test(previous)) return ''
+  }
+  return ''
+}
+
+/**
+ * The dotted expression a call is made on: `PurchaseOrderStatusEnum.TO_PURCHASE`.
+ *
+ * A single identifier is not enough when the receiver is a static call target or
+ * an enum constant — the class that owns the method is the leftmost segment.
+ */
+function ideReceiverChain(lines, line, character) {
+  const text = String((lines ?? [])[line] ?? '')
+  const before = text.slice(0, Math.max(0, character)).replace(/\s+$/, '')
+  const tail = /[A-Za-z0-9_$.]+$/.exec(before.replace(/\($/, ''))
+  const sameLine = tail === null ? '' : tail[0].replace(/\.$/, '')
+  if (sameLine !== '' && !/^\s*\./.test(text)) return sameLine
+  // A chain broken before the dot: the receiver sits on an earlier line.
+  for (let index = line - 1; index >= 0 && index >= line - 16; index -= 1) {
+    const previous = String(lines[index] ?? '').trim()
+    if (previous === '') continue
+    const found = /([A-Za-z0-9_$.]+)\s*$/.exec(previous)
+    if (found !== null) return found[1].replace(/\.$/, '')
+    if (!/[.([,]\s*$/.test(previous)) return ''
+  }
+  return ''
+}
+
+/** Grep pattern for a declaration of `name`: a type token, then the name. */
+function ideDeclarationPattern(name) {
+  return `[A-Za-z0-9_$<>\\[\\],.?]+\\s+${ideRegexEscape(name)}\\s*\\(`
+}
+
+/** Whether one line declares `name` rather than using it. */
+function ideTextualIsDeclaration(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  const use = new RegExp(`\\b${ideRegexEscape(name)}\\s*\\(`)
+  if (!use.test(text)) return false
+  const declaration = new RegExp(
+    `^\\s*(?:(?:public|protected|private|static|final|abstract|synchronized|default|native)\\s+)*[\\w$<>\\[\\],.?\\s]+\\s+${ideRegexEscape(name)}\\s*\\(`,
+  )
+  return declaration.test(text)
+}
+
+/**
+ * Whether one reference row is the method's own declaration.
+ *
+ * `findReferences` answers with declarations too — the contract's signature
+ * line, an override in another class — and those are not call sites.
+ */
+function ideReferenceIsDeclaration(lines, line, name) {
+  const text = String((lines ?? [])[line - 1] ?? '')
+  return ideTextualIsDeclaration(text, name)
+}
+
+/** Whether one line is a call of `name`, rather than its declaration. */
+function ideTextualIsCall(text, name) {
+  if (typeof text !== 'string' || typeof name !== 'string' || name === '') return false
+  const use = new RegExp(`\\b${ideRegexEscape(name)}\\s*\\(`)
+  return use.test(text) && !ideTextualIsDeclaration(text, name)
+}
+
+/** Whether one call line invokes `name` through a receiver (`obj.name(`). */
+function ideTextualIsReceiverCall(text, name) {
+  return new RegExp(`\\.\\s*${ideRegexEscape(name)}\\s*\\(`).test(String(text ?? ''))
+}
+
 /**
  * Text fallback for symbols the engine reports no usages for.
  *
- * A Lombok field has no accessor in the sources, and `textDocument/references`
- * on the field itself returns only its declaration — so a property that is used
- * everywhere would look unused. Searching for its accessors' call sites is a
- * grep, not a semantic answer, and the popup labels it as such.
+ * Two shapes matter:
+ *  - a **method**: search its own name at call sites, and for a non-static one
+ *    keep only receiver calls (`service.detail(...)`) — a bare `detail(...)` is
+ *    usually a different local helper;
+ *  - a **field** (Lombok-style property): the field has no accessor in the
+ *    sources and references on it answer only its declaration, so its
+ *    `getX`/`setX`/`isX` call sites are the closest thing to usages.
+ *
+ * The popup labels these rows as text matches; they are never presented as
+ * semantic references.
  */
-async function ideTextualCallers(store, tabPath, position, symbolName, limit) {
-  const names = ideAccessorNames(symbolName)
-  if (names.length === 0) return []
+async function ideTextualCallers(store, tabPath, position, symbolName, limit, options = {}) {
+  if (typeof symbolName !== 'string' || symbolName === '') return []
   const root = store.getState().rootPath
   if (root === '') return []
-  const pattern = `\\b(?:${names.join('|')})\\s*\\(`
-  const found = await ideGrepQuery(root, pattern, { caseSensitive: true })
-  if (found.ok !== true) return []
   const clicked = `${tabPath}:${position.line + 1}`
-  const seen = new Set()
+  // Files are read once each while checking receivers: a name match in a class
+  // that holds something else is not a call of this method.
+  const fileCache = new Map()
+  const linesOf = async (path) => {
+    if (fileCache.has(path)) return fileCache.get(path)
+    if (fileCache.size >= IDE_MAX_TEXTUAL_FILES) return undefined
+    const result = await store.readText(store.getState().sessionId, root, path).catch(() => undefined)
+    const lines = result?.ok === true && typeof result.value === 'string' ? result.value.split('\n') : undefined
+    fileCache.set(path, lines)
+    return lines
+  }
+  const receiverBelongsTo = async (path, urlLineIndex, text, name) => {
+    const lines = await linesOf(path)
+    if (lines === undefined) return false
+    const line = lines[urlLineIndex] ?? text
+    // The first substring may be another identifier (`statisticsResp`); only the
+    // occurrence that is followed by `(` is the call.
+    const call = new RegExp(`\\b${ideRegexEscape(name)}\\s*\\(`).exec(line)
+    if (call === null) return false
+    const receiver = ideReceiverChain(lines, urlLineIndex, call.index).split('.')[0]
+    if (receiver === '') return false
+    const owners = Array.isArray(options.ownerNames) && options.ownerNames.length > 0 ? options.ownerNames : ['']
+    const declared = ideDeclaredType(lines, receiver)
+    return owners.includes('') || owners.includes(declared)
+  }
+  const collect = async (pattern, names, requireReceiver) => {
+    const found = await ideGrepQuery(root, pattern, { caseSensitive: true, extensions: IDE_CODE_EXTENSIONS })
+    if (found.ok !== true) return []
+    const rows = []
+    const seen = new Set()
+    for (const match of found.matches) {
+      const key = `${match.path}:${match.line}`
+      if (key === clicked || seen.has(key)) continue
+      const text = String(match.text ?? '')
+      const name = names.find((candidate) => ideTextualIsCall(text, candidate))
+      if (name === undefined) continue
+      if (requireReceiver && !ideTextualIsReceiverCall(text, name)) continue
+      if (requireReceiver && !(await receiverBelongsTo(match.path, match.line - 1, text, name))) continue
+      seen.add(key)
+      rows.push({ path: match.path, line: match.line, snippet: match.text })
+    }
+    return rows
+  }
+
+  const exact = await collect(`\\b${ideRegexEscape(symbolName)}\\s*\\(`, [symbolName], options.requireReceiver === true)
+  if (exact.length > 0) return exact.slice(0, limit)
+  // No call of the symbol itself: a property's accessors are the fallback.
+  const accessors = ideAccessorNames(symbolName)
+  if (accessors.length === 0) return []
+  const byAccessor = await collect(`\\b(?:${accessors.map(ideRegexEscape).join('|')})\\s*\\(`, accessors, false)
+  return byAccessor.slice(0, limit)
+}
+
+/**
+ * Textual implementations of an interface method.
+ *
+ * Used only when the engine answered nothing: find the classes that implement
+ * the clicked file's interface, then the declaration of the method inside them.
+ */
+async function ideTextualImplementations(store, tabPath, sourceLines, symbolName, limit) {
+  const root = store.getState().rootPath
+  const className = ideClassName(tabPath)
+  if (root === '' || className === '' || typeof symbolName !== 'string' || symbolName === '') return []
+  // An interface is extended by implementations; an abstract class by
+  // subclasses. Either way the override is what a click on the contract wants.
+  const isInterface = sourceLines.some((line) => new RegExp(`\\binterface\\s+${ideRegexEscape(className)}\\b`).test(line))
+  const isAbstract = !isInterface && sourceLines.some((line) => new RegExp(`\\babstract\\s+class\\s+${ideRegexEscape(className)}\\b`).test(line))
+  if (!isInterface && !isAbstract) return []
+  const relation = isInterface ? 'implements' : 'extends'
+  const typed = await ideGrepQuery(root, `${relation}[^\\n{]*\\b${ideRegexEscape(className)}\\b`, {
+    caseSensitive: true,
+    extensions: IDE_CODE_EXTENSIONS,
+  })
+  if (typed.ok !== true) return []
   const rows = []
-  for (const match of found.matches) {
-    const key = `${match.path}:${match.line}`
-    if (key === clicked || seen.has(key)) continue
+  const seen = new Set()
+  for (const match of typed.matches) {
+    const key = match.path
+    if (seen.has(key)) continue
     seen.add(key)
-    rows.push({ path: match.path, line: match.line, snippet: match.text })
+    const declared = await ideGrepQuery(root, `\\b${ideRegexEscape(symbolName)}\\s*\\(`, { path: match.path, caseSensitive: true })
+    if (declared.ok !== true) continue
+    for (const line of declared.matches) {
+      if (!ideTextualIsDeclaration(line.text, symbolName)) continue
+      rows.push({ path: line.path, line: line.line, snippet: line.text })
+      break
+    }
     if (rows.length >= limit) break
   }
   return rows
@@ -7210,6 +7813,18 @@ async function ideAccessorReferences(store, tabPath, position, symbolName, timel
   return result.locations ?? []
 }
 
+/** `LSP_SERVER_ERROR — textDocument/references: Method not found (-32601)`. */
+function ideLspFailureText(failure) {
+  if (failure === undefined || failure === null) return ''
+  if (ideLspNeedsLicense(failure) || failure.code === 'LSP_NO_LICENSE') {
+    return `license: ${typeof failure.detail === 'string' ? failure.detail : 'no active JetBrains license'}`
+  }
+  const code = typeof failure.code === 'string' ? failure.code : 'lsp-failed'
+  const operation = typeof failure.operation === 'string' ? `${failure.operation}: ` : ''
+  const detail = typeof failure.detail === 'string' && failure.detail !== '' ? ` — ${failure.detail}` : ''
+  return `${code}${detail === '' ? '' : `${detail}`}${operation === '' ? '' : ` (${operation.replace(/: $/, '')})`}`
+}
+
 /** One location's identity, for set arithmetic between queries. */
 function ideLocationKey(location) {
   return `${location.path}:${location.line}`
@@ -7226,11 +7841,21 @@ function ideLocationKey(location) {
  * @returns `{ implementations, callers }`, each a list of `{ path, line, snippet }`.
  */
 async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartial, symbolName) {
+  const failures = []
   const run = async (operation, label) => {
     const started = ideNow()
     const result = await ideLspQuery(ideLspPayload(store, operation, tabPath, position))
       .then((value) => value.locations ?? [])
-      .catch(() => [])
+      .catch((error) => {
+        // The server states why; the banner is the only place that reason can
+        // reach the reader, so keep the first one verbatim.
+        failures.push({
+          operation,
+          code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
+          detail: String(error?.detail ?? '').slice(0, 160),
+        })
+        return []
+      })
     timeline?.mark(label, ideNow() - started)
     return result
   }
@@ -7240,6 +7865,17 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   // whole answer until the slowest query returns.
   const declarations = await run('goToDefinition', 'def')
   const implementations = await run('goToImplementation', 'impl')
+  // The clicked line says what kind of symbol this is: a method is followed by
+  // `(`, and `static` says whether a bare call may reach it.
+  const sourceLines = await store.readLines(tabPath)
+  const clickedLine = String(sourceLines[position.line] ?? '')
+  // The column points at the symbol itself, so what follows the name says
+  // whether this is a method (a `(` next) or a field.
+  const afterName = clickedLine.slice(position.character + String(symbolName ?? '').length)
+  const isMethod = afterName.trimStart().startsWith('(')
+  const isStatic = /\bstatic\b/.test(clickedLine)
+  // A caller may hold the interface type while this file is the implementation.
+  const ownerNames = [ideClassName(tabPath), ...ideContractNames(sourceLines)].filter((name) => name !== '')
 
   const declared = new Set(declarations.map(ideLocationKey))
   const implemented = new Set(implementations.map(ideLocationKey))
@@ -7266,7 +7902,7 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   // The popup has the same blind spot as the counter: a caller holding the
   // interface never appears among the implementation's references.
   if (typeof symbolName === 'string' && symbolName !== '') {
-    const contract = await ideContractReferences(store, tabPath, await store.readLines(tabPath), symbolName)
+    const contract = await ideContractReferences(store, tabPath, sourceLines, symbolName)
     const known = new Set(references.map(ideLocationKey))
     for (const location of contract) {
       const key = ideLocationKey(location)
@@ -7276,11 +7912,27 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
     }
   }
 
+  // Reading the files that own the references lets a declaration that came
+  // through the contract merge (the interface's own signature) be dropped: it
+  // is the method, not a caller of it.
+  const referenceLines = new Map()
+  const linesOfReference = async (path) => {
+    let pending = referenceLines.get(path)
+    if (pending === undefined) {
+      pending = Promise.resolve(store.readLines(path)).then((lines) => (Array.isArray(lines) ? lines : [])).catch(() => [])
+      referenceLines.set(path, pending)
+    }
+    return pending
+  }
   const callerRows = []
   const seenCaller = new Set()
   for (const location of references) {
     const key = ideLocationKey(location)
     if (key === clicked || declared.has(key) || implemented.has(key) || seenCaller.has(key)) continue
+    if (typeof symbolName === 'string' && symbolName !== '' && typeof location?.path === 'string' && typeof location?.line === 'number') {
+      const lines = await linesOfReference(location.path)
+      if (ideReferenceIsDeclaration(lines, location.line, symbolName)) continue
+    }
     seenCaller.add(key)
     callerRows.push(location)
   }
@@ -7296,8 +7948,9 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
   const callers = await ideWithSnippets(store, callerRows.slice(0, limits.callers))
   if (implRows.length === 0 && callers.length === 0) {
     // The engine answers for the accessor even though it answers nothing for the
-    // field, so this branch still produces semantic callers.
-    const anchored = await ideAccessorReferences(store, tabPath, position, symbolName, timeline)
+    // field, so this branch still produces semantic callers. It only makes sense
+    // for a field: `detail` and `getDetail` are different methods.
+    const anchored = isMethod ? [] : await ideAccessorReferences(store, tabPath, position, symbolName, timeline)
     const anchoredRows = []
     const seenAnchored = new Set()
     for (const location of anchored) {
@@ -7315,16 +7968,34 @@ async function ideLspBrowse(store, tabPath, position, limits, timeline, onPartia
         textual: [],
       }
     }
-    const textual = await ideTextualCallers(store, tabPath, position, symbolName, limits.callers)
-    if (textual.length > 0) {
-      return { implementations: partial.implementations, callers: [], declaration: [], textual }
+    const textual = await ideTextualCallers(store, tabPath, position, symbolName, limits.callers, {
+      // A non-static method is reached through a receiver; a bare same-name call
+      // is usually a different local helper, and a receiver of another declared
+      // type is a different method with the same name.
+      requireReceiver: isMethod && !isStatic,
+      ownerNames,
+    })
+    const implementationsText = await ideTextualImplementations(store, tabPath, sourceLines, symbolName, limits.implementations)
+    if (textual.length > 0 || implementationsText.length > 0) {
+      return {
+        implementations: partial.implementations,
+        implementationsText,
+        callers: [],
+        declaration: [],
+        textual,
+        failed: '',
+      }
     }
   }
   return {
     implementations: partial.implementations,
+    implementationsText: [],
     callers,
     declaration: await ideWithSnippets(store, declarationRows.slice(0, 1)),
     textual: [],
+    // Every query failing is a server problem, not "no usages": the popup must
+    // not tell the reader the symbol is unused when nothing answered.
+    failed: failures.length === 3 ? ideLspFailureText(failures[0]) : '',
   }
 }
 
@@ -7363,7 +8034,9 @@ function ideReceiverToken(before) {
  * returns without asking the engine anything.
  */
 function ideDeclaredType(lines, name) {
-  const pattern = new RegExp(`^\\s*(?:final\\s+)?([A-Z][\\w$]*(?:<[^;=]*>)?)\\s+${name}\\s*[;=,)]`)
+  // `private final Type field;` is how a controller holds its service; the
+  // modifiers must not stop the declaration from being recognised.
+  const pattern = new RegExp(`^\\s*(?:(?:public|protected|private|static|final|transient|volatile)\\s+)*([A-Z][\\w$]*(?:<[^;=]*>)?)\\s+${name}\\s*[;=,)]`)
   for (const text of lines) {
     const match = pattern.exec(text)
     if (match !== null) return match[1].replace(/<.*$/, '')
@@ -7596,6 +8269,27 @@ async function ideCallChain(store, root, options = {}) {
     }
   }
 
+  // The engine may be down (or its project model incomplete). A chain that
+  // silently answers "no callers" in that state is worse than a text-matched
+  // one, so a level with no semantic references falls back to the same
+  // receiver-checked text search the usages popup uses.
+  let textual = false
+  let failure = ''
+  const textualCallersOf = async (node) => {
+    const lines = await linesOf(node.path)
+    const lineText = String(lines[node.position.line] ?? '')
+    const afterName = lineText.slice(node.position.character + String(node.name ?? '').length)
+    if (!afterName.trimStart().startsWith('(')) return []
+    const ownerNames = [ideClassName(node.path), ...ideContractNames(lines)].filter((name) => name !== '')
+    const rows = await ideTextualCallers(store, node.path, node.position, node.name, IDE_CHAIN_CHILDREN, {
+      requireReceiver: !/\bstatic\b/.test(lineText),
+      ownerNames,
+    }).catch(() => [])
+    if (rows.length === 0) return []
+    textual = true
+    return rows.map((row) => ({ path: row.path, line: row.line }))
+  }
+
   const seen = new Set([`${root.path}:${root.line}`])
   let level = [tree]
   let count = 1
@@ -7603,10 +8297,20 @@ async function ideCallChain(store, root, options = {}) {
     const next = []
     for (const node of level) {
       const [answer, contract] = await Promise.all([
-        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch(() => undefined),
+        ideLspQuery(ideLspPayload(store, 'findReferences', node.path, node.position)).catch((error) => {
+          if (failure === '') {
+            failure = ideLspFailureText({
+              operation: 'findReferences',
+              code: typeof error?.code === 'string' ? error.code : 'lsp-failed',
+              detail: String(error?.detail ?? '').slice(0, 160),
+            })
+          }
+          return undefined
+        }),
         ideContractReferences(store, node.path, await linesOf(node.path), node.name),
       ])
-      const locations = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      const semantic = [...(Array.isArray(answer?.locations) ? answer.locations : []), ...contract]
+      const locations = semantic.length > 0 ? semantic : await textualCallersOf(node)
       let added = 0
       for (const location of locations) {
         if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
@@ -7640,6 +8344,8 @@ async function ideCallChain(store, root, options = {}) {
     level = next
     options.onPartial?.(tree)
   }
+  tree.textual = textual
+  tree.failed = textual ? '' : failure
   return tree
 }
 
@@ -7712,8 +8418,14 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
     ? tr('chainLoading')
     : `${count}${typeof popup.ms === 'number' ? ` · ${popup.ms}ms` : ''}`
   const forest = root === undefined ? [] : ideChainInverted(root)
+  const note = root === undefined
+    ? ''
+    : (typeof root.failed === 'string' && root.failed.startsWith('license:')
+      ? tr('lspLicense')
+      : (root.textual === true ? tr('chainTextual') : (root.failed ? tr('chainTextual') : '')))
   const body = h(React.Fragment, null, [
     h('div', { key: 'rule', className: 'iw-chain-rule' }, tr('chainRule')),
+    note === '' ? null : h('div', { key: 'note', className: 'iw-chain-note' }, note),
     root === undefined || (count <= 1 && popup.state === 'ready')
       ? h('div', { key: 'empty', className: 'iw-hint' }, popup.empty ?? tr('chainNone'))
       : h('div', { key: 'forest', className: 'iw-chain-roots' }, forest.map((entry, index) => h(IdeChainNode, {
@@ -8677,12 +9389,38 @@ function apply(ctx) {
    * Only commands this panel actually owns: a searchable list of things that do
    * nothing would be worse than a short one that always works.
    */
+  /**
+   * Switch the language server's licence account: sign the machine out of the
+   * current JetBrains account, then open a fresh sign-in. Only a licence verb
+   * can provision the server, which is why a browser sign-in alone does nothing.
+   */
+  const reloginLicense = async () => {
+    store.setNotice(tr('lspReloginRunning'))
+    try {
+      const base = typeof document !== 'undefined' && typeof document.baseURI === 'string'
+        ? document.baseURI
+        : 'http://dsh.internal/'
+      const response = await fetch(new URL('dsh-ide/license', base).href, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'relogin' }),
+      })
+      const answer = await response.json()
+      store.setNotice(answer?.value?.opened === true
+        ? tr('lspReloginOpened')
+        : `${tr('lspFailed')}: ${answer?.error?.code ?? 'license-relogin'}`)
+    } catch (error) {
+      store.setNotice(`${tr('lspFailed')}: ${error?.message ?? 'network'}`)
+    }
+  }
+
   const paletteActions = [
     { id: 'tree', labelKey: 'paletteActionTree', run: () => store.setTreeVisible(!store.getState().treeVisible) },
     { id: 'refresh', labelKey: 'paletteActionRefresh', run: () => store.refreshAll() },
     { id: 'jump', labelKey: 'paletteActionJump', run: () => store.setJumpEnabled(!store.getState().jumpEnabled) },
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
+    { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
   ]
 
 
