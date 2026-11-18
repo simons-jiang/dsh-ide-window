@@ -1305,6 +1305,20 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       if (typeof target?.closest !== 'function') return
       const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
       if (gutter === null) {
+        // A symbol under the pointer gets IDEA's editor menu: name, reference,
+        // and the reference handed to the conversation.
+        const symbol = target.closest('[data-iw-sym]')
+        if (symbol !== null) {
+          event.preventDefault()
+          store.setCodeSymbolMenu({
+            path: tab.path,
+            symbol: symbol.getAttribute('data-iw-sym') ?? '',
+            jar: tab.kind === 'jar',
+            x: event.clientX,
+            y: event.clientY,
+          })
+          return
+        }
         // macOS delivers Ctrl+click as a secondary click: when that gesture is
         // configured for navigation, it belongs to the source, not to a menu.
         if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {

@@ -247,7 +247,7 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
 /** How many times the panel body has rendered; a probe can read it. */
 let idePanelRenders = 0
 
-function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions }) {
+function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions, onReferenceToChat }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const actions = paletteActions ?? []
 
@@ -474,6 +474,15 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     ? null
     : h('div', { key: 'banner', className: 'iw-banner' }, state.liveNotice)
 
+  /** Clipboard write plus the notice DSH shows for a copied value. */
+  const copyText = (text) => {
+    const clip = globalThis.navigator?.clipboard
+    if (clip !== undefined && typeof clip.writeText === 'function') {
+      void clip.writeText(text).catch(() => undefined)
+    }
+    store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
+  }
+
   const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
   const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
   return h('div', {
@@ -494,6 +503,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
       store,
       state,
       tr,
+      onReferenceToChat,
     }),
     h(IdeTreePopup, {
       key: 'treepopup',
@@ -507,18 +517,20 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
       state,
       tr,
     }),
+    h(IdeSymbolMenu, {
+      key: 'symbolmenu',
+      store,
+      state,
+      tr,
+      copy: copyText,
+      onReferenceToChat,
+    }),
     h(IdeTabMenu, {
       key: 'tabmenu',
       store,
       state,
       tr,
-      copy: (text) => {
-        const clip = globalThis.navigator?.clipboard
-        if (clip !== undefined && typeof clip.writeText === 'function') {
-          void clip.writeText(text).catch(() => undefined)
-        }
-        store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
-      },
+      copy: copyText,
     }),
     h(IdeSetupDialog, {
       key: 'setup',

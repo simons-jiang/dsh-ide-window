@@ -204,5 +204,13 @@
   "paletteActionDiagnostics": "复制诊断信息",
   "diagCopied": "诊断信息已复制，宿主日志已追加",
   "diagCopyFailed": "无法写入剪贴板，诊断信息未复制",
-  "diagReported": "诊断信息已写入宿主日志（剪贴板不可用）"
+  "diagReported": "诊断信息已写入宿主日志（剪贴板不可用）",
+  "symbolMenuLabel": "符号操作",
+  "symbolMenuCopyName": "复制名称",
+  "symbolMenuCopyReference": "复制引用",
+  "symbolMenuReferenceToChat": "复制引用回对话",
+  "treeReferenceToChat": "复制引用回对话",
+  "referenceInserted": "引用已插入对话",
+  "referenceInsertedPlain": "已插入纯文本引用",
+  "referenceNoEditor": "未找到对话输入框，引用未插入"
 }

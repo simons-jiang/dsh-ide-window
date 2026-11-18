@@ -511,8 +511,9 @@ function ideShowRefs(store, tr, root, path) {
 }
 
 /** The file tree's context menu. */
-function IdeTreeMenu({ store, state, tr }) {
+function IdeTreeMenu({ store, state, tr, onReferenceToChat }) {
   const menu = state.treeMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 268)
   if (menu === null || menu === undefined) return null
   const path = menu.path
   const isDir = menu.isDir === true
@@ -545,6 +546,14 @@ function IdeTreeMenu({ store, state, tr }) {
       }),
     })
   }
+  items.push({
+    key: 'copy-ref-chat',
+    icon: IdeAtIcon,
+    label: tr('treeReferenceToChat'),
+    run: then(() => {
+      void (typeof onReferenceToChat === 'function' ? onReferenceToChat(path, isDir) : undefined)
+    }),
+  })
   items.push({ key: 'copy-absolute', icon: IdeCopyIcon, label: tr('treeCopyPath'), run: then(() => ideCopyWithNotice(store, tr, ideAbsolutePath(root, path))) })
   items.push({ key: 'copy-relative', icon: IdeCopyIcon, label: tr('treeCopyRelative'), run: then(() => ideCopyWithNotice(store, tr, path)) })
   if (!isDir && /\.(java|kt|kts|scala|groovy)$/i.test(path)) {
@@ -598,10 +607,8 @@ function IdeTreeMenu({ store, state, tr }) {
       className: 'iw-menu',
       role: 'menu',
       'aria-label': tr('treeMenuLabel'),
-      style: {
-        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 300))}px`,
-        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 520))}px`,
-      },
+      ref: placement.ref,
+      style: placement.style,
       onPointerDown: (event) => event.stopPropagation(),
     }, rows)),
   ])

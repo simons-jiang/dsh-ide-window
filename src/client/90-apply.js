@@ -131,6 +131,194 @@ function apply(ctx) {
     }
   }
 
+  // ---- references handed to the conversation -----------------------------
+
+  /** Poll `probe` until it answers, or give up (the UI is not there yet). */
+  const waitForProbe = async (probe, timeout = 1500) => {
+    const started = Date.now()
+    for (;;) {
+      const value = probe()
+      if (value !== null && value !== undefined && value !== false) return value
+      if (Date.now() - started >= timeout) return null
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+  }
+
+  /** The conversation composer is the only Lexical editor in the shell. */
+  const composerEditor = () => (typeof document === 'undefined' ? null : document.querySelector('[data-lexical-editor="true"]'))
+
+  /** Rows of the open mention menu. */
+  const composerOptions = () => [...document.querySelectorAll('[role="option"]')].filter((row) => row.offsetParent !== null)
+
+  const composerChips = () => document.querySelectorAll('[data-composer-chip]').length
+
+  const pressKey = (element, key) => {
+    element.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }))
+  }
+
+  const textAfterLastAt = (editor) => {
+    const text = String(editor?.textContent ?? '')
+    const at = text.lastIndexOf('@')
+    return at < 0 ? '' : text.slice(at + 1)
+  }
+
+  /** Put the caret at the end of the draft: the mention is appended, never merged. */
+  const caretToEnd = (editor) => {
+    editor.focus()
+    const selection = globalThis.getSelection?.()
+    if (selection === null || selection === undefined) return
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  /** Replace whatever was typed after the `@` with the canonical mention. */
+  const replaceTypedMention = (editor, target) => {
+    const typed = textAfterLastAt(editor)
+    caretToEnd(editor)
+    for (let index = 0; index < typed.length; index += 1) {
+      editor.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        code: 'Backspace',
+        keyCode: 8,
+        bubbles: true,
+        cancelable: true,
+      }))
+    }
+    caretToEnd(editor)
+    document.execCommand('insertText', false, target)
+  }
+
+  /** Leave the mention as plain text, spelled exactly the way DSH spells it. */
+  const finishPlainMention = async (editor, relative, isDir) => {
+    const target = isDir === true ? `${relative.replace(/\/+$/, '')}/` : relative
+    caretToEnd(editor)
+    if (textAfterLastAt(editor) !== target) {
+      replaceTypedMention(editor, target)
+      // A trailing slash re-opens the mention menu; let it render, then close it.
+      await new Promise((resolve) => setTimeout(resolve, 140))
+    }
+    caretToEnd(editor)
+    pressKey(editor, 'Escape')
+  }
+
+  /**
+   * Type `@relative/path` into the composer and let DSH turn it into a chip.
+   *
+   * The composer is a Lexical editor with an `@` trigger: typed text only
+   * becomes a reference chip when a candidate of its menu is chosen, so the
+   * path is entered segment by segment — Tab drills into a folder, the last
+   * segment is confirmed with Enter. That is the sequence a person types, and
+   * every step is checked against the menu; when a step does not offer the
+   * expected candidate the text is left as a plain mention instead of picking
+   * the wrong file.
+   *
+   * @returns 'chip' when a chip was inserted, 'plain' when it stayed text.
+   */
+  const typeReferenceMention = async (editor, relative, isDir) => {
+    const segments = relative.split('/').filter((part) => part !== '')
+    if (segments.length === 0) return 'plain'
+    const basename = segments[segments.length - 1]
+    const dirHint = segments.slice(0, -1).join('/')
+    // DSH offers a file by name; the extension only narrows the search.
+    const stem = isDir === true ? basename : basename.replace(/\.[^.]*$/, '')
+    const before = composerChips()
+    // The `@` trigger only fires at the start of a word: separate it from
+    // whatever the draft already ends with, the way a person would.
+    const draft = String(editor.textContent ?? '')
+    if (draft !== '' && !/\s$/u.test(draft)) {
+      caretToEnd(editor)
+      document.execCommand('insertText', false, ' ')
+      await new Promise((resolve) => setTimeout(resolve, 60))
+    }
+    caretToEnd(editor)
+    document.execCommand('insertText', false, '@')
+    document.execCommand('insertText', false, stem)
+    const rows = await waitForProbe(() => {
+      const options = composerOptions()
+      return options.length > 0 ? options : null
+    }, 1200)
+    if (rows === null) {
+      ideLogRecord('warn', 'reference', 'mention menu never opened', relative)
+      return 'plain'
+    }
+    const label = (row) => String(row.textContent ?? '').replace(/\s+/gu, '')
+    if (isDir === true) {
+      // A directory row drills instead of inserting a chip; the typed text is
+      // the reference, so the drill row only makes it spell exactly.
+      const folder = rows.find((row) => label(row).startsWith(`${basename}/`))
+      if (folder === undefined) return 'plain'
+      folder.click()
+      await waitForProbe(() => (String(editor.textContent ?? '').includes(`${basename}/`) ? true : null), 1200)
+      return 'plain'
+    }
+    // One file only: the label names it and the directory hint (when the menu
+    // shows one) must end exactly at the target's directory.
+    const candidates = rows.filter((row) => {
+      const text = label(row)
+      if (!text.startsWith(basename)) return false
+      return dirHint === '' ? text === basename : text.endsWith(dirHint)
+    })
+    if (candidates.length !== 1) {
+      ideLogRecord('warn', 'reference', 'mention candidate mismatch', {
+        relative,
+        dirHint,
+        options: rows.map(label).slice(0, 8),
+      })
+      return 'plain'
+    }
+    candidates[0].click()
+    let chipped = await waitForProbe(() => (composerChips() > before ? true : null), 800)
+    if (chipped !== true) {
+      // A row can be replaced by a re-render before the click lands; the
+      // highlighted row is the same candidate, so Enter finishes the job.
+      caretToEnd(editor)
+      pressKey(editor, 'Enter')
+      chipped = await waitForProbe(() => (composerChips() > before ? true : null), 1200)
+    }
+    if (chipped !== true) {
+      ideLogRecord('warn', 'reference', 'mention candidate did not become a chip', {
+        relative,
+        options: rows.map(label).slice(0, 8),
+      })
+    }
+    if (chipped === true) {
+      const chips = [...document.querySelectorAll('[data-composer-chip]')]
+      const got = String(chips[chips.length - 1]?.textContent ?? '').trim()
+      // The menu highlights one row; if that was the wrong file the chip says
+      // so, and the report keeps the evidence.
+      if (got !== basename) ideLogRecord('warn', 'reference', 'a different file was inserted', { relative, got })
+    }
+    return chipped === true ? 'chip' : 'plain'
+  }
+
+  /**
+   * Back to the conversation with the reference appended to the draft.
+   *
+   * The existing draft is never replaced: the caret is moved to its end first,
+   * so text and attachments the user already had stay untouched.
+   */
+  async function referenceToChat(path, isDir) {
+    const relative = ideRelativeTo(store.getState().rootPath, path)
+    const mention = ideReferenceMention(relative, isDir)
+    backToChat()
+    const editor = await waitForProbe(() => composerEditor(), 2000)
+    if (editor === null) {
+      ideLogRecord('warn', 'reference', 'composer not found', mention)
+      store.setNotice(`${translate('referenceNoEditor')}: ${mention}`)
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    caretToEnd(editor)
+    const outcome = await typeReferenceMention(editor, relative, isDir)
+    if (outcome !== 'chip') await finishPlainMention(editor, relative, isDir)
+    store.setNotice(outcome === 'chip'
+      ? `${translate('referenceInserted')}: ${mention}`
+      : `${translate('referenceInsertedPlain')}: ${mention}`)
+  }
+
   /**
    * Collect both sides of the log and put the report on the clipboard.
    *
@@ -503,6 +691,7 @@ function apply(ctx) {
       onEnter: enter,
       navigate,
       paletteActions,
+      onReferenceToChat: referenceToChat,
     }),
   }, IdePanel))
   ctx.effect(() => {
@@ -519,6 +708,7 @@ function apply(ctx) {
           onEnter: enter,
         navigate,
         paletteActions,
+        onReferenceToChat: referenceToChat,
       }),
     }, IdePanel))
     mainRegistered = true

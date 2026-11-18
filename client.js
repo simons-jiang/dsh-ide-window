@@ -211,6 +211,14 @@ window.__ModuleLoader__.load({
     "diagCopied": "Diagnostics copied; the host log was appended",
     "diagCopyFailed": "Clipboard unavailable; diagnostics were not copied",
     "diagReported": "Diagnostics written to the host log (clipboard unavailable)",
+    "symbolMenuLabel": "Symbol actions",
+    "symbolMenuCopyName": "Copy name",
+    "symbolMenuCopyReference": "Copy reference",
+    "symbolMenuReferenceToChat": "Copy reference to chat",
+    "treeReferenceToChat": "Copy reference to chat",
+    "referenceInserted": "Reference inserted into the chat",
+    "referenceInsertedPlain": "Inserted as a plain-text reference",
+    "referenceNoEditor": "Composer not found; nothing was inserted",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -415,6 +423,14 @@ window.__ModuleLoader__.load({
     "diagCopied": "诊断信息已复制，宿主日志已追加",
     "diagCopyFailed": "无法写入剪贴板，诊断信息未复制",
     "diagReported": "诊断信息已写入宿主日志（剪贴板不可用）",
+    "symbolMenuLabel": "符号操作",
+    "symbolMenuCopyName": "复制名称",
+    "symbolMenuCopyReference": "复制引用",
+    "symbolMenuReferenceToChat": "复制引用回对话",
+    "treeReferenceToChat": "复制引用回对话",
+    "referenceInserted": "引用已插入对话",
+    "referenceInsertedPlain": "已插入纯文本引用",
+    "referenceNoEditor": "未找到对话输入框，引用未插入",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1590,6 +1606,8 @@ html.iw-select-code .iw-code .iw-vision {
 }
 .iw-menu {
   position: fixed;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   min-width: 232px;
   padding: 5px;
   border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
@@ -2645,6 +2663,23 @@ function ideAncestorDirs(path) {
 const IDE_MAX_EXPANDED_DIRS = 200
 
 /** Directory of a workspace path (`` for a top-level entry). */
+/**
+ * The `@` mention text for a workspace path.
+ *
+ * DSH quotes a mention only when the path contains whitespace, and a directory
+ * keeps its trailing slash; both rules come from the reference codec, because a
+ * mention that does not match is rendered as an invalid chip.
+ */
+function ideReferenceMention(relative, isDir) {
+  const posix = idePlatform.toPosix(String(relative ?? '')).replace(/^\/+/, '')
+  const trimmed = posix.replace(/\/+$/, '')
+  const path = isDir === true ? `${trimmed}/` : trimmed
+  // A quote inside the path would break the quoted form; DSH drops it too.
+  if (/[\u0000-\u001f\u007f-\u009f]/u.test(path) || path.includes('"')) return ''
+  if (!/\s/u.test(path)) return `@${path}`
+  return isDir === true ? `@"${path}` : `@"${path}"`
+}
+
 function ideParent(path) {
   const text = idePlatform.toPosix(path)
   const index = text.lastIndexOf('/')
@@ -2884,6 +2919,7 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    codeSymbolMenu: null,
     /** The file-tree context menu, or null: `{ path, isDir, x, y }`. */
     treeMenu: null,
     /** A file-tree overlay (diff or picker), or null. */
@@ -3729,6 +3765,11 @@ function ideCreateStore(refs) {
     patch({ codeMenu: menu === null || menu === undefined ? null : menu })
   }
 
+  /** Open or close the context menu of one symbol in the source. */
+  function setCodeSymbolMenu(menu) {
+    patch({ codeSymbolMenu: menu === null || menu === undefined ? null : menu })
+  }
+
   /** Open or close the file-tree context menu. */
   function setTreeMenu(menu) {
     patch({ treeMenu: menu === null || menu === undefined ? null : menu })
@@ -4030,6 +4071,7 @@ function ideCreateStore(refs) {
     setTreeMenu,
     setTreePopup,
     setCodeMenu,
+    setCodeSymbolMenu,
     toggleAnnotate,
     closeOtherTabs,
     closeAllTabs,
@@ -4562,8 +4604,9 @@ function ideShowRefs(store, tr, root, path) {
 }
 
 /** The file tree's context menu. */
-function IdeTreeMenu({ store, state, tr }) {
+function IdeTreeMenu({ store, state, tr, onReferenceToChat }) {
   const menu = state.treeMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 268)
   if (menu === null || menu === undefined) return null
   const path = menu.path
   const isDir = menu.isDir === true
@@ -4596,6 +4639,14 @@ function IdeTreeMenu({ store, state, tr }) {
       }),
     })
   }
+  items.push({
+    key: 'copy-ref-chat',
+    icon: IdeAtIcon,
+    label: tr('treeReferenceToChat'),
+    run: then(() => {
+      void (typeof onReferenceToChat === 'function' ? onReferenceToChat(path, isDir) : undefined)
+    }),
+  })
   items.push({ key: 'copy-absolute', icon: IdeCopyIcon, label: tr('treeCopyPath'), run: then(() => ideCopyWithNotice(store, tr, ideAbsolutePath(root, path))) })
   items.push({ key: 'copy-relative', icon: IdeCopyIcon, label: tr('treeCopyRelative'), run: then(() => ideCopyWithNotice(store, tr, path)) })
   if (!isDir && /\.(java|kt|kts|scala|groovy)$/i.test(path)) {
@@ -4649,10 +4700,8 @@ function IdeTreeMenu({ store, state, tr }) {
       className: 'iw-menu',
       role: 'menu',
       'aria-label': tr('treeMenuLabel'),
-      style: {
-        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 300))}px`,
-        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 520))}px`,
-      },
+      ref: placement.ref,
+      style: placement.style,
       onPointerDown: (event) => event.stopPropagation(),
     }, rows)),
   ])
@@ -6036,6 +6085,20 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       if (typeof target?.closest !== 'function') return
       const gutter = target.closest('.iw-vcs, .iw-blame, .iw-ln')
       if (gutter === null) {
+        // A symbol under the pointer gets IDEA's editor menu: name, reference,
+        // and the reference handed to the conversation.
+        const symbol = target.closest('[data-iw-sym]')
+        if (symbol !== null) {
+          event.preventDefault()
+          store.setCodeSymbolMenu({
+            path: tab.path,
+            symbol: symbol.getAttribute('data-iw-sym') ?? '',
+            jar: tab.kind === 'jar',
+            x: event.clientX,
+            y: event.clientY,
+          })
+          return
+        }
         // macOS delivers Ctrl+click as a secondary click: when that gesture is
         // configured for navigation, it belongs to the source, not to a menu.
         if (event.ctrlKey === true && ideRuntimeContext.platform === 'macos') {
@@ -6352,7 +6415,7 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose }) {
 /** How many times the panel body has rendered; a probe can read it. */
 let idePanelRenders = 0
 
-function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions }) {
+function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions, onReferenceToChat }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const actions = paletteActions ?? []
 
@@ -6579,6 +6642,15 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     ? null
     : h('div', { key: 'banner', className: 'iw-banner' }, state.liveNotice)
 
+  /** Clipboard write plus the notice DSH shows for a copied value. */
+  const copyText = (text) => {
+    const clip = globalThis.navigator?.clipboard
+    if (clip !== undefined && typeof clip.writeText === 'function') {
+      void clip.writeText(text).catch(() => undefined)
+    }
+    store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
+  }
+
   const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
   const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
   return h('div', {
@@ -6599,6 +6671,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
       store,
       state,
       tr,
+      onReferenceToChat,
     }),
     h(IdeTreePopup, {
       key: 'treepopup',
@@ -6612,18 +6685,20 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
       state,
       tr,
     }),
+    h(IdeSymbolMenu, {
+      key: 'symbolmenu',
+      store,
+      state,
+      tr,
+      copy: copyText,
+      onReferenceToChat,
+    }),
     h(IdeTabMenu, {
       key: 'tabmenu',
       store,
       state,
       tr,
-      copy: (text) => {
-        const clip = globalThis.navigator?.clipboard
-        if (clip !== undefined && typeof clip.writeText === 'function') {
-          void clip.writeText(text).catch(() => undefined)
-        }
-        store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
-      },
+      copy: copyText,
     }),
     h(IdeSetupDialog, {
       key: 'setup',
@@ -7013,6 +7088,48 @@ function IdeWorkspaceSettingsItem(props) {
 }
 
 /**
+ * Place a context menu the way IDEA does: at the pointer, growing upwards.
+ *
+ * The panel clips its content (`overflow: hidden`) and the shell confines fixed
+ * popups to the panel wrapper, so the menu must stay inside `.iw-root`. The
+ * height is measured after mount — a menu with sections and separators is
+ * taller than any item count suggests, and guessing it left the menu far above
+ * the pointer. Opening downwards when it fits and upwards from the pointer
+ * otherwise is what makes the menu look attached to the click.
+ */
+function useMenuPlacement(x, y, width) {
+  const ref = React.useRef(null)
+  const [style, setStyle] = React.useState({
+    left: `${x}px`,
+    top: `${y}px`,
+    visibility: 'hidden',
+  })
+  React.useLayoutEffect(() => {
+    const node = ref.current
+    if (node === null) return
+    const height = node.getBoundingClientRect().height
+    const box = typeof document === 'undefined' ? null : document.querySelector('.iw-root')?.getBoundingClientRect() ?? null
+    const viewportWidth = globalThis.innerWidth || 1280
+    const viewportHeight = globalThis.innerHeight || 800
+    const top = box === null ? 8 : Math.max(8, box.top + 8)
+    const bottom = box === null ? viewportHeight - 8 : Math.min(viewportHeight - 8, box.bottom - 8)
+    const left = box === null ? 8 : Math.max(8, box.left + 8)
+    const right = box === null ? viewportWidth - 8 : Math.min(viewportWidth - 8, box.right - 8)
+    const size = typeof width === 'number' && width > 0 ? width : 240
+    // Below the pointer when it fits, otherwise the menu's bottom sits at the
+    // pointer and it grows upwards; a menu taller than the panel scrolls.
+    const placedTop = y + height <= bottom ? y : Math.max(top, y - height)
+    setStyle({
+      left: `${Math.min(Math.max(x, left), Math.max(left, right - size))}px`,
+      top: `${Math.min(placedTop, Math.max(top, bottom - height))}px`,
+      maxHeight: `${Math.max(140, bottom - top)}px`,
+      visibility: 'visible',
+    })
+  }, [x, y, width])
+  return { ref, style }
+}
+
+/**
  * The tab context menu, mirroring IDEA's.
  *
  * Items that need data this plugin does not own — DSH keeps no draft API for
@@ -7021,6 +7138,7 @@ function IdeWorkspaceSettingsItem(props) {
  */
 function IdeTabMenu({ store, state, tr, copy }) {
   const menu = state.tabMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 240)
   if (menu === null || menu === undefined) return null
   const path = menu.path
   const tab = state.tabs.find((entry) => entry.path === path)
@@ -7057,11 +7175,8 @@ function IdeTabMenu({ store, state, tr, copy }) {
       className: 'iw-menu',
       role: 'menu',
       'aria-label': tr('tabMenuLabel'),
-      // Keep the menu inside the window when the tab sits near an edge.
-      style: {
-        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
-        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 340))}px`,
-      },
+      ref: placement.ref,
+      style: placement.style,
       onPointerDown: (event) => event.stopPropagation(),
     }, items.map((item) => (item.separator === true
       ? h('div', { key: item.key, className: 'iw-menu-sep' })
@@ -7078,9 +7193,73 @@ function IdeTabMenu({ store, state, tr, copy }) {
   ])
 }
 
+/**
+ * The source context menu: a symbol's name, its `@` reference, or that
+ * reference handed to the conversation.
+ *
+ * A jar tab has no workspace path to hand over, so it keeps the copy-name item
+ * only rather than offering a reference that would not resolve.
+ */
+function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
+  const menu = state.codeSymbolMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 240)
+  if (menu === null || menu === undefined) return null
+  const close = () => store.setCodeSymbolMenu(null)
+  const run = (action) => () => {
+    close()
+    action()
+  }
+  const name = menu.symbol === '' ? ideBasename(menu.path) : menu.symbol
+  const mention = ideReferenceMention(ideRelativeTo(state.rootPath, menu.path), false)
+  const items = [
+    { key: 'name', icon: IdeCopyIcon, label: tr('symbolMenuCopyName'), run: run(() => copy(name)) },
+  ]
+  if (menu.jar !== true) {
+    items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(mention)) })
+    items.push({
+      key: 'chat',
+      icon: IdeAtIcon,
+      label: tr('symbolMenuReferenceToChat'),
+      run: run(() => {
+        void onReferenceToChat(menu.path, false)
+      }),
+    })
+  }
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: close,
+      onContextMenu: (event) => {
+        event.preventDefault()
+        close()
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('symbolMenuLabel'),
+      ref: placement.ref,
+      style: placement.style,
+      onPointerDown: (event) => event.stopPropagation(),
+    }, items.map((item) => h('button', {
+      key: item.key,
+      type: 'button',
+      role: 'menuitem',
+      className: 'iw-menu-item',
+      onClick: item.run,
+    }, [
+      h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+      h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+    ])))),
+  ])
+}
+
 /** The code gutter's context menu: Git annotate for this file. */
 function IdeGutterMenu({ store, state, tr }) {
   const menu = state.codeMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 240)
   if (menu === null || menu === undefined) return null
   const path = menu.path
   const on = state.annotate?.[path] === true
@@ -7111,10 +7290,8 @@ function IdeGutterMenu({ store, state, tr }) {
       className: 'iw-menu',
       role: 'menu',
       'aria-label': tr('gutterMenuLabel'),
-      style: {
-        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
-        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 80))}px`,
-      },
+      ref: placement.ref,
+      style: placement.style,
       onPointerDown: (event) => event.stopPropagation(),
     }, items.map((item) => h('button', {
       key: item.key,
@@ -9703,6 +9880,194 @@ function apply(ctx) {
     }
   }
 
+  // ---- references handed to the conversation -----------------------------
+
+  /** Poll `probe` until it answers, or give up (the UI is not there yet). */
+  const waitForProbe = async (probe, timeout = 1500) => {
+    const started = Date.now()
+    for (;;) {
+      const value = probe()
+      if (value !== null && value !== undefined && value !== false) return value
+      if (Date.now() - started >= timeout) return null
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+  }
+
+  /** The conversation composer is the only Lexical editor in the shell. */
+  const composerEditor = () => (typeof document === 'undefined' ? null : document.querySelector('[data-lexical-editor="true"]'))
+
+  /** Rows of the open mention menu. */
+  const composerOptions = () => [...document.querySelectorAll('[role="option"]')].filter((row) => row.offsetParent !== null)
+
+  const composerChips = () => document.querySelectorAll('[data-composer-chip]').length
+
+  const pressKey = (element, key) => {
+    element.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }))
+  }
+
+  const textAfterLastAt = (editor) => {
+    const text = String(editor?.textContent ?? '')
+    const at = text.lastIndexOf('@')
+    return at < 0 ? '' : text.slice(at + 1)
+  }
+
+  /** Put the caret at the end of the draft: the mention is appended, never merged. */
+  const caretToEnd = (editor) => {
+    editor.focus()
+    const selection = globalThis.getSelection?.()
+    if (selection === null || selection === undefined) return
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  /** Replace whatever was typed after the `@` with the canonical mention. */
+  const replaceTypedMention = (editor, target) => {
+    const typed = textAfterLastAt(editor)
+    caretToEnd(editor)
+    for (let index = 0; index < typed.length; index += 1) {
+      editor.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        code: 'Backspace',
+        keyCode: 8,
+        bubbles: true,
+        cancelable: true,
+      }))
+    }
+    caretToEnd(editor)
+    document.execCommand('insertText', false, target)
+  }
+
+  /** Leave the mention as plain text, spelled exactly the way DSH spells it. */
+  const finishPlainMention = async (editor, relative, isDir) => {
+    const target = isDir === true ? `${relative.replace(/\/+$/, '')}/` : relative
+    caretToEnd(editor)
+    if (textAfterLastAt(editor) !== target) {
+      replaceTypedMention(editor, target)
+      // A trailing slash re-opens the mention menu; let it render, then close it.
+      await new Promise((resolve) => setTimeout(resolve, 140))
+    }
+    caretToEnd(editor)
+    pressKey(editor, 'Escape')
+  }
+
+  /**
+   * Type `@relative/path` into the composer and let DSH turn it into a chip.
+   *
+   * The composer is a Lexical editor with an `@` trigger: typed text only
+   * becomes a reference chip when a candidate of its menu is chosen, so the
+   * path is entered segment by segment — Tab drills into a folder, the last
+   * segment is confirmed with Enter. That is the sequence a person types, and
+   * every step is checked against the menu; when a step does not offer the
+   * expected candidate the text is left as a plain mention instead of picking
+   * the wrong file.
+   *
+   * @returns 'chip' when a chip was inserted, 'plain' when it stayed text.
+   */
+  const typeReferenceMention = async (editor, relative, isDir) => {
+    const segments = relative.split('/').filter((part) => part !== '')
+    if (segments.length === 0) return 'plain'
+    const basename = segments[segments.length - 1]
+    const dirHint = segments.slice(0, -1).join('/')
+    // DSH offers a file by name; the extension only narrows the search.
+    const stem = isDir === true ? basename : basename.replace(/\.[^.]*$/, '')
+    const before = composerChips()
+    // The `@` trigger only fires at the start of a word: separate it from
+    // whatever the draft already ends with, the way a person would.
+    const draft = String(editor.textContent ?? '')
+    if (draft !== '' && !/\s$/u.test(draft)) {
+      caretToEnd(editor)
+      document.execCommand('insertText', false, ' ')
+      await new Promise((resolve) => setTimeout(resolve, 60))
+    }
+    caretToEnd(editor)
+    document.execCommand('insertText', false, '@')
+    document.execCommand('insertText', false, stem)
+    const rows = await waitForProbe(() => {
+      const options = composerOptions()
+      return options.length > 0 ? options : null
+    }, 1200)
+    if (rows === null) {
+      ideLogRecord('warn', 'reference', 'mention menu never opened', relative)
+      return 'plain'
+    }
+    const label = (row) => String(row.textContent ?? '').replace(/\s+/gu, '')
+    if (isDir === true) {
+      // A directory row drills instead of inserting a chip; the typed text is
+      // the reference, so the drill row only makes it spell exactly.
+      const folder = rows.find((row) => label(row).startsWith(`${basename}/`))
+      if (folder === undefined) return 'plain'
+      folder.click()
+      await waitForProbe(() => (String(editor.textContent ?? '').includes(`${basename}/`) ? true : null), 1200)
+      return 'plain'
+    }
+    // One file only: the label names it and the directory hint (when the menu
+    // shows one) must end exactly at the target's directory.
+    const candidates = rows.filter((row) => {
+      const text = label(row)
+      if (!text.startsWith(basename)) return false
+      return dirHint === '' ? text === basename : text.endsWith(dirHint)
+    })
+    if (candidates.length !== 1) {
+      ideLogRecord('warn', 'reference', 'mention candidate mismatch', {
+        relative,
+        dirHint,
+        options: rows.map(label).slice(0, 8),
+      })
+      return 'plain'
+    }
+    candidates[0].click()
+    let chipped = await waitForProbe(() => (composerChips() > before ? true : null), 800)
+    if (chipped !== true) {
+      // A row can be replaced by a re-render before the click lands; the
+      // highlighted row is the same candidate, so Enter finishes the job.
+      caretToEnd(editor)
+      pressKey(editor, 'Enter')
+      chipped = await waitForProbe(() => (composerChips() > before ? true : null), 1200)
+    }
+    if (chipped !== true) {
+      ideLogRecord('warn', 'reference', 'mention candidate did not become a chip', {
+        relative,
+        options: rows.map(label).slice(0, 8),
+      })
+    }
+    if (chipped === true) {
+      const chips = [...document.querySelectorAll('[data-composer-chip]')]
+      const got = String(chips[chips.length - 1]?.textContent ?? '').trim()
+      // The menu highlights one row; if that was the wrong file the chip says
+      // so, and the report keeps the evidence.
+      if (got !== basename) ideLogRecord('warn', 'reference', 'a different file was inserted', { relative, got })
+    }
+    return chipped === true ? 'chip' : 'plain'
+  }
+
+  /**
+   * Back to the conversation with the reference appended to the draft.
+   *
+   * The existing draft is never replaced: the caret is moved to its end first,
+   * so text and attachments the user already had stay untouched.
+   */
+  async function referenceToChat(path, isDir) {
+    const relative = ideRelativeTo(store.getState().rootPath, path)
+    const mention = ideReferenceMention(relative, isDir)
+    backToChat()
+    const editor = await waitForProbe(() => composerEditor(), 2000)
+    if (editor === null) {
+      ideLogRecord('warn', 'reference', 'composer not found', mention)
+      store.setNotice(`${translate('referenceNoEditor')}: ${mention}`)
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    caretToEnd(editor)
+    const outcome = await typeReferenceMention(editor, relative, isDir)
+    if (outcome !== 'chip') await finishPlainMention(editor, relative, isDir)
+    store.setNotice(outcome === 'chip'
+      ? `${translate('referenceInserted')}: ${mention}`
+      : `${translate('referenceInsertedPlain')}: ${mention}`)
+  }
+
   /**
    * Collect both sides of the log and put the report on the clipboard.
    *
@@ -10075,6 +10440,7 @@ function apply(ctx) {
       onEnter: enter,
       navigate,
       paletteActions,
+      onReferenceToChat: referenceToChat,
     }),
   }, IdePanel))
   ctx.effect(() => {
@@ -10091,6 +10457,7 @@ function apply(ctx) {
           onEnter: enter,
         navigate,
         paletteActions,
+        onReferenceToChat: referenceToChat,
       }),
     }, IdePanel))
     mainRegistered = true

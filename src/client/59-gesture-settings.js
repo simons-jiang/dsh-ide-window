@@ -282,6 +282,48 @@ function IdeWorkspaceSettingsItem(props) {
 }
 
 /**
+ * Place a context menu the way IDEA does: at the pointer, growing upwards.
+ *
+ * The panel clips its content (`overflow: hidden`) and the shell confines fixed
+ * popups to the panel wrapper, so the menu must stay inside `.iw-root`. The
+ * height is measured after mount — a menu with sections and separators is
+ * taller than any item count suggests, and guessing it left the menu far above
+ * the pointer. Opening downwards when it fits and upwards from the pointer
+ * otherwise is what makes the menu look attached to the click.
+ */
+function useMenuPlacement(x, y, width) {
+  const ref = React.useRef(null)
+  const [style, setStyle] = React.useState({
+    left: `${x}px`,
+    top: `${y}px`,
+    visibility: 'hidden',
+  })
+  React.useLayoutEffect(() => {
+    const node = ref.current
+    if (node === null) return
+    const height = node.getBoundingClientRect().height
+    const box = typeof document === 'undefined' ? null : document.querySelector('.iw-root')?.getBoundingClientRect() ?? null
+    const viewportWidth = globalThis.innerWidth || 1280
+    const viewportHeight = globalThis.innerHeight || 800
+    const top = box === null ? 8 : Math.max(8, box.top + 8)
+    const bottom = box === null ? viewportHeight - 8 : Math.min(viewportHeight - 8, box.bottom - 8)
+    const left = box === null ? 8 : Math.max(8, box.left + 8)
+    const right = box === null ? viewportWidth - 8 : Math.min(viewportWidth - 8, box.right - 8)
+    const size = typeof width === 'number' && width > 0 ? width : 240
+    // Below the pointer when it fits, otherwise the menu's bottom sits at the
+    // pointer and it grows upwards; a menu taller than the panel scrolls.
+    const placedTop = y + height <= bottom ? y : Math.max(top, y - height)
+    setStyle({
+      left: `${Math.min(Math.max(x, left), Math.max(left, right - size))}px`,
+      top: `${Math.min(placedTop, Math.max(top, bottom - height))}px`,
+      maxHeight: `${Math.max(140, bottom - top)}px`,
+      visibility: 'visible',
+    })
+  }, [x, y, width])
+  return { ref, style }
+}
+
+/**
  * The tab context menu, mirroring IDEA's.
  *
  * Items that need data this plugin does not own — DSH keeps no draft API for
@@ -290,6 +332,7 @@ function IdeWorkspaceSettingsItem(props) {
  */
 function IdeTabMenu({ store, state, tr, copy }) {
   const menu = state.tabMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 240)
   if (menu === null || menu === undefined) return null
   const path = menu.path
   const tab = state.tabs.find((entry) => entry.path === path)
@@ -326,11 +369,8 @@ function IdeTabMenu({ store, state, tr, copy }) {
       className: 'iw-menu',
       role: 'menu',
       'aria-label': tr('tabMenuLabel'),
-      // Keep the menu inside the window when the tab sits near an edge.
-      style: {
-        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
-        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 340))}px`,
-      },
+      ref: placement.ref,
+      style: placement.style,
       onPointerDown: (event) => event.stopPropagation(),
     }, items.map((item) => (item.separator === true
       ? h('div', { key: item.key, className: 'iw-menu-sep' })
@@ -347,9 +387,73 @@ function IdeTabMenu({ store, state, tr, copy }) {
   ])
 }
 
+/**
+ * The source context menu: a symbol's name, its `@` reference, or that
+ * reference handed to the conversation.
+ *
+ * A jar tab has no workspace path to hand over, so it keeps the copy-name item
+ * only rather than offering a reference that would not resolve.
+ */
+function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
+  const menu = state.codeSymbolMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 240)
+  if (menu === null || menu === undefined) return null
+  const close = () => store.setCodeSymbolMenu(null)
+  const run = (action) => () => {
+    close()
+    action()
+  }
+  const name = menu.symbol === '' ? ideBasename(menu.path) : menu.symbol
+  const mention = ideReferenceMention(ideRelativeTo(state.rootPath, menu.path), false)
+  const items = [
+    { key: 'name', icon: IdeCopyIcon, label: tr('symbolMenuCopyName'), run: run(() => copy(name)) },
+  ]
+  if (menu.jar !== true) {
+    items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(mention)) })
+    items.push({
+      key: 'chat',
+      icon: IdeAtIcon,
+      label: tr('symbolMenuReferenceToChat'),
+      run: run(() => {
+        void onReferenceToChat(menu.path, false)
+      }),
+    })
+  }
+  return h(React.Fragment, null, [
+    h(IdeStyles, { key: 'style' }),
+    h('div', {
+      key: 'backdrop',
+      className: 'iw-menu-backdrop',
+      onPointerDown: close,
+      onContextMenu: (event) => {
+        event.preventDefault()
+        close()
+      },
+    }, h('div', {
+      key: 'menu',
+      className: 'iw-menu',
+      role: 'menu',
+      'aria-label': tr('symbolMenuLabel'),
+      ref: placement.ref,
+      style: placement.style,
+      onPointerDown: (event) => event.stopPropagation(),
+    }, items.map((item) => h('button', {
+      key: item.key,
+      type: 'button',
+      role: 'menuitem',
+      className: 'iw-menu-item',
+      onClick: item.run,
+    }, [
+      h('span', { key: 'ic', className: 'iw-menu-icon' }, h(item.icon, { size: 13 })),
+      h('span', { key: 'lb', className: 'iw-menu-label' }, item.label),
+    ])))),
+  ])
+}
+
 /** The code gutter's context menu: Git annotate for this file. */
 function IdeGutterMenu({ store, state, tr }) {
   const menu = state.codeMenu
+  const placement = useMenuPlacement(menu?.x ?? 0, menu?.y ?? 0, 240)
   if (menu === null || menu === undefined) return null
   const path = menu.path
   const on = state.annotate?.[path] === true
@@ -380,10 +484,8 @@ function IdeGutterMenu({ store, state, tr }) {
       className: 'iw-menu',
       role: 'menu',
       'aria-label': tr('gutterMenuLabel'),
-      style: {
-        left: `${Math.min(menu.x, Math.max(8, (globalThis.innerWidth || 1280) - 260))}px`,
-        top: `${Math.min(menu.y, Math.max(8, (globalThis.innerHeight || 800) - 80))}px`,
-      },
+      ref: placement.ref,
+      style: placement.style,
       onPointerDown: (event) => event.stopPropagation(),
     }, items.map((item) => h('button', {
       key: item.key,

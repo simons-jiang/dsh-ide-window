@@ -1170,6 +1170,8 @@ html.iw-select-code .iw-code .iw-vision {
 }
 .iw-menu {
   position: fixed;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   min-width: 232px;
   padding: 5px;
   border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));

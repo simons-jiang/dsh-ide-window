@@ -178,6 +178,23 @@ function ideAncestorDirs(path) {
 const IDE_MAX_EXPANDED_DIRS = 200
 
 /** Directory of a workspace path (`` for a top-level entry). */
+/**
+ * The `@` mention text for a workspace path.
+ *
+ * DSH quotes a mention only when the path contains whitespace, and a directory
+ * keeps its trailing slash; both rules come from the reference codec, because a
+ * mention that does not match is rendered as an invalid chip.
+ */
+function ideReferenceMention(relative, isDir) {
+  const posix = idePlatform.toPosix(String(relative ?? '')).replace(/^\/+/, '')
+  const trimmed = posix.replace(/\/+$/, '')
+  const path = isDir === true ? `${trimmed}/` : trimmed
+  // A quote inside the path would break the quoted form; DSH drops it too.
+  if (/[\u0000-\u001f\u007f-\u009f]/u.test(path) || path.includes('"')) return ''
+  if (!/\s/u.test(path)) return `@${path}`
+  return isDir === true ? `@"${path}` : `@"${path}"`
+}
+
 function ideParent(path) {
   const text = idePlatform.toPosix(path)
   const index = text.lastIndexOf('/')
@@ -417,6 +434,7 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    codeSymbolMenu: null,
     /** The file-tree context menu, or null: `{ path, isDir, x, y }`. */
     treeMenu: null,
     /** A file-tree overlay (diff or picker), or null. */
@@ -1262,6 +1280,11 @@ function ideCreateStore(refs) {
     patch({ codeMenu: menu === null || menu === undefined ? null : menu })
   }
 
+  /** Open or close the context menu of one symbol in the source. */
+  function setCodeSymbolMenu(menu) {
+    patch({ codeSymbolMenu: menu === null || menu === undefined ? null : menu })
+  }
+
   /** Open or close the file-tree context menu. */
   function setTreeMenu(menu) {
     patch({ treeMenu: menu === null || menu === undefined ? null : menu })
@@ -1563,6 +1586,7 @@ function ideCreateStore(refs) {
     setTreeMenu,
     setTreePopup,
     setCodeMenu,
+    setCodeSymbolMenu,
     toggleAnnotate,
     closeOtherTabs,
     closeAllTabs,

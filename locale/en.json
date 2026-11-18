@@ -204,5 +204,13 @@
   "paletteActionDiagnostics": "Copy diagnostics",
   "diagCopied": "Diagnostics copied; the host log was appended",
   "diagCopyFailed": "Clipboard unavailable; diagnostics were not copied",
-  "diagReported": "Diagnostics written to the host log (clipboard unavailable)"
+  "diagReported": "Diagnostics written to the host log (clipboard unavailable)",
+  "symbolMenuLabel": "Symbol actions",
+  "symbolMenuCopyName": "Copy name",
+  "symbolMenuCopyReference": "Copy reference",
+  "symbolMenuReferenceToChat": "Copy reference to chat",
+  "treeReferenceToChat": "Copy reference to chat",
+  "referenceInserted": "Reference inserted into the chat",
+  "referenceInsertedPlain": "Inserted as a plain-text reference",
+  "referenceNoEditor": "Composer not found; nothing was inserted"
 }

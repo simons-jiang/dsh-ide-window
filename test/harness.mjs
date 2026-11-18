@@ -822,6 +822,20 @@ function sourceFunction(name, file = undefined) {
     'a call row is a caller', 'controller call')
 }
 
+// ---- reference mentions ----------------------------------------------------
+{
+  const mention = new Function([
+    'const idePlatform = { toPosix: (value) => String(value ?? "").replace(/\\\\/g, "/") }',
+    sourceFunction('ideReferenceMention', '10-core.js'),
+    'return ideReferenceMention',
+  ].join('\n'))()
+  check(mention('src/a/B.java', false) === '@src/a/B.java', 'a file mention is the path with @', mention('src/a/B.java', false))
+  check(mention('docs', true) === '@docs/', 'a directory mention keeps its slash', mention('docs', true))
+  check(mention('my file.txt', false) === '@"my file.txt"', 'a path with a space is quoted', mention('my file.txt', false))
+  check(mention('my dir', true) === '@"my dir/', 'a quoted directory opens the quote and keeps the slash', mention('my dir', true))
+  check(mention('/src/a/B.java', false) === '@src/a/B.java', 'a leading slash is dropped', mention('/src/a/B.java', false))
+}
+
 // ---- the client diagnostics ring -------------------------------------------
 {
   const log = new Function('globalThis', 'ideRuntimeContext', [
