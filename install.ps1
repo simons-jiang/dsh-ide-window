@@ -93,8 +93,14 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail '需要 git，�
 
 # ---- 2. checkout ------------------------------------------------------------
 
+# Reduce every clone URL to `owner/repo`, so a checkout created over SSH (or
+# copied from another machine) still counts as the same repository.
 function Normalize-Remote([string]$Remote) {
-  return ($Remote -replace '/+$', '' -replace '\.git$', '')
+  $normalized = $Remote -replace '^git@[^:]*:', 'https://github.com/'
+  $normalized = $normalized -replace '^ssh://git@[^/]*/', 'https://github.com/'
+  $normalized = $normalized -replace '^https?://[^/]*/', 'https://github.com/'
+  $normalized = $normalized -replace '\.git$', '' -replace '/+$', ''
+  return ($normalized -replace '^https://github.com/', '')
 }
 
 if (Test-Path (Join-Path $Dir '.git')) {
@@ -123,7 +129,32 @@ foreach ($required in @('package.json', 'client.js')) {
 # ---- 3. install into the profile -------------------------------------------
 
 Step "安装插件到 profile：$Profile"
-Invoke-Dsh plugin --profile $Profile add "link:$Dir"
+# The `desktop` profile is owned by the application: its CLI answers
+# "managed exclusively by the Electron application" for every command. The app
+# itself installs through pnpm inside the profile directory, so fall back to
+# exactly that instead of failing.
+$installed = $false
+try {
+  Invoke-Dsh plugin --profile $Profile add "link:$Dir"
+  $installed = $true
+} catch {
+  Write-Host '    该 profile 由应用托管，改用 profile 内的 pnpm'
+}
+if (-not $installed) {
+  if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    Fail '需要 pnpm（DSH 安装插件也依赖它）：npm i -g pnpm'
+  }
+  if (-not (Test-Path (Join-Path $profileDir 'package.json'))) {
+    Fail "profile ${Profile}尚未初始化：先启动一次 DSH，再重跑本脚本。"
+  }
+  Push-Location $profileDir
+  try {
+    pnpm add "link:$Dir"
+    if ($LASTEXITCODE -ne 0) { Fail 'pnpm add 失败，请检查网络或代理。' }
+  } finally {
+    Pop-Location
+  }
+}
 
 if ($WithLsp) {
   Step '安装 LSP 管道包（语言服务器本身还要另外准备）'

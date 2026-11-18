@@ -22,7 +22,18 @@ WITH_LSP=0
 PULL=1
 
 usage() {
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<'TEXT'
+Install the dsh-ide-window plugin into a DSH profile (macOS).
+
+  ./install.sh                                   clone/pull ~/dev/dsh-ide-window, install into `desktop`
+  ./install.sh --profile web                      another profile
+  ./install.sh --dir ~/src/x                      another checkout location
+  ./install.sh --with-lsp                         also add the LSP pipeline packages
+  ./install.sh --no-pull                          keep the checkout as it is
+  curl -fsSL <raw install.sh> | bash              run without keeping the script
+
+Also works when piped: the arguments go after `bash -s --`.
+TEXT
 }
 
 while [ $# -gt 0 ]; do
@@ -79,7 +90,17 @@ command -v git >/dev/null 2>&1 || fail "需要 git，请先安装（xcode-select
 
 # ---- 2. checkout ------------------------------------------------------------
 
-normalize_remote() { printf '%s' "$1" | sed 's#/$##; s#\.git$##'; }
+# Reduce every clone URL to `owner/repo`, so a checkout created over SSH (or
+# copied from another machine) still counts as the same repository.
+normalize_remote() {
+  printf '%s' "$1" \
+    | sed -e 's#^git@[^:]*:#https://github.com/#' \
+          -e 's#^ssh://git@[^/]*/#https://github.com/#' \
+          -e 's#^https://[^/]*/#https://github.com/#' \
+          -e 's#^http://[^/]*/#https://github.com/#' \
+          -e 's#\.git$##' -e 's#/*$##' \
+    | sed -e 's#^https://github.com/##'
+}
 WANT_REMOTE="$(normalize_remote "$REPO_URL")"
 
 if [ -d "$DIR/.git" ]; then
@@ -104,7 +125,16 @@ fi
 # ---- 3. install into the profile -------------------------------------------
 
 step "安装插件到 profile：$PROFILE"
-dsh_cli plugin --profile "$PROFILE" add "link:$DIR"
+# The `desktop` profile is owned by the application: its CLI answers
+# "managed exclusively by the Electron application" for every command. The app
+# itself installs through pnpm inside the profile directory, so fall back to
+# exactly that instead of failing.
+if ! dsh_cli plugin --profile "$PROFILE" add "link:$DIR"; then
+  echo "    该 profile 由应用托管，改用 profile 内的 pnpm"
+  command -v pnpm >/dev/null 2>&1 || fail "需要 pnpm（DSH 安装插件也依赖它）：npm i -g pnpm"
+  [ -f "$PROFILE_DIR/package.json" ] || fail "profile ${PROFILE}尚未初始化：先启动一次 DSH，再重跑本脚本。"
+  ( cd "$PROFILE_DIR" && pnpm add "link:$DIR" )
+fi
 
 if [ "$WITH_LSP" = 1 ]; then
   step "安装 LSP 管道包（语言服务器本身还要另外准备）"

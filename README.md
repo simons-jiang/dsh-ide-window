@@ -12,6 +12,8 @@ DeepSeek Harness（DSH）的 **IDEA 风格代码工作区**插件：把中央区
 
 前提：**已安装并能正常登录 DSH**、机器上有 `git`。插件是本地 link 包，`client.js` 已随仓库提交，**安装方不需要 Node、pnpm 或构建**。
 
+**仓库是公开的，不需要 GitHub 账号**：下面的 `git clone`（以及后面的 `curl | bash` 一行装）走匿名 HTTPS，不会要求登录或 token。只有在无法访问 GitHub 时，才需要把仓库换到内网镜像，或者把一份现成仓库复制到目标目录后用 `--dir … --no-pull` 安装（脚本按 `owner/repo` 比较 remote，SSH 与 HTTPS 都认）。
+
 脚本会把「克隆仓库 → 装进 profile → 登记 bundle → 校验」一次做完，可重复执行（已存在就更新）。
 
 **macOS**
@@ -27,6 +29,30 @@ git clone https://github.com/simons-jiang/dsh-ide-window.git ~/dev/dsh-ide-windo
 git clone https://github.com/simons-jiang/dsh-ide-window.git "$env:USERPROFILE\dev\dsh-ide-window"
 & "$env:USERPROFILE\dev\dsh-ide-window\install.ps1"
 ```
+
+### 不下载脚本：HTTP 一行装
+
+脚本本身可以不下到本地，直接拉取执行（同样匿名，不需要账号）：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/simons-jiang/dsh-ide-window/main/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/simons-jiang/dsh-ide-window/main/install.ps1 | iex
+```
+
+带参数时（以 macOS 为例）：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/simons-jiang/dsh-ide-window/main/install.sh \
+  | bash -s -- --profile desktop --with-lsp
+```
+
+注意两点：
+
+1. **插件本体仍然要落到磁盘**——DSH 用 `link:` 目录加载插件，所以脚本会把仓库 clone 到 `~/dev/dsh-ide-window`（或 `-Dir` 指定的位置）。你能省掉的只是"自己 clone + 记住路径 + 手动敲安装命令"，省不掉那一个目录。
+2. `raw.githubusercontent.com` 给的是**最后一次推送**的脚本；改了脚本没提交，一行装拿到的仍是旧版。
 
 装完**完全退出 DSH 再打开**（macOS 用 `⌘Q`，Windows 从托盘退出）——左侧导航或左下角出现「代码工作区」即成功。
 
