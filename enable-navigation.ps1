@@ -15,6 +15,21 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# A window that flashes and closes hides the reason. Every terminating error is
+# printed with its source, and the console waits for a key before exiting.
+trap {
+  Write-Host ''
+  Write-Host "安装失败：$($_.Exception.Message)" -ForegroundColor Red
+  if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+    Write-Host $_.InvocationInfo.PositionMessage -ForegroundColor DarkYellow
+  }
+  if ([Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost') {
+    Write-Host '按回车键退出…' -ForegroundColor Yellow
+    [void](Read-Host)
+  }
+  exit 1
+}
+
 $lspVersion = '0.2.2-rc.3'
 $packages = @("@deepseek-ai/dsh-lsp@$lspVersion", "@deepseek-ai/dsh-lsp-stdio@$lspVersion")
 
@@ -32,7 +47,13 @@ $lspBin = Join-Path $dshHome 'lsp-bin'
 $lspData = Join-Path $dshHome 'lsp-data\intellij-server'
 
 function Step([string]$Text) { Write-Host "`n==> $Text" }
-function Fail([string]$Text) { Write-Host "错误：$Text" -ForegroundColor Red; exit 1 }
+# `exit` would close the console when the script runs through `irm | iex`, which
+# looks like a window that flashes and disappears. Throwing keeps the window and
+# prints the reason.
+function Fail([string]$Text) {
+  Write-Host "错误：$Text" -ForegroundColor Red
+  throw "dsh-ide-window: $Text"
+}
 
 if (-not (Test-Path (Join-Path $profileDir 'package.json'))) {
   Fail "profile ${Profile}还没有初始化：先启动一次 DSH 再重跑。"

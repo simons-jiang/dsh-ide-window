@@ -19,12 +19,33 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# A window that flashes and closes hides the reason. Every terminating error is
+# printed with its source, and the console waits for a key before exiting.
+trap {
+  Write-Host ''
+  Write-Host "安装失败：$($_.Exception.Message)" -ForegroundColor Red
+  if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+    Write-Host $_.InvocationInfo.PositionMessage -ForegroundColor DarkYellow
+  }
+  if ([Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost') {
+    Write-Host '按回车键退出…' -ForegroundColor Yellow
+    [void](Read-Host)
+  }
+  exit 1
+}
+
 $repoUrl = 'https://github.com/simons-jiang/dsh-ide-window.git'
 $packageName = '@local/dsh-ide-window'
 $lspPackages = @('@deepseek-ai/dsh-lsp@0.2.2-rc.3', '@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3')
 
 function Step([string]$Text) { Write-Host "`n==> $Text" }
-function Fail([string]$Text) { Write-Host "错误：$Text" -ForegroundColor Red; exit 1 }
+# `exit` would close the console when the script runs through `irm | iex`, which
+# looks like a window that flashes and disappears. Throwing keeps the window and
+# prints the reason.
+function Fail([string]$Text) {
+  Write-Host "错误：$Text" -ForegroundColor Red
+  throw "dsh-ide-window: $Text"
+}
 
 # ---- 1. locate DSH and its CLI ---------------------------------------------
 
