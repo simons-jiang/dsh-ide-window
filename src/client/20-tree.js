@@ -295,8 +295,8 @@ function IdeTree({ store, state, tr }) {
         key: 'reveal',
         type: 'button',
         className: 'iw-tree-tool',
-        title: tr('treeReveal'),
-        'aria-label': tr('treeReveal'),
+        title: tr('treeLocate'),
+        'aria-label': tr('treeLocate'),
         onClick: () => {
           if (!store.revealActive()) store.setNotice(tr('treeRevealNone'))
         },
@@ -441,13 +441,6 @@ function ideCopyWithNotice(store, tr, text) {
   store.setNotice(`${tr('treeCopied')}: ${shown}`)
 }
 
-/** Open a path through the Host: Finder, Terminal, or the default app. */
-function ideOpenExternally(store, tr, root, path, mode) {
-  void ideTreeRoute('open', { workspaceRoot: root, path, mode }).then((result) => {
-    if (result.ok !== true) store.setNotice(`${tr('treeOpenFailed')}: ${ideRouteErrorText(tr, result)}`)
-  })
-}
-
 /** The banner text for one failed route call. */
 function ideRouteErrorText(tr, result) {
   if (result.error === 'route-missing') return tr('treeRouteMissing')
@@ -528,8 +521,6 @@ function IdeTreeMenu({ store, state, tr }) {
   if (!isDir) {
     items.push({ key: 'open', icon: IdeFileIcon, label: tr('treeOpen'), run: then(() => store.openFile(path)) })
   }
-  items.push({ key: 'reveal', icon: IdeFolderIcon, label: tr('treeReveal'), run: then(() => ideOpenExternally(store, tr, root, path, 'reveal')) })
-  items.push({ key: 'terminal', icon: IdeExternalIcon, label: tr('treeTerminal'), run: then(() => ideOpenExternally(store, tr, root, path, 'terminal')) })
   items.push({ key: 'sep1', separator: true })
   if (!isDir) {
     items.push({
@@ -571,7 +562,9 @@ function IdeTreeMenu({ store, state, tr }) {
     items.push({ key: 'revision', icon: IdeArrowLeftIcon, label: tr('treeCompareRevision'), run: then(() => ideShowLog(store, tr, root, path, 'revision')) })
     items.push({ key: 'ref', icon: IdeStackIcon, label: tr('treeCompareRef'), run: then(() => ideShowRefs(store, tr, root, path)) })
   }
-  const rows = items.map((item) => {
+  // A directory now leads the menu with a separator, which would be a stray line.
+  const visible = items.filter((item, index) => item.separator !== true || (index > 0 && items[index - 1]?.separator !== true))
+  const rows = visible.map((item) => {
     if (item.separator === true) return h('div', { key: item.key, className: 'iw-menu-sep' })
     if (item.section !== undefined) return h('div', { key: item.key, className: 'iw-menu-section' }, item.section)
     return h('button', {

@@ -10,7 +10,7 @@
  * These fixtures are the exact shapes `git status --porcelain=v1 -z` prints,
  * including the rename/copy pair whose second field has no status prefix.
  */
-import { parseStatus, parseBlame, doctorReport, parseJavaKind, parseCommitLog, parseGitRefs, logWorkspace, refsWorkspace, patchWorkspace, fileText, openWorkspace } from '../index.js'
+import { parseStatus, parseBlame, doctorReport, parseJavaKind, parseCommitLog, parseGitRefs, logWorkspace, refsWorkspace, patchWorkspace, fileText } from '../index.js'
 
 let failures = 0
 const ok = (name) => console.log(`  ✓ ${name}`)
@@ -155,13 +155,6 @@ const nul = (fields) => fields.map((field) => `${field}\0`).join('')
   check(refsList.rows.some((row) => row.kind === 'branch'), 'branches are listed', String(refsList.rows.length))
   const copy = fileText({ workspaceRoot: repo, path: 'package.json' })
   check(copy.text.includes('"name"'), 'the copy route returns file text', copy.text.slice(0, 16))
-  let unknownMode
-  try {
-    await openWorkspace({ workspaceRoot: repo, path: 'package.json', mode: 'bogus' })
-  } catch (error) {
-    unknownMode = error.code
-  }
-  check(unknownMode === 'invalid-arguments', 'an unknown open mode is refused', String(unknownMode))
   let escaped
   try {
     await patchWorkspace({ workspaceRoot: repo, path: '../package.json' })

@@ -150,7 +150,6 @@ window.__ModuleLoader__.load({
     "setupClose": "Close",
     "setupReady": "Code navigation is ready",
     "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml.",
-    "treeReveal": "Reveal in Finder",
     "treeRevealNone": "No file is open",
     "treeExpandAll": "Expand all",
     "treeCollapseAll": "Collapse all",
@@ -165,14 +164,12 @@ window.__ModuleLoader__.load({
     "chainRule": "Upper nodes call the ones below them; the ← line is where that call happens",
     "treeMenuLabel": "File menu",
     "treeOpen": "Open in Code Workspace",
-    "treeTerminal": "Open in Terminal",
     "treeCopyContent": "Copy File Contents",
     "treeCopyPath": "Copy Absolute Path",
     "treeCopyRelative": "Copy Repository Path",
     "treeCopyFqn": "Copy Qualified Name",
     "treeCopied": "Copied",
     "treeCopyFailed": "Copy failed",
-    "treeOpenFailed": "Open failed",
     "treeGitSection": "Git",
     "treeAnnotate": "Annotate with Git Blame",
     "treeDiff": "Show Diff",
@@ -208,6 +205,7 @@ window.__ModuleLoader__.load({
     "settingsMavenRepoManual": "from settings",
     "settingsMavenRepoDetecting": "Detecting the repository…",
     "settingsMavenRepoMissingDir": "directory not found",
+    "treeLocate": "Locate the open file",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -351,7 +349,6 @@ window.__ModuleLoader__.load({
     "setupClose": "关闭",
     "setupReady": "代码导航已就绪",
     "setupStill": "仍未检测到 LSP：看一下 DSH 启动日志和 profile 的 cordis.patch.yml。",
-    "treeReveal": "在 Finder 中显示",
     "treeRevealNone": "没有打开的文件",
     "treeExpandAll": "展开全部",
     "treeCollapseAll": "收起全部",
@@ -366,14 +363,12 @@ window.__ModuleLoader__.load({
     "chainRule": "上方节点调用下方节点；← 后是它调用下方方法的位置",
     "treeMenuLabel": "文件菜单",
     "treeOpen": "在代码工作区打开",
-    "treeTerminal": "在终端中打开",
     "treeCopyContent": "复制文件内容",
     "treeCopyPath": "复制绝对路径",
     "treeCopyRelative": "复制仓库相对路径",
     "treeCopyFqn": "复制限定类名",
     "treeCopied": "已复制",
     "treeCopyFailed": "复制失败",
-    "treeOpenFailed": "打开失败",
     "treeGitSection": "Git",
     "treeAnnotate": "使用 Git 追溯注解",
     "treeDiff": "显示差异",
@@ -409,6 +404,7 @@ window.__ModuleLoader__.load({
     "settingsMavenRepoManual": "设置项",
     "settingsMavenRepoDetecting": "正在检测仓库位置…",
     "settingsMavenRepoMissingDir": "目录不存在",
+    "treeLocate": "定位到当前文件",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -2119,15 +2115,6 @@ function IdeLiveIcon({ size = 15 }) {
     h('circle', { key: 'a', cx: 8, cy: 8, r: 2.1 }),
     h('path', { key: 'b', d: 'M8 1.8v1.9M8 12.3v1.9M1.8 8h1.9M12.3 8h1.9' }),
     h('path', { key: 'c', d: 'M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M12.4 3.6l-1.3 1.3M4.9 11.1l-1.3 1.3', opacity: 0.6 }),
-  ])
-}
-
-/** Open the file in the OS editor. */
-function IdeExternalIcon({ size = 15 }) {
-  return ideSvg(size, [
-    h('path', { key: 'a', d: 'M9.6 2.6h3.8v3.8' }),
-    h('path', { key: 'b', d: 'M13.2 2.8 7.9 8.1' }),
-    h('path', { key: 'c', d: 'M11.6 9.4v3.2c0 .5-.4.9-.9.9H3.3a.9.9 0 0 1-.9-.9V5.2c0-.5.4-.9.9-.9h3.2' }),
   ])
 }
 
@@ -4241,8 +4228,8 @@ function IdeTree({ store, state, tr }) {
         key: 'reveal',
         type: 'button',
         className: 'iw-tree-tool',
-        title: tr('treeReveal'),
-        'aria-label': tr('treeReveal'),
+        title: tr('treeLocate'),
+        'aria-label': tr('treeLocate'),
         onClick: () => {
           if (!store.revealActive()) store.setNotice(tr('treeRevealNone'))
         },
@@ -4387,13 +4374,6 @@ function ideCopyWithNotice(store, tr, text) {
   store.setNotice(`${tr('treeCopied')}: ${shown}`)
 }
 
-/** Open a path through the Host: Finder, Terminal, or the default app. */
-function ideOpenExternally(store, tr, root, path, mode) {
-  void ideTreeRoute('open', { workspaceRoot: root, path, mode }).then((result) => {
-    if (result.ok !== true) store.setNotice(`${tr('treeOpenFailed')}: ${ideRouteErrorText(tr, result)}`)
-  })
-}
-
 /** The banner text for one failed route call. */
 function ideRouteErrorText(tr, result) {
   if (result.error === 'route-missing') return tr('treeRouteMissing')
@@ -4474,8 +4454,6 @@ function IdeTreeMenu({ store, state, tr }) {
   if (!isDir) {
     items.push({ key: 'open', icon: IdeFileIcon, label: tr('treeOpen'), run: then(() => store.openFile(path)) })
   }
-  items.push({ key: 'reveal', icon: IdeFolderIcon, label: tr('treeReveal'), run: then(() => ideOpenExternally(store, tr, root, path, 'reveal')) })
-  items.push({ key: 'terminal', icon: IdeExternalIcon, label: tr('treeTerminal'), run: then(() => ideOpenExternally(store, tr, root, path, 'terminal')) })
   items.push({ key: 'sep1', separator: true })
   if (!isDir) {
     items.push({
@@ -4517,7 +4495,9 @@ function IdeTreeMenu({ store, state, tr }) {
     items.push({ key: 'revision', icon: IdeArrowLeftIcon, label: tr('treeCompareRevision'), run: then(() => ideShowLog(store, tr, root, path, 'revision')) })
     items.push({ key: 'ref', icon: IdeStackIcon, label: tr('treeCompareRef'), run: then(() => ideShowRefs(store, tr, root, path)) })
   }
-  const rows = items.map((item) => {
+  // A directory now leads the menu with a separator, which would be a stray line.
+  const visible = items.filter((item, index) => item.separator !== true || (index > 0 && items[index - 1]?.separator !== true))
+  const rows = visible.map((item) => {
     if (item.separator === true) return h('div', { key: item.key, className: 'iw-menu-sep' })
     if (item.section !== undefined) return h('div', { key: item.key, className: 'iw-menu-section' }, item.section)
     return h('button', {

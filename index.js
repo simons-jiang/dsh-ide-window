@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { open as openFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 
@@ -37,7 +37,6 @@ const ROUTE_STATUS = '/dsh-ide/status'
 const ROUTE_BLAME = '/dsh-ide/blame'
 const ROUTE_DOCTOR = '/dsh-ide/doctor'
 const ROUTE_KINDS = '/dsh-ide/kinds'
-const ROUTE_OPEN = '/dsh-ide/open'
 const ROUTE_LOG = '/dsh-ide/log'
 const ROUTE_REFS = '/dsh-ide/refs'
 const ROUTE_PATCH = '/dsh-ide/patch'
@@ -481,38 +480,6 @@ export function parseGitRefs(text) {
     rows.push({ name, kind: type === 'tag' ? 'tag' : 'branch' })
   }
   return rows
-}
-
-/** The ways a path may be opened outside the panel. */
-const OPEN_MODES = new Set(['reveal', 'terminal', 'external'])
-
-/** Reveal a file in Finder, open its directory in a terminal, or hand it over. */
-export async function openWorkspace(payload) {
-  const { root, rel } = scopeOf(payload)
-  const mode = typeof payload?.mode === 'string' ? payload.mode : ''
-  if (rel === '' || !OPEN_MODES.has(mode)) {
-    throw new RouteError(400, 'invalid-arguments', 'path and a known mode are required')
-  }
-  const target = join(root, rel)
-  const isDirectory = existsSync(target) ? statSync(target).isDirectory() : false
-  let command = 'open'
-  let args
-  if (process.platform === 'darwin') {
-    args = mode === 'reveal'
-      ? (isDirectory ? [target] : ['-R', target])
-      : mode === 'terminal'
-        ? ['-a', 'Terminal', isDirectory ? target : dirname(target)]
-        : [target]
-  } else {
-    command = 'xdg-open'
-    args = mode === 'terminal' ? [] : [target]
-  }
-  if (args.length === 0) {
-    throw new RouteError(400, 'unsupported', 'opening a terminal is only supported on macOS')
-  }
-  const result = await runCommand(command, args, root)
-  if (result.code !== 0) throw new RouteError(500, 'open-failed', result.stderr.trim() || 'open failed')
-  return { ok: true }
 }
 
 /** Recent commits that touched one file. */
@@ -1136,7 +1103,7 @@ function createHandler(ctx) {
         return
       }
       const pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_OPEN && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -1155,8 +1122,6 @@ function createHandler(ctx) {
                 ? doctorReport(ctx)
               : pathname === ROUTE_KINDS
                 ? await kindsWorkspace(payload)
-              : pathname === ROUTE_OPEN
-                ? await openWorkspace(payload)
               : pathname === ROUTE_LOG
                 ? await logWorkspace(payload)
               : pathname === ROUTE_REFS
@@ -1219,11 +1184,6 @@ export function apply(ctx) {
     path: ROUTE_KINDS,
     handler,
   }), 'dsh-ide-window: kinds route')
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'prefix',
-    path: ROUTE_OPEN,
-    handler,
-  }), 'dsh-ide-window: open route')
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: ROUTE_LOG,

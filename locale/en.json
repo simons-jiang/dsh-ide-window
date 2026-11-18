@@ -144,7 +144,6 @@
   "setupClose": "Close",
   "setupReady": "Code navigation is ready",
   "setupStill": "Still no LSP: check the DSH startup log and the profile cordis.patch.yml.",
-  "treeReveal": "Reveal in Finder",
   "treeRevealNone": "No file is open",
   "treeExpandAll": "Expand all",
   "treeCollapseAll": "Collapse all",
@@ -159,14 +158,12 @@
   "chainRule": "Upper nodes call the ones below them; the ← line is where that call happens",
   "treeMenuLabel": "File menu",
   "treeOpen": "Open in Code Workspace",
-  "treeTerminal": "Open in Terminal",
   "treeCopyContent": "Copy File Contents",
   "treeCopyPath": "Copy Absolute Path",
   "treeCopyRelative": "Copy Repository Path",
   "treeCopyFqn": "Copy Qualified Name",
   "treeCopied": "Copied",
   "treeCopyFailed": "Copy failed",
-  "treeOpenFailed": "Open failed",
   "treeGitSection": "Git",
   "treeAnnotate": "Annotate with Git Blame",
   "treeDiff": "Show Diff",
@@ -201,5 +198,6 @@
   "settingsMavenRepoInUse": "In use",
   "settingsMavenRepoManual": "from settings",
   "settingsMavenRepoDetecting": "Detecting the repository…",
-  "settingsMavenRepoMissingDir": "directory not found"
+  "settingsMavenRepoMissingDir": "directory not found",
+  "treeLocate": "Locate the open file"
 }

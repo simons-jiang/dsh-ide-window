@@ -352,15 +352,6 @@ function IdeLiveIcon({ size = 15 }) {
   ])
 }
 
-/** Open the file in the OS editor. */
-function IdeExternalIcon({ size = 15 }) {
-  return ideSvg(size, [
-    h('path', { key: 'a', d: 'M9.6 2.6h3.8v3.8' }),
-    h('path', { key: 'b', d: 'M13.2 2.8 7.9 8.1' }),
-    h('path', { key: 'c', d: 'M11.6 9.4v3.2c0 .5-.4.9-.9.9H3.3a.9.9 0 0 1-.9-.9V5.2c0-.5.4-.9.9-.9h3.2' }),
-  ])
-}
-
 /** Navigation back: an arrow pointing left. */
 function IdeArrowLeftIcon({ size = 15 }) {
   return ideSvg(size, [
