@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/simons-jiang/dsh-ide-window.git"
-PACKAGE="@local/dsh-ide-window"
+PACKAGE="dsh-ide-window"
 LSP_PACKAGES=("@deepseek-ai/dsh-lsp@0.2.2-rc.3" "@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3")
 
 PROFILE="desktop"

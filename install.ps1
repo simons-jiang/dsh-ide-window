@@ -37,7 +37,7 @@ trap {
 }
 
 $repoUrl = 'https://github.com/simons-jiang/dsh-ide-window.git'
-$packageName = '@local/dsh-ide-window'
+$packageName = 'dsh-ide-window'
 $lspPackages = @('@deepseek-ai/dsh-lsp@0.2.2-rc.3', '@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3')
 
 function Step([string]$Text) { Write-Host "`n==> $Text" }
@@ -63,32 +63,38 @@ Write-Host "    DSH：$appBin"
 $dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $profileDir = Join-Path $dshHome "profiles\$Profile"
 
-# pnpm from PATH, otherwise the copy DSH ships next to its own Node runtime.
+# The copy DSH ships comes first: the profile was installed by that exact pnpm,
+# and a different major version uses a different store directory — pnpm then
+# refuses with ERR_PNPM_UNEXPECTED_STORE. PATH is only the fallback.
 $pnpmCommand = $null
 $pnpmArgs = @()
-$onPath = Get-Command pnpm -ErrorAction SilentlyContinue
-if ($onPath) {
-  $pnpmCommand = $onPath.Source
+$runtime = Join-Path $dshHome 'dsh-runtimes\dsh-primary-runtime\dependencies'
+$nodeExe = Join-Path $runtime 'node\node.exe'
+$pnpmCjs = Join-Path $runtime 'pnpm\bin\pnpm.cjs'
+if ((Test-Path $nodeExe) -and (Test-Path $pnpmCjs)) {
+  $pnpmCommand = $nodeExe
+  $pnpmArgs = @($pnpmCjs)
 } else {
-  $runtime = Join-Path $dshHome 'dsh-runtimes\dsh-primary-runtime\dependencies'
-  $nodeExe = Join-Path $runtime 'node\node.exe'
-  $pnpmCjs = Join-Path $runtime 'pnpm\bin\pnpm.cjs'
-  if ((Test-Path $nodeExe) -and (Test-Path $pnpmCjs)) {
-    $pnpmCommand = $nodeExe
-    $pnpmArgs = @($pnpmCjs)
-  }
+  $onPath = Get-Command pnpm -ErrorAction SilentlyContinue
+  if ($onPath) { $pnpmCommand = $onPath.Source }
 }
 if (-not $pnpmCommand) { Fail '需要 pnpm：npm i -g pnpm（也可以先启动一次 DSH，它会自带一份 pnpm）。' }
-Write-Host "    pnpm：$pnpmCommand"
+$pnpmVersion = (& $pnpmCommand @pnpmArgs --version 2>$null | Out-String).Trim()
+Write-Host "    pnpm：$pnpmCommand $pnpmVersion"
 
 function Invoke-Pnpm([string[]]$Arguments, [string]$WorkDir) {
   Push-Location $WorkDir
   try {
     $all = @($pnpmArgs) + @($Arguments)
-    & $pnpmCommand @all
-    if ($LASTEXITCODE -ne 0) { throw "pnpm 执行失败（exit $LASTEXITCODE）" }
+    $output = & $pnpmCommand @all 2>&1
+    $code = $LASTEXITCODE
   } finally {
     Pop-Location
+  }
+  if ($code -ne 0) {
+    Write-Host '    pnpm 输出：' -ForegroundColor Yellow
+    Write-Host ($output | Out-String).Trim()
+    throw "pnpm 执行失败（exit $code）"
   }
 }
 

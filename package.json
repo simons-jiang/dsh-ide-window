@@ -1,6 +1,6 @@
 {
-  "name": "@local/dsh-ide-window",
-  "version": "0.1.0",
+  "name": "dsh-ide-window",
+  "version": "0.1.1",
   "description": "IDEA-style code workspace for DeepSeek Harness: a centre panel with a workspace file tree, editor tabs and live-updating source, while the left navigation column hides.",
   "type": "module",
   "icon": "icon.svg",
@@ -21,7 +21,9 @@
     "README.md",
     "AGENTS.md",
     "install.sh",
-    "install.ps1"
+    "install.ps1",
+    "enable-navigation.sh",
+    "enable-navigation.ps1"
   ],
   "scripts": {
     "build": "node build.mjs",
@@ -52,5 +54,17 @@
   ],
   "engines": {
     "dsh": "0.2.2-rc.3"
+  },
+  "author": "simons-jiang",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simons-jiang/dsh-ide-window.git"
+  },
+  "homepage": "https://github.com/simons-jiang/dsh-ide-window#readme",
+  "bugs": {
+    "url": "https://github.com/simons-jiang/dsh-ide-window/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -26,8 +26,8 @@ Write-Host '== 3/4 写入 bundle 与 LSP 配置 =='
 $pkgPath = Join-Path $profile 'package.json'
 $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
 $bundles = @($pkg.dsh.profile.bundles)
-if ($bundles -notcontains '@local/dsh-ide-window') {
-  $pkg.dsh.profile.bundles = @($bundles + '@local/dsh-ide-window')
+if ($bundles -notcontains 'dsh-ide-window') {
+  $pkg.dsh.profile.bundles = @($bundles + 'dsh-ide-window')
   $pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
 }
 $patchPath = Join-Path $profile 'cordis.patch.yml'

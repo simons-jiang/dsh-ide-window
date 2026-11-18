@@ -29,8 +29,8 @@ profile, server = pathlib.Path(sys.argv[1]), sys.argv[2]
 pkg_path = profile / 'package.json'
 pkg = json.loads(pkg_path.read_text())
 bundles = pkg['dsh']['profile']['bundles']
-if '@local/dsh-ide-window' not in bundles:
-    bundles.append('@local/dsh-ide-window')
+if 'dsh-ide-window' not in bundles:
+    bundles.append('dsh-ide-window')
 pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + '\n')
 
 patch_path = profile / 'cordis.patch.yml'

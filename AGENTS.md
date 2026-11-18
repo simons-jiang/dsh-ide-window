@@ -312,8 +312,8 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 1. **DSH 重启后历史轮次没有改动摘要**（Host 内存态，官方卡片同样消失）——这是 DSH 自身行为，插件不做补偿。
 2. **「添加到智能体上下文」是降级实现**：复制 `@相对路径` 并提示粘贴；DSH 未开放插件的对话草稿插入 API。
 3. **分享前待办**（用户已知，尚未做）：
-   - 包名 `@local/dsh-ide-window` 建议改成唯一 scope（如 `@simons-jiang/dsh-ide-window`）
-   - 补 `LICENSE`（package.json 已声明 MIT 但无文件）
+   - ~~包名改为可发布的名字~~（已改为 `dsh-ide-window` 并发布到 npm）
+   - ~~补 `LICENSE`~~（已补 MIT）
    - ~~加 `engines.dsh` 版本约束~~（已加，锁 `0.2.2-rc.3`）
 4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。
 5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。

@@ -4,7 +4,7 @@ DeepSeek Harness（DSH）的 **IDEA 风格代码工作区**插件：把中央区
 
 - 目标 DSH：**0.2.2-rc.3**（桌面版或 Web 版都可以，`engines.dsh` 会拦住不兼容版本）
 - 仓库：<https://github.com/simons-jiang/dsh-ide-window>
-- 包名：`@local/dsh-ide-window`
+- 包名：`dsh-ide-window`（已发布到 npm）
 
 ---
 
@@ -15,6 +15,14 @@ DeepSeek Harness（DSH）的 **IDEA 风格代码工作区**插件：把中央区
 **仓库是公开的，不需要 GitHub 账号**：下面的 `git clone`（以及后面的 `curl | bash` 一行装）走匿名 HTTPS，不会要求登录或 token。只有在无法访问 GitHub 时，才需要把仓库换到内网镜像，或者把一份现成仓库复制到目标目录后用 `--dir … --no-pull` 安装（脚本按 `owner/repo` 比较 remote，SSH 与 HTTPS 都认）。
 
 脚本会把「克隆仓库 → 装进 profile → 登记 bundle → 校验」一次做完，可重复执行（已存在就更新）。
+
+### 最省事：在插件管理器里按包名装（已发布到 npm）
+
+1. DSH → 「插件」→「添加插件 ▾」→「安装第三方插件」
+2. 粘贴 `dsh-ide-window`
+3. 点「安装」→「立即启用」→ 完全退出 DSH 重开
+
+国内网络建议在同一个弹窗里把「安装源」切到「中国大陆镜像源」；包发布后会同步到 `registry.npmmirror.com`，装的是同一个版本。
 
 **macOS**
 
@@ -99,7 +107,7 @@ cd $env:USERPROFILE\dev\dsh-ide-window
 ```sh
 git clone https://github.com/simons-jiang/dsh-ide-window.git ~/dev/dsh-ide-window
 dsh plugin --profile desktop add "link:$HOME/dev/dsh-ide-window"
-# 若 profile 的 package.json 里 dsh.profile.bundles 没有 @local/dsh-ide-window，手动加一行
+# 若 profile 的 package.json 里 dsh.profile.bundles 没有 dsh-ide-window，手动加一行
 ```
 
 Windows 把路径换成 `"$env:USERPROFILE\dev\dsh-ide-window"`。`dsh` 不在 `PATH` 时，脚本会自动改用应用自带的 CLI，无需额外配置。
@@ -118,7 +126,7 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 |---|---|
 | 验证 | DSH 左侧导航点「代码工作区」，或会话表头左侧的按钮；左下角也有入口 |
 | 更新（link 安装） | `cd ~/dev/dsh-ide-window && git pull`，然后重启 DSH |
-| 卸载 | `dsh plugin --profile desktop remove @local/dsh-ide-window`，然后重启 DSH |
+| 卸载 | `dsh plugin --profile desktop remove dsh-ide-window`，然后重启 DSH |
 
 ### 可选：代码导航（LSP）
 
@@ -312,13 +320,14 @@ JSONL 一行一条，含启动信息（平台 + Node 版本）、每条路由失
 
 | 症状 | 处理 |
 |---|---|
-| 找不到「代码工作区」入口 | 完全退出 DSH 再打开；确认 `dsh plugin --profile desktop list` 里有 `@local/dsh-ide-window` |
+| 找不到「代码工作区」入口 | 完全退出 DSH 再打开；确认 `dsh plugin --profile desktop list` 里有 `dsh-ide-window` |
 | 进入后弹「代码导航未就绪」 | 没装 LSP，按第五节准备；浏览/搜索/Git 不受影响 |
 | 双击跳转提示「文本匹配」 | 同上：LSP 没挂载或未就绪（授权未生效需重启 DSH） |
 | 依赖 jar 打开提示「该 jar 没有源码」 | 本地仓库里没有 `-sources.jar`；确认 Maven 本地仓库路径（设置里可覆盖） |
 | 右键菜单贴边被裁掉 / 离鼠标很远 | 已修：菜单挂在指针处，放不下时底边贴着指针向上展开；若仍异常请附诊断日志 |
 | 「复制引用回对话」插成了纯文本 | 该文件不在当前会话工作区内，或同名文件无法唯一确认；纯文本引用仍可用 |
 | 插件显示 `pending (waiting for service: webServer)` | 该 profile 没有 Web 服务（如纯 CLI 环境），属正常 |
+| 安装时报 `ERR_PNPM_UNEXPECTED_STORE Unexpected store location` | 用的是**另一个大版本**的 pnpm（v10），而 profile 的 `node_modules` 是 DSH 自带的 pnpm（v11）装的，两者 store 目录不同 | 脚本已改为优先使用 DSH 自带的 pnpm（`%USERPROFILE%\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies`）；手动安装时同样用那份，或在 profile 目录执行一次 `pnpm install` 让它按新 store 重装 |
 
 ---
 

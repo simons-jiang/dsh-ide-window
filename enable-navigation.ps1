@@ -58,33 +58,55 @@ function Fail([string]$Text) {
 if (-not (Test-Path (Join-Path $profileDir 'package.json'))) {
   Fail "profile ${Profile}还没有初始化：先启动一次 DSH 再重跑。"
 }
-# pnpm from PATH, otherwise the copy DSH ships next to its own Node runtime.
+# The copy DSH ships comes first: the profile was installed by that exact pnpm,
+# and a different major version uses a different store directory — pnpm then
+# refuses with ERR_PNPM_UNEXPECTED_STORE.
 $pnpmCommand = $null
 $pnpmArgs = @()
-$onPath = Get-Command pnpm -ErrorAction SilentlyContinue
-if ($onPath) {
-  $pnpmCommand = $onPath.Source
+$runtime = Join-Path $dshHome 'dsh-runtimes\dsh-primary-runtime\dependencies'
+$nodeExe = Join-Path $runtime 'node\node.exe'
+$pnpmCjs = Join-Path $runtime 'pnpm\bin\pnpm.cjs'
+if ((Test-Path $nodeExe) -and (Test-Path $pnpmCjs)) {
+  $pnpmCommand = $nodeExe
+  $pnpmArgs = @($pnpmCjs)
 } else {
-  $runtime = Join-Path $dshHome 'dsh-runtimes\dsh-primary-runtime\dependencies'
-  $nodeExe = Join-Path $runtime 'node\node.exe'
-  $pnpmCjs = Join-Path $runtime 'pnpm\bin\pnpm.cjs'
-  if ((Test-Path $nodeExe) -and (Test-Path $pnpmCjs)) {
-    $pnpmCommand = $nodeExe
-    $pnpmArgs = @($pnpmCjs)
-  }
+  $onPath = Get-Command pnpm -ErrorAction SilentlyContinue
+  if ($onPath) { $pnpmCommand = $onPath.Source }
 }
 if (-not $pnpmCommand) { Fail '需要 pnpm：npm i -g pnpm（也可以先启动一次 DSH，它会自带一份 pnpm）。' }
+$pnpmVersion = (& $pnpmCommand @pnpmArgs --version 2>$null | Out-String).Trim()
+Write-Host "    pnpm：$pnpmCommand $pnpmVersion"
 
 # ---- 1. pipeline packages ---------------------------------------------------
 
 Step "安装 LSP 管道包（$lspVersion）"
-Push-Location $profileDir
-try {
-  $all = @($pnpmArgs) + @('add') + @($packages)
-  & $pnpmCommand @all | Out-Null
-  if ($LASTEXITCODE -ne 0) { Fail 'pnpm add 失败，请检查网络或代理。' }
-} finally {
-  Pop-Location
+
+# Run pnpm with its output captured: the npm error code (a store mismatch, a
+# blocked registry, a missing version) is the only useful clue, and it was being
+# swallowed before.
+function Install-Packages([string[]]$Arguments) {
+  Push-Location $profileDir
+  try {
+    $all = @($pnpmArgs) + $Arguments
+    $output = & $pnpmCommand @all 2>&1
+    $code = $LASTEXITCODE
+    return [pscustomobject]@{ Code = $code; Output = ($output | Out-String).Trim() }
+  } finally {
+    Pop-Location
+  }
+}
+
+$attempt = Install-Packages (@('add') + @($packages))
+if ($attempt.Code -ne 0) {
+  Write-Host '    第一次安装失败，pnpm 输出如下：' -ForegroundColor Yellow
+  Write-Host $attempt.Output
+  Write-Host '    改用 npmmirror 镜像重试…' -ForegroundColor Yellow
+  $attempt = Install-Packages (@('add', '--registry', 'https://registry.npmmirror.com') + @($packages))
+}
+if ($attempt.Code -ne 0) {
+  Write-Host '    镜像也失败，pnpm 输出如下：' -ForegroundColor Red
+  Write-Host $attempt.Output
+  Fail "pnpm add 失败（exit $($attempt.Code)）：看上面的 npm 错误码。ERR_PNPM_UNEXPECTED_STORE 表示 pnpm 的 store 版本和 profile 里的不一致；EAI_AGAIN/ETIMEDOUT/ECONNREFUSED 是网络或代理。"
 }
 Write-Host '    已安装：@deepseek-ai/dsh-lsp、dsh-lsp-stdio'
 

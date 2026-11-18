@@ -3,7 +3,7 @@
  * edit those sources, then run `node build.mjs`.
  */
 window.__ModuleLoader__.load({
-  id: "@local/dsh-ide-window",
+  id: "dsh-ide-window",
   factory(require) {
     const React = require('react')
     const { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } = React
