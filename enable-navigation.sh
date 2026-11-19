@@ -10,7 +10,7 @@
 # application itself is never modified.
 set -euo pipefail
 
-LSP_VERSION="0.2.2-rc.3"
+LSP_VERSION="0.2.2-rc.5"
 PACKAGES=("@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}")
 SERVER_URL="https://download.jetbrains.com/language-server/intellij-server/271.2085.0/intellij-server-271.2085.0-aarch64.sit"
 

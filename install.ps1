@@ -38,7 +38,7 @@ trap {
 
 $repoUrl = 'https://github.com/simons-jiang/dsh-ide-window.git'
 $packageName = 'dsh-ide-window'
-$lspPackages = @('@deepseek-ai/dsh-lsp@0.2.2-rc.3', '@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3')
+$lspPackages = @('@deepseek-ai/dsh-lsp@0.2.2-rc.5', '@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.5')
 
 function Step([string]$Text) { Write-Host "`n==> $Text" }
 function Fail([string]$Text) {

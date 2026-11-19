@@ -30,7 +30,7 @@ trap {
   exit 1
 }
 
-$lspVersion = '0.2.2-rc.3'
+$lspVersion = '0.2.2-rc.5'
 $packages = @("@deepseek-ai/dsh-lsp@$lspVersion", "@deepseek-ai/dsh-lsp-stdio@$lspVersion")
 
 # JetBrains publishes the server per platform under the same build. The CDN host

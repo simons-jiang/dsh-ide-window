@@ -2,7 +2,7 @@
 
 DeepSeek Harness（DSH）的 **IDEA 风格代码工作区**插件：把中央区域切成「文件树 + 编辑标签页 + 实时源码」，进入时自动收起左侧导航栏，对话随时可切回。
 
-- 目标 DSH：**0.2.2-rc.3**（桌面版或 Web 版都可以，`engines.dsh` 会拦住不兼容版本）
+- 目标 DSH：**0.2.2-rc.3 及以上（0.2.x）**（桌面版或 Web 版都可以，`engines.dsh` 会拦住 0.3 及更旧版本）
 - 仓库：<https://github.com/simons-jiang/dsh-ide-window>
 - 包名：`dsh-ide-window`（已发布到 npm）
 
@@ -252,7 +252,7 @@ DSH 的 LSP 是可选能力，插件只消费它。没装时进入代码工作�
 
 ### 手动三步（脚本做的事）
 
-1. 管道包：`cd ~/.dsh/profiles/desktop && pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3`
+1. 管道包：`cd ~/.dsh/profiles/desktop && pnpm add @deepseek-ai/dsh-lsp@0.2.2-rc.5 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.5`
 2. 服务器：[intellij-server 271.2085.0 (aarch64)](https://download.jetbrains.com/language-server/intellij-server/271.2085.0/intellij-server-271.2085.0-aarch64.sit) 下载后 `unzip` 到 `~/.dsh/lsp-bin/`
 3. 授权与重启：`~/.dsh/lsp-bin/*/bin/intellij-server license login`，然后完全退出并重开 DSH
 
@@ -264,7 +264,7 @@ DSH 的 LSP 是可选能力，插件只消费它。没装时进入代码工作�
 **1) 管道包**（版本必须与 DSH 一致）
 
 ```sh
-dsh plugin --profile desktop add @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3
+dsh plugin --profile desktop add @deepseek-ai/dsh-lsp@0.2.2-rc.5 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.5
 ```
 
 **2) 语言服务器**：IntelliJ 授权版（build `271.2085.0`）放到本机 `~/.dsh/lsp-bin/intellij-server-2027.1/`，然后在 profile 的 `cordis.patch.yml` 里插两行：

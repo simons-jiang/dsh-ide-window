@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/simons-jiang/dsh-ide-window.git"
 PACKAGE="dsh-ide-window"
-LSP_PACKAGES=("@deepseek-ai/dsh-lsp@0.2.2-rc.3" "@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3")
+LSP_PACKAGES=("@deepseek-ai/dsh-lsp@0.2.2-rc.5" "@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.5")
 
 PROFILE="desktop"
 DIR="${DSH_IDE_DIR:-$HOME/dev/dsh-ide-window}"
