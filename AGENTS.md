@@ -354,6 +354,7 @@ check-dsh-untouched.ps1       ↑ 三个脚本的 PowerShell 版本（Windows �
 restore-profile.ps1
 start-test-instance.ps1
 README.md                     面向使用者的说明（功能/手势/安装）
+CHANGELOG.md                  更新日志（每次发版追加一节，跟着 npm 包一起发）
 ```
 
 ---

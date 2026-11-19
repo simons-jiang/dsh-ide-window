@@ -435,6 +435,14 @@ Windows 另有 `check-dsh-untouched.ps1`、`restore-profile.ps1`，与对应的 
 
 ---
 
-## 十、许可
+## 十、更新
+
+- 更新日志：[CHANGELOG.md](CHANGELOG.md)
+- 升级方式：插件页打开插件的「版本」区 → 检查更新 / 更新（`link:` 本地安装则直接拉仓库）
+- 每次发版都会同步到 npm 与国内镜像；国内用户若一时看不到新版本，等镜像同步几分钟即可
+
+---
+
+## 十一、许可
 
 MIT（`package.json` 声明）。
