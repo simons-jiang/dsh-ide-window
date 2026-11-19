@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="material-palenight"]` is touched.
+ * `[data-dsh-theme="material-palenight"]` is touched.
  */
-.iw-root[data-iw-theme="material-palenight"] {
+[data-dsh-theme="material-palenight"] {
   --dsw-alias-bg-base: #292d3e;
   --dsw-alias-bg-layer-1: #2f3445;
   --dsw-alias-bg-layer-2: #333747;

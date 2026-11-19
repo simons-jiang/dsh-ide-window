@@ -508,7 +508,9 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
   const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
   return h('div', {
     className: 'iw-root',
-    'data-iw-theme': ideIsThemeId(state.theme) ? state.theme : undefined,
+    // The shared palette attribute: the theme stylesheet targets this, so any
+    // plugin that sets it on its own root gets the same colours.
+    'data-dsh-theme': ideIsThemeId(state.theme) ? state.theme : undefined,
     // The editor and the tree share one typographic scale, set in Settings.
     style: {
       '--iw-code-font-size': `${codeSize}px`,

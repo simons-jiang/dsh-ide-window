@@ -223,9 +223,15 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 
 语法高亮有单独一层变量（`--iw-syn-keyword` / `string` / `number` / `comment` / `annotation` / `type` / `function` / `punct`），同样由主题文件提供——深色主题的关键字色放到白底上根本看不清，所以每套主题都自带一组经过对比度检查的语法色（浅色主题的关键字/字符串/类型都 ≥4.5:1）。
 
+主题还是一个**跨插件约定**：同一页面里 `dsh-git-window` 的工具窗口会跟着变色（它只读这里的主题，不写）：
+
+- `localStorage['dsh-theme']` 存当前主题 id（空 = 跟随 DSH）
+- `window` 上派发 `dsh-theme` 事件（`detail.id`）——同页立即生效
+- 样式表匹配 `[data-dsh-theme="<id>"]`，任何插件给自己的根节点加上这个属性就套用同一套配色，并自行 `link` 到 `/dsh-ide/theme?id=<id>`
+
 因此：
 
-- 组件样式**一行都不用改**，切换主题只是把 `<link id="iw-theme-link">` 指到另一个文件（外加一个 `data-iw-theme` 属性）
+- 组件样式**一行都不用改**，切换主题只是把 `<link id="iw-theme-link">` 指到另一个文件（外加一个 `data-dsh-theme` 属性）
 - 改调色板**不需要重新构建** `client.js`，刷新页面即可看到
 - 新增一套主题 = 放一个 `themes/<id>.css` + 在 `src/client/12-theme.js` 的注册表加一行（`themes/index.json`、`test/theme.mjs` 会校验三处一致：10 套、5 深 5 浅、变量集合完全相同）
 

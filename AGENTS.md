@@ -56,7 +56,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `06-platform.js` | **客户端平台层**：`toPosix/toNative`、`isAbsolutePath`、手势选项与按键文案（`apply()` 里按 `ctx.shortcuts.platform` 换实例） |
 | `07-log.js` | **客户端日志**：100 条环形缓冲 `ideLogRecord/ideLogSnapshot`，供「复制诊断信息」上报 |
 | `10-core.js` | store（`useSyncExternalStore` 订阅）、偏好持久化、标签页/历史/视图状态 |
-| `12-theme.js` | **配色主题**：注册表（10 套）、`<link id="iw-theme-link">` 切换、状态栏切换器；主题同时提供 8 个语法色变量 |
+| `12-theme.js` | **配色主题**：注册表（10 套）、`<link id="iw-theme-link">` 切换、状态栏切换器；主题同时提供 8 个语法色变量；对外发布主题（见 3.6） |
 | `20-tree.js` | 文件树（展开、筛选、拖宽、`⌘P` 定位） |
 | `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
 | `40-panel.js` | 面板骨架（工具栏、横幅、布局、字号 CSS 变量） |
@@ -118,6 +118,18 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/diagnostics` | 诊断日志 | `{action:'read'}` 返回本机最近 100 条事件 + 日志文件路径；`{action:'report', entries}` 接收浏览器缓冲的事件并写入同一文件（`level:'client'`） |
 | `/dsh-ide/theme` | 主题样式表 | `GET ?id=<主题>` 返回 `themes/<id>.css`（唯一非 JSON 路由，浏览器用 `<link>` 取）；id 只允许 `[a-z0-9-]`，未知 404、非法 400 |
 | `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
+
+### 3.3.1 跨插件主题约定（和 dsh-git-window）
+
+代码工作区选的配色要能带着同页的 `dsh-git-window` 一起变，靠三条约定，**只有本插件写、对方只读**：
+
+| 通道 | 形状 | 用途 |
+|---|---|---|
+| `localStorage['dsh-theme']` | 主题 id 字符串，空/缺失 = 跟随 DSH | 后加载的插件启动时能立刻读到 |
+| `window` 事件 `dsh-theme` | `{ detail: { id } }` | 同页立即生效，不用刷新 |
+| `data-dsh-theme` 属性 + `/dsh-ide/theme?id=<id>` | 主题文件选择器就是 `[data-dsh-theme="<id>"]` | 对方给自己的根节点加属性、`link` 同一份样式表即可套用 |
+
+改主题文件的选择器或键名 = 改接口，必须同步改 `dsh-git-window`（它的 `src/client/05-theme.js` 只读这三样）。对方没装本插件时样式请求 404，它保持自己的 token 外观，不会报错。
 
 ### 3.4 用到的 DSH 槽位
 
@@ -308,6 +320,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 「复制诊断信息」点了没反应、页面像卡住 | `await navigator.clipboard.writeText()` 在无权限/嵌入式环境下可能永不 resolve | 剪贴板用 `Promise.race` 加 1.5 秒超时，上报日志优先，超时退化为「已写入宿主日志」提示 |
 | 主题弹层里点某一项没反应（真鼠标点不动，代码里 `.click()` 却正常） | 关闭弹层用的是 `document` 上的 **capture** `pointerdown`：真实鼠标先派发 pointerdown，监听器先把弹层卸载，行的 click 永远到不了 | 关闭监听要放过落在弹层/触发按钮内部的按压（`target.closest('.iw-theme-pop, .iw-theme-button')`）；**交互必须用真实指针事件验证**，程序化 `.click()` 会绕过 pointerdown |
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
+| 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
 
 ---
 

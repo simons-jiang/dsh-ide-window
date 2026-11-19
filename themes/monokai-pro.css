@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="monokai-pro"]` is touched.
+ * `[data-dsh-theme="monokai-pro"]` is touched.
  */
-.iw-root[data-iw-theme="monokai-pro"] {
+[data-dsh-theme="monokai-pro"] {
   --dsw-alias-bg-base: #2d2a2e;
   --dsw-alias-bg-layer-1: #221f22;
   --dsw-alias-bg-layer-2: #363337;

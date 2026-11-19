@@ -64,14 +64,14 @@ const scopes = manifest.every((theme) => {
   const text = readFileSync(join(themeDir, `${theme.id}.css`), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
   // One flat rule per file, and its selector must be the panel scoped to this id.
   const selectors = [...text.matchAll(/([^{}]+)\{/g)].map((match) => match[1].trim())
-  return selectors.length === 1 && selectors[0] === `.iw-root[data-iw-theme="${theme.id}"]`
+  return selectors.length === 1 && selectors[0] === `[data-dsh-theme="${theme.id}"]`
 })
-check(scopes, '每个文件都只作用于 .iw-root[data-iw-theme=…]')
+check(scopes, '每个文件都只作用于 [data-dsh-theme=…]')
 
 // ④ 宿主读取器：合法 id 返回 CSS，非法与未知 id 分别 400 / 404
 {
   const css = themeCss('material-oceanic')
-  check(css.includes('.iw-root[data-iw-theme="material-oceanic"]'), 'themeCss 返回该主题的样式', css.slice(0, 40))
+  check(css.includes('[data-dsh-theme="material-oceanic"]'), 'themeCss 返回该主题的样式', css.slice(0, 40))
   check(css.includes('--dsw-alias-bg-base'), '返回的样式里含 token 覆盖')
 
   const status = (fn) => {
@@ -86,6 +86,14 @@ check(scopes, '每个文件都只作用于 .iw-root[data-iw-theme=…]')
   check(status(() => themeCss('nope')) === 404, '未知主题返回 404', String(status(() => themeCss('nope'))))
   check(status(() => themeCss('')) === 400, '空 id 被拒绝', String(status(() => themeCss(''))))
 }
+
+// ⑤ 共享约定：客户端把主题写进 localStorage['dsh-theme'] 并派发同名事件，
+//    dsh-git-window 靠这两样跟随；改动契约要同时改两个仓库。
+const clientFiles = (name) => readFileSync(join(root, 'src', 'client', name), 'utf8')
+const themeModule = clientFiles('12-theme.js')
+check(themeModule.includes("const IDE_THEME_SHARED_KEY = 'dsh-theme'"), '共享键为 dsh-theme')
+check(themeModule.includes("const IDE_THEME_SHARED_EVENT = 'dsh-theme'"), '共享事件为 dsh-theme')
+check(clientFiles('40-panel.js').includes("'data-dsh-theme'"), '面板根节点设置 data-dsh-theme')
 
 if (failures > 0) {
   console.log(`\n${failures} theme check(s) failed`)

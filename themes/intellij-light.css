@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="intellij-light"]` is touched.
+ * `[data-dsh-theme="intellij-light"]` is touched.
  */
-.iw-root[data-iw-theme="intellij-light"] {
+[data-dsh-theme="intellij-light"] {
   --dsw-alias-bg-base: #f7f8fa;
   --dsw-alias-bg-layer-1: #ffffff;
   --dsw-alias-bg-layer-2: #ebecf0;

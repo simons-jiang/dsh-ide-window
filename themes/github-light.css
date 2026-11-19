@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="github-light"]` is touched.
+ * `[data-dsh-theme="github-light"]` is touched.
  */
-.iw-root[data-iw-theme="github-light"] {
+[data-dsh-theme="github-light"] {
   --dsw-alias-bg-base: #ffffff;
   --dsw-alias-bg-layer-1: #f6f8fa;
   --dsw-alias-bg-layer-2: #f6f8fa;

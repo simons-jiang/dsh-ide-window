@@ -2,10 +2,14 @@
  * Colour themes for the code workspace.
  *
  * A palette is a file: `themes/<id>.css` overrides the DSH alias tokens, scoped
- * to `.iw-root[data-iw-theme="<id>"]`. Every `.iw-*` rule already reads those
- * tokens, so a theme never touches a component style — switching a theme points
+ * to `[data-dsh-theme="<id>"]`. Every `.iw-*` rule already reads those tokens, so
+ * a theme never touches a component style — switching a theme points
  * `<link id="iw-theme-link">` at another file and sets one attribute. A palette
  * can be edited without rebuilding the bundle.
+ *
+ * The attribute and the storage key are a **shared contract**: a sibling plugin
+ * (`dsh-git-window`) sets the same attribute on its own tool window and loads
+ * the same stylesheet, so both follow one palette. See `idePublishTheme`.
  *
  * `themes/index.json` lists the same ids; `test/theme.mjs` holds the two in sync
  * and checks that every file defines the same token set.
@@ -68,10 +72,45 @@ function ideApplyTheme(id) {
   if (existing.getAttribute('href') !== href) existing.setAttribute('href', href)
 }
 
+/**
+ * The shared palette contract.
+ *
+ * `dsh-git-window` draws its own tool window; when both plugins are open they
+ * should look like one workspace, so a palette is published, not just applied:
+ *
+ * - `localStorage['dsh-theme']` — the current id (empty means "follow DSH"),
+ *   readable by any plugin at start-up;
+ * - `window` event `dsh-theme` with `{ id }` — same document, so a listener
+ *   reacts immediately;
+ * - the stylesheet attribute `data-dsh-theme` — whatever element carries it
+ *   gets the palette, whichever plugin owns that element.
+ *
+ * Only this plugin writes the key; followers read it.
+ */
+const IDE_THEME_SHARED_KEY = 'dsh-theme'
+const IDE_THEME_SHARED_EVENT = 'dsh-theme'
+
+/** Publish the palette: storage for late loaders, an event for live listeners. */
+function idePublishTheme(id) {
+  const value = typeof id === 'string' ? id : ''
+  try {
+    if (value === '') globalThis.localStorage?.removeItem(IDE_THEME_SHARED_KEY)
+    else globalThis.localStorage?.setItem(IDE_THEME_SHARED_KEY, value)
+  } catch {
+    /* a browser with storage disabled simply cannot share the palette */
+  }
+  try {
+    globalThis.dispatchEvent?.(new CustomEvent(IDE_THEME_SHARED_EVENT, { detail: { id: value } }))
+  } catch {
+    /* CustomEvent is always available in the panel's browser; ignore if not */
+  }
+}
+
 /** Apply the saved theme once, and after every change; the panel owns the DOM. */
 function ideUseTheme(themeId) {
   useEffect(() => {
     ideApplyTheme(themeId)
+    idePublishTheme(themeId)
   }, [themeId])
 }
 

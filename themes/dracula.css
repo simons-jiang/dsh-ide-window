@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="dracula"]` is touched.
+ * `[data-dsh-theme="dracula"]` is touched.
  */
-.iw-root[data-iw-theme="dracula"] {
+[data-dsh-theme="dracula"] {
   --dsw-alias-bg-base: #282a36;
   --dsw-alias-bg-layer-1: #21222c;
   --dsw-alias-bg-layer-2: #343746;

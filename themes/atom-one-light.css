@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="atom-one-light"]` is touched.
+ * `[data-dsh-theme="atom-one-light"]` is touched.
  */
-.iw-root[data-iw-theme="atom-one-light"] {
+[data-dsh-theme="atom-one-light"] {
   --dsw-alias-bg-base: #fafafa;
   --dsw-alias-bg-layer-1: #ffffff;
   --dsw-alias-bg-layer-2: #f0f0f1;

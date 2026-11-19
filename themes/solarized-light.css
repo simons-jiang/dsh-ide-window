@@ -3,9 +3,9 @@
  *
  * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
  * rule picks the palette up without knowing this file exists. Nothing outside
- * `.iw-root[data-iw-theme="solarized-light"]` is touched.
+ * `[data-dsh-theme="solarized-light"]` is touched.
  */
-.iw-root[data-iw-theme="solarized-light"] {
+[data-dsh-theme="solarized-light"] {
   --dsw-alias-bg-base: #fdf6e3;
   --dsw-alias-bg-layer-1: #eee8d5;
   --dsw-alias-bg-layer-2: #f5eedc;
