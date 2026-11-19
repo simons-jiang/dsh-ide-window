@@ -1192,6 +1192,17 @@ function ideCreateStore(refs) {
     const relative = ideRelativeTo(state.rootPath, path)
     if (relative === null || relative === '') return false
     if (options.record !== false) recordHistory()
+    // Going back to a place the user had scrolled to: seed the offset first, so
+    // the code view mounts straight there instead of at the top of the file.
+    if (typeof options.top === 'number' && options.top > 0) {
+      patch({
+        scroll: { ...state.scroll, [relative]: Math.round(options.top) },
+        tabs: state.tabs.map((tab) => (tab.path === relative ? { ...tab, reveal: 0, revealApplied: 0 } : tab)),
+      })
+      openFile(relative, { line: 0 })
+      void Promise.resolve().then(() => revealInTree(relative))
+      return true
+    }
     // The tab is what the user is waiting for. Revealing the file in the tree
     // costs a remote listing and a change subscription per ancestor level, so it
     // runs after the tab is up instead of gating the jump.
@@ -1409,13 +1420,22 @@ function ideCreateStore(refs) {
    */
 
 
-  /** The active tab's position, which is what history entries remember. */
+  /**
+   * The active tab's position, which is what history entries remember.
+   *
+   * `line` alone is not the reader's position: it is only the last *jump*
+   * target, so a file the user scrolled through by hand remembered line 1 and
+   * going back dropped them at the top of the file. The scroll offset is where
+   * they actually were, so it travels with the entry.
+   */
   function currentPosition() {
     const tab = state.tabs.find((entry) => entry.path === state.activePath)
     if (tab === undefined) return undefined
+    const top = state.scroll[tab.path]
     return {
       path: tab.path,
       line: typeof tab.reveal === 'number' && tab.reveal > 0 ? tab.reveal : 1,
+      top: typeof top === 'number' && top > 0 ? top : 0,
     }
   }
 
@@ -1442,7 +1462,7 @@ function ideCreateStore(refs) {
       historyForward: direction < 0 ? nextOpposite : rest,
     })
     // Replaying a history entry is not itself a navigation step.
-    openAt(target.path, target.line, { record: false })
+    openAt(target.path, target.line, { record: false, top: target.top })
     return true
   }
 

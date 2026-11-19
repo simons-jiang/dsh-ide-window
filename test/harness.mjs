@@ -514,6 +514,21 @@ navStore.openAt('Main.java', 1)
 await tick()
 check((navStore.getState().historyForward ?? []).length === 0, 'a fresh jump clears the forward stack')
 
+// The reader's *offset* travels with the history entry: without it, going back
+// after scrolling a file dropped the user at line 1 instead of where they were.
+navStore.openAt('src/App.ts', 1)
+await tick()
+navStore.rememberScroll('src/App.ts', 2400)
+navStore.openAt('Main.java', 10)
+await tick()
+check(navStore.getState().historyBack.at(-1)?.top === 2400, 'the scroll offset is remembered with the position', String(navStore.getState().historyBack.at(-1)?.top))
+navStore.goBack()
+await tick()
+const afterScrollBack = navStore.getState()
+check(afterScrollBack.activePath === 'src/App.ts', 'back returns to the scrolled file', String(afterScrollBack.activePath))
+check(afterScrollBack.scroll['src/App.ts'] === 2400, 'back restores the scroll offset', String(afterScrollBack.scroll['src/App.ts']))
+check((afterScrollBack.tabs.find((entry) => entry.path === 'src/App.ts')?.reveal ?? 0) === 0, 'restoring the offset drops the stale reveal line', String(afterScrollBack.tabs.find((entry) => entry.path === 'src/App.ts')?.reveal))
+
 
 /** Extract one top-level function's source from a client fragment, for unit checks. */
 function grabSource(name, file = '10-core.js') {
