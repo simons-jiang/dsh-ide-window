@@ -530,6 +530,17 @@ check(afterScrollBack.scroll['src/App.ts'] === 2400, 'back restores the scroll o
 check((afterScrollBack.tabs.find((entry) => entry.path === 'src/App.ts')?.reveal ?? 0) === 0, 'restoring the offset drops the stale reveal line', String(afterScrollBack.tabs.find((entry) => entry.path === 'src/App.ts')?.reveal))
 
 
+// An untracked file has no blame rows at all; the column must still say so
+// instead of rendering empty cells.
+const annotateRowsFor = new Function(
+  `${grabSource('ideAnnotateRows', '30-code.js')}\nreturn ideAnnotateRows`,
+)()
+const untrackedRows = annotateRowsFor(new Map(), 3, '未提交', true)
+check(untrackedRows.get(1)?.label === '未提交', 'an untracked file annotates every line as uncommitted', String(untrackedRows.get(1)?.label))
+const trackedRows = annotateRowsFor(new Map([[1, { author: 'simon', date: '2026/11/16', time: 1, uncommitted: false }]]), 2, '未提交', false)
+check(trackedRows.get(1)?.label === '2026/11/16 simon', 'attributed lines keep date and author', String(trackedRows.get(1)?.label))
+check((trackedRows.get(2)?.label ?? 'x') === '', 'lines git skipped stay blank when the file is tracked', String(trackedRows.get(2)?.label))
+
 /** Extract one top-level function's source from a client fragment, for unit checks. */
 function grabSource(name, file = '10-core.js') {
   const source = readFileSync(new URL(`../src/client/${file}`, import.meta.url), 'utf8')

@@ -291,6 +291,26 @@ function IdeWorkspaceSettingsItem(props) {
  * the pointer. Opening downwards when it fits and upwards from the pointer
  * otherwise is what makes the menu look attached to the click.
  */
+/**
+ * The lowest y of the panel that another pane is not covering.
+ *
+ * The bottom pane of another plugin (the git window) slides over the bottom of
+ * the window and paints above this panel, so a popup placed there is hidden
+ * behind it. Probing the hit test from the bottom up finds where that pane
+ * starts without knowing anything about the other plugin.
+ */
+function idePanelBottom(root, rect, viewportHeight) {
+  const limit = Math.min(viewportHeight - 8, rect.bottom - 8)
+  if (typeof document === 'undefined' || typeof document.elementFromPoint !== 'function') return limit
+  const x = Math.round(rect.left + Math.min(60, Math.max(12, rect.width / 2)))
+  for (let y = Math.round(limit); y > rect.top + 24; y -= 6) {
+    const element = document.elementFromPoint(x, y)
+    if (element === null) continue
+    if (root.contains(element)) return y
+  }
+  return limit
+}
+
 function useMenuPlacement(x, y, width) {
   const ref = React.useRef(null)
   const [style, setStyle] = React.useState({
@@ -302,21 +322,28 @@ function useMenuPlacement(x, y, width) {
     const node = ref.current
     if (node === null) return
     const height = node.getBoundingClientRect().height
-    const box = typeof document === 'undefined' ? null : document.querySelector('.iw-root')?.getBoundingClientRect() ?? null
+    const root = typeof document === 'undefined' ? null : document.querySelector('.iw-root')
+    const box = root?.getBoundingClientRect() ?? null
     const viewportWidth = globalThis.innerWidth || 1280
     const viewportHeight = globalThis.innerHeight || 800
     const top = box === null ? 8 : Math.max(8, box.top + 8)
-    const bottom = box === null ? viewportHeight - 8 : Math.min(viewportHeight - 8, box.bottom - 8)
+    // Stop above the bottom pane: a popup behind it is worse than a shorter one.
+    const bottom = box === null || root === null
+      ? viewportHeight - 8
+      : idePanelBottom(root, box, viewportHeight)
     const left = box === null ? 8 : Math.max(8, box.left + 8)
     const right = box === null ? viewportWidth - 8 : Math.min(viewportWidth - 8, box.right - 8)
     const size = typeof width === 'number' && width > 0 ? width : 240
     // Below the pointer when it fits, otherwise the menu's bottom sits at the
     // pointer and it grows upwards; a menu taller than the panel scrolls.
-    const placedTop = y + height <= bottom ? y : Math.max(top, y - height)
+    const placedTop = Math.min(y + height <= bottom ? y : Math.max(top, y - height), Math.max(top, bottom - height))
     setStyle({
       left: `${Math.min(Math.max(x, left), Math.max(left, right - size))}px`,
-      top: `${Math.min(placedTop, Math.max(top, bottom - height))}px`,
-      maxHeight: `${Math.max(140, bottom - top)}px`,
+      top: `${placedTop}px`,
+      // Cap the height to the space that is actually left below the anchor: the
+      // usage and call-chain popups grow as results arrive, and without this
+      // they grew straight into the pane below (their bodies scroll instead).
+      maxHeight: `${Math.max(140, bottom - placedTop)}px`,
       visibility: 'visible',
     })
   }, [x, y, width])

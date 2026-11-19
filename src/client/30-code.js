@@ -211,6 +211,9 @@ function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
   ])
 }
 
+/** Width of the usage popup, matching `.iw-pop` in the stylesheet. */
+const IDE_USAGE_POPUP_WIDTH = 500
+
 /** One row of the usage popup. */
 function IdeUsageRow({ item, kind, onPick }) {
   return h('button', {
@@ -244,7 +247,12 @@ function IdeUsageSection({ section, onPick }) {
  * with the source it describes.
  */
 function IdeUsagePopup({ popup, onPick, onClose }) {
-  const ref = useRef(null)
+  // The popup is `position: fixed` inside the panel, so the panel's own edges
+  // clip it: opened near the bottom, the last caller was cut off with no way to
+  // reach it. Placement therefore goes through the same helper as the menus —
+  // clamped into the panel, flipped upwards when the space below is too small.
+  const placement = useMenuPlacement(popup.x, popup.y, IDE_USAGE_POPUP_WIDTH)
+  const ref = placement.ref
   useEffect(() => {
     if (ref.current !== null && typeof ref.current.focus === 'function') ref.current.focus()
   }, [])
@@ -274,7 +282,7 @@ function IdeUsagePopup({ popup, onPick, onClose }) {
     ref,
     tabIndex: -1,
     className: 'iw-pop',
-    style: { left: `${popup.x}px`, top: `${popup.y}px` },
+    style: placement.style,
     role: 'dialog',
     'aria-label': popup.name,
   }, [
@@ -450,9 +458,15 @@ function ideVisionRows(root, tab, uncommittedLabel) {
  * @returns `line → { label, band }` (`band` is 0 or 1, so adjacent commits can
  *   alternate a tint the way an editor's annotate view does).
  */
-function ideAnnotateRows(blames, lineCount, uncommittedLabel) {
+function ideAnnotateRows(blames, lineCount, uncommittedLabel, untracked) {
   const rows = new Map()
   if (blames === undefined) return rows
+  // A file git knows nothing about (never committed, or untracked) has no rows
+  // at all: every line is uncommitted, and an empty column reads like a bug.
+  if (untracked === true) {
+    for (let line = 1; line <= lineCount; line += 1) rows.set(line, { label: uncommittedLabel ?? '', band: 0 })
+    return rows
+  }
   let band = 0
   let previous
   for (let line = 1; line <= lineCount; line += 1) {
@@ -563,7 +577,9 @@ function ideRequestBlame(store, tab, done, options = {}) {
           label: uncommitted ? '' : [row.author, date].filter(Boolean).join(' · '),
         })
       }
-      ideBlames.set(key, { at: Date.now(), rows })
+      // `lines` is empty when git refused the file (untracked): record that, so
+      // the column can say「未提交」instead of rendering blank cells.
+      ideBlames.set(key, { at: Date.now(), rows, untracked: found.failed === true || rows.size === 0 })
       done()
     })
     .catch(() => undefined)
@@ -636,7 +652,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const annotateOn = store.getState().annotate?.[tab.path] === true
   const annotateRows = useMemo(() => {
     if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return undefined
-    return ideAnnotateRows(ideBlames.get(ideVisionKey(rootPath, tab))?.rows, lines.length, tr('annotateUncommitted'))
+    const cached = ideBlames.get(ideVisionKey(rootPath, tab))
+    return ideAnnotateRows(cached?.rows, lines.length, tr('annotateUncommitted'), cached?.untracked === true)
   }, [annotateOn, rootPath, tab.path, tab.version, tab.status, tab.kind, lines, visionStamp])
 
   // ---- symbol navigation --------------------------------------------------

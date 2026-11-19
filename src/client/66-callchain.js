@@ -297,9 +297,15 @@ function IdeChainNode({ node, depth, onPick }) {
   ])
 }
 
+/** Width of the call-chain popup, matching `.iw-pop-chain` in the stylesheet. */
+const IDE_CHAIN_POPUP_WIDTH = 600
+
 /** The popup: one tree, one row per method; clicking a row jumps to it. */
 function IdeChainPopup({ popup, tr, onPick, onClose }) {
-  const ref = React.useRef(null)
+  // Same clipping trap as the usage popup: `position: fixed` inside the panel is
+  // cut by the panel's edges, so the placement helper clamps and flips it.
+  const placement = useMenuPlacement(popup.x, popup.y, IDE_CHAIN_POPUP_WIDTH)
+  const ref = placement.ref
   // The popup owns the keyboard while it is open: capture-phase, so no other
   // handler has to be focused for Esc to close it.
   useEffect(() => {
@@ -352,7 +358,7 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
     ref,
     tabIndex: -1,
     className: 'iw-pop iw-pop-chain',
-    style: { left: `${popup.x}px`, top: `${popup.y}px` },
+    style: placement.style,
     role: 'dialog',
     'aria-label': popup.name,
   }, [

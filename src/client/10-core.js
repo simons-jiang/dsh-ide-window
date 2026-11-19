@@ -1295,24 +1295,47 @@ function ideCreateStore(refs) {
     closeTabsWhere(() => false)
   }
 
+  /**
+   * Open one context menu and close the others.
+   *
+   * `null` only closes the named menu. Opening one used to leave a previously
+   * opened menu alive: a stale tab menu stayed on screen (and its backdrop on
+   * top), so the next right click landed on the old menu instead of the thing
+   * the user aimed at.
+   */
+  const IDE_MENU_KEYS = ['tabMenu', 'treeMenu', 'codeMenu', 'codeSymbolMenu']
+  function patchMenu(key, menu) {
+    const next = menu === null || menu === undefined ? null : menu
+    const cleared = {}
+    if (next !== null) {
+      for (const other of IDE_MENU_KEYS) if (other !== key) cleared[other] = null
+    }
+    patch({ ...cleared, [key]: next })
+  }
+
+  /** Close every context menu (Escape, a tab switch, a new selection). */
+  function closeMenus() {
+    patch({ tabMenu: null, treeMenu: null, codeMenu: null, codeSymbolMenu: null })
+  }
+
   /** Open or close the tab context menu. */
   function setTabMenu(menu) {
-    patch({ tabMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('tabMenu', menu)
   }
 
   /** Open or close the code-gutter context menu. */
   function setCodeMenu(menu) {
-    patch({ codeMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('codeMenu', menu)
   }
 
   /** Open or close the context menu of one symbol in the source. */
   function setCodeSymbolMenu(menu) {
-    patch({ codeSymbolMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('codeSymbolMenu', menu)
   }
 
   /** Open or close the file-tree context menu. */
   function setTreeMenu(menu) {
-    patch({ treeMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('treeMenu', menu)
   }
 
   /** Open or close the file-tree overlay (difference text or a picker). */
@@ -1626,6 +1649,7 @@ function ideCreateStore(refs) {
     closeReadOnly,
     closeUnmodified,
     setTabMenu,
+    closeMenus,
     setTreeMenu,
     setTreePopup,
     setCodeMenu,

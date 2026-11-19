@@ -4180,24 +4180,47 @@ function ideCreateStore(refs) {
     closeTabsWhere(() => false)
   }
 
+  /**
+   * Open one context menu and close the others.
+   *
+   * `null` only closes the named menu. Opening one used to leave a previously
+   * opened menu alive: a stale tab menu stayed on screen (and its backdrop on
+   * top), so the next right click landed on the old menu instead of the thing
+   * the user aimed at.
+   */
+  const IDE_MENU_KEYS = ['tabMenu', 'treeMenu', 'codeMenu', 'codeSymbolMenu']
+  function patchMenu(key, menu) {
+    const next = menu === null || menu === undefined ? null : menu
+    const cleared = {}
+    if (next !== null) {
+      for (const other of IDE_MENU_KEYS) if (other !== key) cleared[other] = null
+    }
+    patch({ ...cleared, [key]: next })
+  }
+
+  /** Close every context menu (Escape, a tab switch, a new selection). */
+  function closeMenus() {
+    patch({ tabMenu: null, treeMenu: null, codeMenu: null, codeSymbolMenu: null })
+  }
+
   /** Open or close the tab context menu. */
   function setTabMenu(menu) {
-    patch({ tabMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('tabMenu', menu)
   }
 
   /** Open or close the code-gutter context menu. */
   function setCodeMenu(menu) {
-    patch({ codeMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('codeMenu', menu)
   }
 
   /** Open or close the context menu of one symbol in the source. */
   function setCodeSymbolMenu(menu) {
-    patch({ codeSymbolMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('codeSymbolMenu', menu)
   }
 
   /** Open or close the file-tree context menu. */
   function setTreeMenu(menu) {
-    patch({ treeMenu: menu === null || menu === undefined ? null : menu })
+    patchMenu('treeMenu', menu)
   }
 
   /** Open or close the file-tree overlay (difference text or a picker). */
@@ -4511,6 +4534,7 @@ function ideCreateStore(refs) {
     closeReadOnly,
     closeUnmodified,
     setTabMenu,
+    closeMenus,
     setTreeMenu,
     setTreePopup,
     setCodeMenu,
@@ -5654,6 +5678,9 @@ function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
   ])
 }
 
+/** Width of the usage popup, matching `.iw-pop` in the stylesheet. */
+const IDE_USAGE_POPUP_WIDTH = 500
+
 /** One row of the usage popup. */
 function IdeUsageRow({ item, kind, onPick }) {
   return h('button', {
@@ -5687,7 +5714,12 @@ function IdeUsageSection({ section, onPick }) {
  * with the source it describes.
  */
 function IdeUsagePopup({ popup, onPick, onClose }) {
-  const ref = useRef(null)
+  // The popup is `position: fixed` inside the panel, so the panel's own edges
+  // clip it: opened near the bottom, the last caller was cut off with no way to
+  // reach it. Placement therefore goes through the same helper as the menus —
+  // clamped into the panel, flipped upwards when the space below is too small.
+  const placement = useMenuPlacement(popup.x, popup.y, IDE_USAGE_POPUP_WIDTH)
+  const ref = placement.ref
   useEffect(() => {
     if (ref.current !== null && typeof ref.current.focus === 'function') ref.current.focus()
   }, [])
@@ -5717,7 +5749,7 @@ function IdeUsagePopup({ popup, onPick, onClose }) {
     ref,
     tabIndex: -1,
     className: 'iw-pop',
-    style: { left: `${popup.x}px`, top: `${popup.y}px` },
+    style: placement.style,
     role: 'dialog',
     'aria-label': popup.name,
   }, [
@@ -5893,9 +5925,15 @@ function ideVisionRows(root, tab, uncommittedLabel) {
  * @returns `line → { label, band }` (`band` is 0 or 1, so adjacent commits can
  *   alternate a tint the way an editor's annotate view does).
  */
-function ideAnnotateRows(blames, lineCount, uncommittedLabel) {
+function ideAnnotateRows(blames, lineCount, uncommittedLabel, untracked) {
   const rows = new Map()
   if (blames === undefined) return rows
+  // A file git knows nothing about (never committed, or untracked) has no rows
+  // at all: every line is uncommitted, and an empty column reads like a bug.
+  if (untracked === true) {
+    for (let line = 1; line <= lineCount; line += 1) rows.set(line, { label: uncommittedLabel ?? '', band: 0 })
+    return rows
+  }
   let band = 0
   let previous
   for (let line = 1; line <= lineCount; line += 1) {
@@ -6006,7 +6044,9 @@ function ideRequestBlame(store, tab, done, options = {}) {
           label: uncommitted ? '' : [row.author, date].filter(Boolean).join(' · '),
         })
       }
-      ideBlames.set(key, { at: Date.now(), rows })
+      // `lines` is empty when git refused the file (untracked): record that, so
+      // the column can say「未提交」instead of rendering blank cells.
+      ideBlames.set(key, { at: Date.now(), rows, untracked: found.failed === true || rows.size === 0 })
       done()
     })
     .catch(() => undefined)
@@ -6079,7 +6119,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const annotateOn = store.getState().annotate?.[tab.path] === true
   const annotateRows = useMemo(() => {
     if (!annotateOn || tab.status !== 'ready' || tab.kind === 'jar' || rootPath === '') return undefined
-    return ideAnnotateRows(ideBlames.get(ideVisionKey(rootPath, tab))?.rows, lines.length, tr('annotateUncommitted'))
+    const cached = ideBlames.get(ideVisionKey(rootPath, tab))
+    return ideAnnotateRows(cached?.rows, lines.length, tr('annotateUncommitted'), cached?.untracked === true)
   }, [annotateOn, rootPath, tab.path, tab.version, tab.status, tab.kind, lines, visionStamp])
 
   // ---- symbol navigation --------------------------------------------------
@@ -7130,6 +7171,24 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     globalThis.addEventListener('keyup', onKey)
     return () => globalThis.removeEventListener('keyup', onKey)
   }, [store])
+  // Escape closes whichever context menu is open. The menus are not focusable
+  // (they are dismissed by a backdrop press), so the key has to be caught at the
+  // window: pressing Escape with a menu open used to do nothing at all.
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      const state = store.getState()
+      if ((state.tabMenu ?? null) === null
+        && (state.treeMenu ?? null) === null
+        && (state.codeMenu ?? null) === null
+        && (state.codeSymbolMenu ?? null) === null) return
+      event.preventDefault()
+      store.closeMenus?.()
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [store])
+
   // Coming back to the window re-reads the active file: a commit changes git's
   // view of it without changing its bytes, so no change frame arrives.
   useEffect(() => {
@@ -7799,6 +7858,26 @@ function IdeWorkspaceSettingsItem(props) {
  * the pointer. Opening downwards when it fits and upwards from the pointer
  * otherwise is what makes the menu look attached to the click.
  */
+/**
+ * The lowest y of the panel that another pane is not covering.
+ *
+ * The bottom pane of another plugin (the git window) slides over the bottom of
+ * the window and paints above this panel, so a popup placed there is hidden
+ * behind it. Probing the hit test from the bottom up finds where that pane
+ * starts without knowing anything about the other plugin.
+ */
+function idePanelBottom(root, rect, viewportHeight) {
+  const limit = Math.min(viewportHeight - 8, rect.bottom - 8)
+  if (typeof document === 'undefined' || typeof document.elementFromPoint !== 'function') return limit
+  const x = Math.round(rect.left + Math.min(60, Math.max(12, rect.width / 2)))
+  for (let y = Math.round(limit); y > rect.top + 24; y -= 6) {
+    const element = document.elementFromPoint(x, y)
+    if (element === null) continue
+    if (root.contains(element)) return y
+  }
+  return limit
+}
+
 function useMenuPlacement(x, y, width) {
   const ref = React.useRef(null)
   const [style, setStyle] = React.useState({
@@ -7810,21 +7889,28 @@ function useMenuPlacement(x, y, width) {
     const node = ref.current
     if (node === null) return
     const height = node.getBoundingClientRect().height
-    const box = typeof document === 'undefined' ? null : document.querySelector('.iw-root')?.getBoundingClientRect() ?? null
+    const root = typeof document === 'undefined' ? null : document.querySelector('.iw-root')
+    const box = root?.getBoundingClientRect() ?? null
     const viewportWidth = globalThis.innerWidth || 1280
     const viewportHeight = globalThis.innerHeight || 800
     const top = box === null ? 8 : Math.max(8, box.top + 8)
-    const bottom = box === null ? viewportHeight - 8 : Math.min(viewportHeight - 8, box.bottom - 8)
+    // Stop above the bottom pane: a popup behind it is worse than a shorter one.
+    const bottom = box === null || root === null
+      ? viewportHeight - 8
+      : idePanelBottom(root, box, viewportHeight)
     const left = box === null ? 8 : Math.max(8, box.left + 8)
     const right = box === null ? viewportWidth - 8 : Math.min(viewportWidth - 8, box.right - 8)
     const size = typeof width === 'number' && width > 0 ? width : 240
     // Below the pointer when it fits, otherwise the menu's bottom sits at the
     // pointer and it grows upwards; a menu taller than the panel scrolls.
-    const placedTop = y + height <= bottom ? y : Math.max(top, y - height)
+    const placedTop = Math.min(y + height <= bottom ? y : Math.max(top, y - height), Math.max(top, bottom - height))
     setStyle({
       left: `${Math.min(Math.max(x, left), Math.max(left, right - size))}px`,
-      top: `${Math.min(placedTop, Math.max(top, bottom - height))}px`,
-      maxHeight: `${Math.max(140, bottom - top)}px`,
+      top: `${placedTop}px`,
+      // Cap the height to the space that is actually left below the anchor: the
+      // usage and call-chain popups grow as results arrive, and without this
+      // they grew straight into the pane below (their bodies scroll instead).
+      maxHeight: `${Math.max(140, bottom - placedTop)}px`,
       visibility: 'visible',
     })
   }, [x, y, width])
@@ -9564,9 +9650,15 @@ function IdeChainNode({ node, depth, onPick }) {
   ])
 }
 
+/** Width of the call-chain popup, matching `.iw-pop-chain` in the stylesheet. */
+const IDE_CHAIN_POPUP_WIDTH = 600
+
 /** The popup: one tree, one row per method; clicking a row jumps to it. */
 function IdeChainPopup({ popup, tr, onPick, onClose }) {
-  const ref = React.useRef(null)
+  // Same clipping trap as the usage popup: `position: fixed` inside the panel is
+  // cut by the panel's edges, so the placement helper clamps and flips it.
+  const placement = useMenuPlacement(popup.x, popup.y, IDE_CHAIN_POPUP_WIDTH)
+  const ref = placement.ref
   // The popup owns the keyboard while it is open: capture-phase, so no other
   // handler has to be focused for Esc to close it.
   useEffect(() => {
@@ -9619,7 +9711,7 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
     ref,
     tabIndex: -1,
     className: 'iw-pop iw-pop-chain',
-    style: { left: `${popup.x}px`, top: `${popup.y}px` },
+    style: placement.style,
     role: 'dialog',
     'aria-label': popup.name,
   }, [

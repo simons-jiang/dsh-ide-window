@@ -289,6 +289,24 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     globalThis.addEventListener('keyup', onKey)
     return () => globalThis.removeEventListener('keyup', onKey)
   }, [store])
+  // Escape closes whichever context menu is open. The menus are not focusable
+  // (they are dismissed by a backdrop press), so the key has to be caught at the
+  // window: pressing Escape with a menu open used to do nothing at all.
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      const state = store.getState()
+      if ((state.tabMenu ?? null) === null
+        && (state.treeMenu ?? null) === null
+        && (state.codeMenu ?? null) === null
+        && (state.codeSymbolMenu ?? null) === null) return
+      event.preventDefault()
+      store.closeMenus?.()
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [store])
+
   // Coming back to the window re-reads the active file: a commit changes git's
   // view of it without changing its bytes, so no change frame arrives.
   useEffect(() => {
