@@ -13,9 +13,12 @@
 function idePlatformOf(name) {
   // Only macOS is treated as macOS; every other value means Windows.
   const windows = name !== 'macos' && name !== 'mac' && name !== 'darwin'
+  // Windows compares paths case-insensitively, and tools disagree on the drive
+  // letter's case (`c:/…` from the language server, `C:/…` from the workspace):
+  // canonicalise it so the rest of the panel compares strings.
   const toPosix = (path) => {
     const text = String(path ?? '')
-    return windows ? text.replace(/\\/g, '/') : text
+    return windows ? text.replace(/\\/g, '/').replace(/^([a-z]):/, (_, drive) => `${drive.toUpperCase()}:`) : text
   }
   return {
     name: windows ? 'windows' : 'macos',
@@ -23,6 +26,8 @@ function idePlatformOf(name) {
     toPosix,
     /** Slash form → the form the user's own tools accept. */
     toNative: (path) => (windows ? String(path ?? '').replace(/\//g, '\\') : String(path ?? '')),
+    /** Comparison key for "is this path inside that root": case-insensitive on Windows. */
+    pathKey: (path) => (windows ? toPosix(path).toLowerCase() : toPosix(path)),
     isAbsolutePath: (path) => {
       const text = toPosix(path)
       return windows ? /^[A-Za-z]:\//.test(text) || text.startsWith('//') || text.startsWith('/') : text.startsWith('/')

@@ -151,8 +151,13 @@ function ideRelativeTo(root, path) {
   const text = idePlatform.toPosix(path)
   const trimmedRoot = idePlatform.toPosix(root).replace(/\/+$/, '')
   if (trimmedRoot === '') return text.startsWith('/') ? null : text
-  if (text === trimmedRoot) return ''
-  if (text.startsWith(`${trimmedRoot}/`)) return text.slice(trimmedRoot.length + 1)
+  // Windows is case-insensitive (and the language server may hand back a lower
+  // -case drive); the key folds that without changing the length, so the
+  // relative path is still a slice of the original text.
+  const key = idePlatform.pathKey(text)
+  const rootKey = idePlatform.pathKey(trimmedRoot)
+  if (key === rootKey) return ''
+  if (key.startsWith(`${rootKey}/`)) return text.slice(trimmedRoot.length + 1)
   return idePlatform.isAbsolutePath(text) ? null : text
 }
 

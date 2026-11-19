@@ -2405,9 +2405,12 @@ function ideShortcutDefault(command, runtime) {
 function idePlatformOf(name) {
   // Only macOS is treated as macOS; every other value means Windows.
   const windows = name !== 'macos' && name !== 'mac' && name !== 'darwin'
+  // Windows compares paths case-insensitively, and tools disagree on the drive
+  // letter's case (`c:/…` from the language server, `C:/…` from the workspace):
+  // canonicalise it so the rest of the panel compares strings.
   const toPosix = (path) => {
     const text = String(path ?? '')
-    return windows ? text.replace(/\\/g, '/') : text
+    return windows ? text.replace(/\\/g, '/').replace(/^([a-z]):/, (_, drive) => `${drive.toUpperCase()}:`) : text
   }
   return {
     name: windows ? 'windows' : 'macos',
@@ -2415,6 +2418,8 @@ function idePlatformOf(name) {
     toPosix,
     /** Slash form → the form the user's own tools accept. */
     toNative: (path) => (windows ? String(path ?? '').replace(/\//g, '\\') : String(path ?? '')),
+    /** Comparison key for "is this path inside that root": case-insensitive on Windows. */
+    pathKey: (path) => (windows ? toPosix(path).toLowerCase() : toPosix(path)),
     isAbsolutePath: (path) => {
       const text = toPosix(path)
       return windows ? /^[A-Za-z]:\//.test(text) || text.startsWith('//') || text.startsWith('/') : text.startsWith('/')
@@ -2661,8 +2666,13 @@ function ideRelativeTo(root, path) {
   const text = idePlatform.toPosix(path)
   const trimmedRoot = idePlatform.toPosix(root).replace(/\/+$/, '')
   if (trimmedRoot === '') return text.startsWith('/') ? null : text
-  if (text === trimmedRoot) return ''
-  if (text.startsWith(`${trimmedRoot}/`)) return text.slice(trimmedRoot.length + 1)
+  // Windows is case-insensitive (and the language server may hand back a lower
+  // -case drive); the key folds that without changing the length, so the
+  // relative path is still a slice of the original text.
+  const key = idePlatform.pathKey(text)
+  const rootKey = idePlatform.pathKey(trimmedRoot)
+  if (key === rootKey) return ''
+  if (key.startsWith(`${rootKey}/`)) return text.slice(trimmedRoot.length + 1)
   return idePlatform.isAbsolutePath(text) ? null : text
 }
 

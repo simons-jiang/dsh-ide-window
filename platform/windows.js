@@ -6,7 +6,11 @@ import { homedir } from 'node:os'
 /** @type {import('./contract.js').IdePlatform} */
 export const windowsPlatform = {
   name: 'windows',
-  toPosix: (path) => String(path ?? '').replace(/\\/g, '/'),
+  // Windows compares paths case-insensitively, and tools disagree on the drive
+  // letter's case (`c:/…` from the language server, `C:/…` from the workspace);
+  // the drive letter is canonicalised here so the rest of the plugin can keep
+  // comparing strings.
+  toPosix: (path) => String(path ?? '').replace(/\\/g, '/').replace(/^([a-z]):/, (_, drive) => `${drive.toUpperCase()}:`),
   toNative: (path) => String(path ?? '').replace(/\//g, '\\'),
   isAbsolutePath: (path) => {
     const text = windowsPlatform.toPosix(path)

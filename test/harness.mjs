@@ -913,6 +913,10 @@ function sourceFunction(name, file = undefined) {
     '/Users/a/src/main/java/com/x/Y.java',
     'C:\\work\\app\\A.java',
     'C:/work/app/A.java',
+    // The language server reports a lower-case drive on Windows; both sides must
+    // canonicalise it the same way or a jump is judged "outside the workspace".
+    'c:/work/app/A.java',
+    'c:\\work\\app\\A.java',
     '\\\\server\\share\\app',
     'work\\app',
     'a/b',
@@ -931,6 +935,11 @@ function sourceFunction(name, file = undefined) {
 
   const splitPath = withPlatform(sourceFunction('ideSplitPath', '10-core.js'), 'ideSplitPath')
   check(JSON.stringify(splitPath('C:\\ws\\a\\B.java')) === JSON.stringify({ dir: 'C:/ws/a/', name: 'B.java' }), 'a Windows path splits on its own separator', JSON.stringify(splitPath('C:\\ws\\a\\B.java')))
+
+  const relativeToCase = withPlatform(sourceFunction('ideRelativeTo', '10-core.js'), 'ideRelativeTo')
+  check(relativeToCase('C:\\ws', 'c:/ws/src/A.java') === 'src/A.java', 'a lower-case drive still belongs to the workspace', String(relativeToCase('C:\\ws', 'c:/ws/src/A.java')))
+  check(relativeToCase('C:\\WS', 'c:/ws/src/A.java') === 'src/A.java', 'the workspace root is compared case-insensitively too', String(relativeToCase('C:\\WS', 'c:/ws/src/A.java')))
+  check(relativeToCase('C:\\ws', 'D:/ws/src/A.java') === null, 'another drive is outside the workspace', String(relativeToCase('C:\\ws', 'D:/ws/src/A.java')))
 
   const abs = withPlatform(sourceFunction('ideAbs', '10-core.js'), 'ideAbs')
   check(abs('C:\\ws', 'src\\main\\A.java') === 'C:/ws/src/main/A.java', 'the absolute join stays POSIX', abs('C:\\ws', 'src\\main\\A.java'))
