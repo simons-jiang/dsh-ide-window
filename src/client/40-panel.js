@@ -265,7 +265,7 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
 /** How many times the panel body has rendered; a probe can read it. */
 let idePanelRenders = 0
 
-function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions, onReferenceToChat, onScreenshotJump, onScreenshotKeep, onScreenshotRetry, onScreenshotOpenSettings, onScreenshotClose }) {
+function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions, onReferenceToChat }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const actions = paletteActions ?? []
 
@@ -525,18 +525,7 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     state.themeMenu === true
       ? h(IdeThemePopup, { key: 'themepopup', store, themeId: ideIsThemeId(state.theme) ? state.theme : '', tr })
       : null,
-    state.screenshot === null || state.screenshot === undefined
-      ? null
-      : h(IdeScreenshotPopup, {
-        key: 'shotpopup',
-        state,
-        tr,
-        onJump: onScreenshotJump,
-        onKeep: onScreenshotKeep,
-        onRetry: onScreenshotRetry,
-        onOpenSettings: onScreenshotOpenSettings,
-        onClose: onScreenshotClose,
-      }),
+
     h(IdeTreeMenu, {
       key: 'treemenu',
       store,

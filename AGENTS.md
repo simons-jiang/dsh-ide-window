@@ -68,7 +68,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `66-callchain.js` | 调用链（Alt+单击）：沿 `findReferences` 向上递归，思维导图式浮层 |
 | `68-grep.js` | 工作区搜索 + jar 源码查询客户端 |
 | `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
-| `72-screenshot.js` | **截图**：宿主抓屏、预览弹层、「跳转会话（粘贴图片）/ 只截图」、macOS 授权引导 |
+| `72-screenshot.js` | **截图编辑器**：宿主抓屏 → 拖框选区（无预设）→ 选框下方浮动条（矩形/文字/撤销 | 截图/截图并跳转会话）→ 裁切导出（长边 1920、≤1 MB）；含 macOS 授权引导 |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
 
 ### 3.2 平台层（`platform/`，只支持 macOS + Windows）
@@ -119,7 +119,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
 | `/dsh-ide/diagnostics` | 诊断日志 | `{action:'read'}` 返回本机最近 100 条事件 + 日志文件路径；`{action:'report', entries}` 接收浏览器缓冲的事件并写入同一文件（`level:'client'`） |
 | `/dsh-ide/theme` | 主题样式表 | `GET ?id=<主题>` 返回 `themes/<id>.css`（唯一非 JSON 路由，浏览器用 `<link>` 取）；id 只允许 `[a-z0-9-]`，未知 404、非法 400 |
-| `/dsh-ide/screenshot` | 截屏 | `{copy:true}` 抓屏并复制；`{copyOf:path}` 只把已有文件复制到剪贴板；返回 `{path, bytes, quality, dataUrl}`（1080p JPEG，质量阶梯保证 ≤1 MB）。失败时 `403 no-screen-permission`（macOS 未授权）或 `500 capture-failed` |
+| `/dsh-ide/screenshot` | 截屏 | `{}` 抓屏（2560 长边 JPEG）返回 `{path, bytes, quality, dataUrl}`；`{copyOf:path}` 把已有文件写进剪贴板；`{copyDataUrl}` 把编辑器导出图（≤8 MB 请求体）写盘后进剪贴板。失败时 `403 no-screen-permission`（macOS 未授权）或 `500 capture-failed` |
 | `/dsh-ide/screen-permission` | 打开授权面板 | 只 macOS 有效：`open x-apple.systempreferences:…Privacy_ScreenCapture`；其他系统回 `{opened:false}` |
 | `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
 
@@ -214,14 +214,27 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **源码里的符号右键菜单**：在方法名、字段、类名等任意符号上右键 →「复制名称」/「复制引用」/「复制引用回对话」。引用统一是 DSH 的 `@相对路径` 形式（目录带尾斜杠、含空格时加引号，规则与 DSH 的 reference codec 一致）；jar 源码标签页只有「复制名称」，因为 jar 内的路径不是工作区路径
 - **复制引用回对话**：直接回到对话，并把 `@引用` **追加**到草稿末尾——已有文本和附件一律不动，插入的是真正的引用芯片（不是纯文本）。实现方式：对话输入框是 Lexical 编辑器，`@` 触发菜单，只有从菜单里选中候选才会变成芯片，所以按「人打字」的顺序逐段输入（Tab 进入目录、最后一段回车确认），每一步都核对菜单候选；任何一步对不上就退化成纯文本 `@相对路径`，绝不选错文件。目录无法用芯片表达，直接插入 `@目录/` 文本
 
-### 4.2.1 截图
+### 4.2.1 截图编辑器
 
 - 快捷键 `⌘⇧S`（Windows `Ctrl+Shift+S`），设置里可改；Search Everywhere 的「操作」里也有
-- 宿主用系统自带工具抓全屏：macOS `screencapture -x -t png`、Windows PowerShell + `System.Drawing`（`CopyFromScreen` 抓虚拟屏幕，多显示器也覆盖）；**不装任何第三方程序**
-- 抓完统一**压成 1920×1080 JPEG**：macOS `sips -Z 1920 -s format jpeg -s formatOptions <质量>`、Windows PowerShell 双三次缩放 + `EncoderParameters` 质量；质量阶梯 `80/70/60/50`，第一个 ≤1 MB 的就用，原 PNG 随后删除。实测 2560×1440 的 Retina 截图 = 1.2 MB → **270 KB / q80**
-- 抓完弹预览，两个出口：**截图并跳转会话**（回到对话，把图片作为 `File` 通过合成 `ClipboardEvent('paste')` 粘进 Lexical 输入框——只派发 paste，不碰 editor 内容，所以已有文字/引用/附件原样保留）；**只截图**（`{copyOf}` 让宿主把该文件写进系统剪贴板，通知给出路径）
-- **macOS 屏幕录制权限**：没授权时 `screencapture` 报 `could not create image from display`，宿主归类为 `403 no-screen-permission`，弹层给系统化指引 + 「打开系统设置」按钮（`x-apple.systempreferences:…Privacy_ScreenCapture`），授权后必须**完全退出应用重开**。Windows 无此权限
-- 合成 paste 已验证可用（输入框里出现 `blob:` 图片、原有文字不变）；若某天 DSH 忽略合成事件，代码退化成「已复制到剪贴板，按 ⌘V」
+- **抓屏**（宿主，系统自带工具，**不装任何第三方程序**）：macOS `screencapture -x -t png`、Windows PowerShell + `System.Drawing`（`CopyFromScreen` 抓虚拟屏幕，多显示器也覆盖）；抓完先压到 2560 长边的 JPEG（编辑用，比导出的 1080p 高，框小块也清晰），原 PNG 用完即删
+- **交互**（客户端 Canvas，两个平台同一套代码）：编辑器挂在 `shell.overlay` 上，覆盖整个窗口、不被面板 overflow 裁剪
+  - **没有预设选框**：打开时整屏压暗，用户按下左键并拖动 → 选框实时扩张 → 松开左键完成并固定
+  - **Esc 随时退出整个操作**：没开始拉框、正在拉框（拖到一半）、已经拉完 —— 三种状态下按 Esc 都直接关掉编辑器，并把拖动状态清空（随后那次 `pointerup` 不会再把它救回来）。监听挂在 **window 的捕获阶段**：浮层自己永远拿不到焦点，挂在浮层上的 `onKeyDown` 基本不会触发
+  - 操作条**只在松开左键之后出现**（`dragging` 为 true 时不渲染），拉框过程中只有一个提示行
+  - **先抓屏、再渲染**：抓屏期间界面上不能出现任何自己的元素（连「正在截图…」的字都会被截进图里）。`startScreenshot()` 里 `screenshotBusy` 守住不重复触发，等 Host 返回后才 `setScreenshot({phase:'editing'})`；编辑器的「加载中」卡片只会在图片已经拿到之后出现
+  - 选框下方 10px 弹出**浮动操作条**（底边放不下时浮到上方）：`矩形 / 文字 / 撤销 | 截图 / 截图并跳转会话`；按钮 `flex: 0 0 auto` + `white-space: nowrap`，卡片宽 392px（否则中文按钮会折成三行）
+  - **外观跟随工作区**：编辑器在 `shell.overlay` 里，**不在 `.iw-root` 内**，所以必须自己 `h(IdeStyles)` 注入样式表、自己带 `data-dsh-theme`（工作区主题属性）与字体变量。漏掉前者 = 卡片掉回浏览器默认样式（白底白字按钮）；漏掉后者 = 深色工作区上出现白色卡片
+  - 卡片按钮直接复用面板的 `.iw-btn`（含 `.on` / `.primary`），字号取用户在设置里配的字号（`treeFontSize`，默认 14.5px）
+  - 标注只提供**矩形**与**文字**：`select` 是范围工具，`rect`/`text` 是标记；椭圆/箭头/画笔/马赛克的绘制代码仍在 `ideShotDrawOp` 里，但**不进操作条**（保持卡片小），要放开只需往 `IDE_SHOT_TOOLS` 与按钮里加一项
+  - 文字用 DOM `<input>` 收输入（中文输入法可用），回车落到画布
+  - 标注存为**操作列表**（`{tool, color, stroke, x, y, width, height, points}`），重绘 = 底图 + 操作，撤销是 `pop()`
+  - `stroke` 是笔宽，`width/height` 是图形本身——**两者绝不能共用一个字段**（踩过：共用后 lineWidth 变成矩形宽度，整屏红块）
+  - 拖出来太小（< 24px）视为误点，选框清空、回到「整屏压暗」状态
+- **导出**：裁出选框 → 长边 1920 → JPEG 质量阶梯 `0.8/0.7/0.6/0.5/0.4`，第一个 ≤1 MB 的用；客户端算好 data URL，两个出口：
+  - **截图并跳转会话**：合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 塞进 Lexical 输入框，草稿里的文字/引用/附件不动
+  - **截图**：`{copyDataUrl}` 回传宿主（宿主写临时文件再 `osascript`/`.NET` 写剪贴板）——该路由请求体上限单独放宽到 8 MB（默认 64 KB 是给命令用的）
+- **macOS 屏幕录制权限**：没授权时 `screencapture` 报 `could not create image from display`，宿主归类 `403 no-screen-permission`，编辑器位置的卡片给系统化指引 + 「打开系统设置」（`x-apple.systempreferences:…Privacy_ScreenCapture`），授权后必须**完全退出应用重开**。Windows 无此权限
 
 ### 4.3 搜索
 - **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
@@ -231,7 +244,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - 用 DSH 自带的「已编辑 N 个文件」卡片即可：**点文件行**直接进本插件工作区（见 4.1 的拦截项）；插件不再渲染自己的改动卡片（原 `turnTail` 卡片已删除，`58-turn.js` 随之移除）
 
 ### 4.5 设置（设置 → 通用设置 → 代码工作区设置）
-- **快捷键**（7 条，全部可改，点「修改」直接按新键）
+- **快捷键**（8 条，全部可改，点「修改」直接按新键）
 - **基础设置 → 字号**：代码字号（默认 12.5）、文件树字号（默认 14.5），10–24px 步进 0.5，行高按比例联动
 
 ### 4.6 快捷键（唯一登记处 `IDE_SHORTCUTS`）
@@ -335,6 +348,11 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 主题弹层里点某一项没反应（真鼠标点不动，代码里 `.click()` 却正常） | 关闭弹层用的是 `document` 上的 **capture** `pointerdown`：真实鼠标先派发 pointerdown，监听器先把弹层卸载，行的 click 永远到不了 | 关闭监听要放过落在弹层/触发按钮内部的按压（`target.closest('.iw-theme-pop, .iw-theme-button')`）；**交互必须用真实指针事件验证**，程序化 `.click()` 会绕过 pointerdown |
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 | 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
+| 截图编辑器画出巨大的实心色块 | 操作对象里 `width` 同时被当成"笔宽"和"矩形宽度"，`lineWidth` 变成几百像素 | 笔宽叫 `stroke`、几何叫 `width/height`；`ideShotDrawOp` 只从 `stroke` 取线宽 |
+| 截图里带上了自己的「正在截图…」字 | 抓屏前就把浮层渲染出来了：`screencapture` 会把当前屏幕原样拍下，包括刚画上去的浮层 | **先抓屏再渲染**：抓屏期间 DOM 里不许有任何自己的元素；需要反馈也只能在 Host 返回后显示 |
+| 浮层里按 Esc 没反应 | 编辑器挂在 `shell.overlay`，浮层从不获得焦点，`onKeyDown` 只在该元素内按键才触发 | Esc / ⌘Z 都挂到 `window` 捕获阶段（`globalThis.addEventListener('keydown', handler, true)`），别依赖焦点 |
+| 截图画框后的操作条是白底白字、字体也不对 | 编辑器渲染在 `shell.overlay`，不在 `.iw-root` 里：① 面板组件才注入 `IdeStyles`，浮层没注入 → 全部 `.iw-*` 规则失效，掉回浏览器默认按钮；② `[data-dsh-theme]` 只在面板根节点上 → 浮层拿不到工作区调色板，用宿主 token | 浮层自己 `h(IdeStyles)` + 自带 `data-dsh-theme` 与字体变量；按钮复用 `.iw-btn` 而不是自造一套 |
+| 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
 | 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 压缩是**必做步骤**不是可选项：统一 1920 长边 JPEG，质量阶梯 80→50 直到 ≤1 MB；原 PNG 用完就删，只留小文件 |
 | 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |
 | 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
@@ -351,7 +369,8 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
    - ~~加 `engines.dsh` 版本约束~~（已加，锁 `0.2.2-rc.3`）
 4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。主题的调色板不在 bundle 里（`themes/*.css`），改颜色不需要重建。
 5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。
-6. **截图的临时文件不主动删除**：每次截图压在系统临时目录（`os.tmpdir()/dsh-ide-shot-<ts>.jpg`，中间生成的 PNG 用完即删），由操作系统按自己的节奏清理；「只截图」时那个路径就是交给用户的产物，所以不删。
+6. **截图的临时文件不主动删除**：抓屏结果与「复制到剪贴板」的导出图都落在系统临时目录（`os.tmpdir()/dsh-ide-shot-<ts>.jpg`，中间 PNG 用完即删），由操作系统按自己的节奏清理。
+7. **编辑器不支持再编辑已画的标注**：标注一旦落到画布就是操作记录，只能撤销最近一次，不能选中/拖动已有的矩形或文字（要做需要命中测试 + 选中态，属下一阶段）。
 
 ---
 
@@ -370,7 +389,7 @@ src/client/12-theme.js        配色主题：注册表 + <link> 切换 + 状态�
 themes/*.css                  10 套调色板（5 深 5 浅），只覆盖 alias token
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
 src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
-src/client/72-screenshot.js   截图：宿主抓屏 + 预览弹层 + 授权引导
+src/client/72-screenshot.js   截图编辑器：宿主抓屏 + 选区/标注 Canvas + 导出 + 授权引导
 src/client/90-apply.js        全部注册 + 入口
 platform/{contract,macos,windows,index}.js  平台层（macOS / Windows 的差异都在这里）
 test/platform.mjs            平台层测试：两个实现满足同一契约
@@ -379,7 +398,7 @@ test/harness.mjs             VM 夹具测试（含客户端平台层）
 test/inference.mjs            归属推断（bean 字段）
 test/maven.mjs                真实 ~/.m2 jar 端到端
 test/theme.mjs                主题：注册表/清单/文件一致、token 集合一致、读取器 400/404
-test/screenshot.mjs           截图：两平台命令行、授权错误归类、客户端接法
+test/screenshot.mjs           截图：两平台命令行、授权错误归类、选区几何、编辑器接法
 check-dsh-untouched.sh        本体完整性自检（macOS/Linux）
 restore-profile.sh            恢复 profile 到可用状态（macOS/Linux）
 start-test-instance.sh        起独立自测实例（固定端口 + 复用本机账号，不再弹登录框）

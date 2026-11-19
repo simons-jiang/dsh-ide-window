@@ -98,11 +98,55 @@ const samplePath = '/tmp/shot.png'
   check('client leaves the draft alone (no editor mutation)', !/editor\.(innerHTML|textContent)\s*=/.test(client))
   check('permission guide is OS specific', client.includes('shotNoPermissionMac') && client.includes('shotNoPermissionWindows'))
 
+  // The geometry helpers are pure: load them out of the fragment and prove the
+  // editor's math (fit, clamp, drag-to-rect, handle resize) without a browser.
+  const fragment = await readFile(join(root, 'src', 'client', '72-screenshot.js'), 'utf8')
+  const grab = (name) => {
+    const start = fragment.indexOf(`function ${name}(`)
+    if (start < 0) throw new Error(`missing ${name}`)
+    let depth = 0
+    let index = fragment.indexOf('{', start)
+    const from = index
+    for (; index < fragment.length; index += 1) {
+      if (fragment[index] === '{') depth += 1
+      else if (fragment[index] === '}') {
+        depth -= 1
+        if (depth === 0) break
+      }
+    }
+    return fragment.slice(start, index + 1)
+  }
+  const geometry = new Function(`${['IDE_SHOT_MIN_SELECTION', 'IDE_SHOT_EXPORT_EDGE', 'IDE_SHOT_BUDGET', 'IDE_SHOT_QUALITIES'].map((name) => {
+    const match = new RegExp(`const ${name} = ([^\\n]+)`).exec(fragment)
+    return match === null ? '' : `const ${name} = ${match[1]};`
+  }).join('\n')}
+${['ideShotFitScale', 'ideShotClampSelection', 'ideShotRectFromPoints', 'ideShotHandles', 'ideShotHitsRect', 'ideShotResize'].map(grab).join('\n')}
+return { ideShotFitScale, ideShotClampSelection, ideShotRectFromPoints, ideShotHandles, ideShotHitsRect, ideShotResize, IDE_SHOT_BUDGET }`)()
+
+  check('the capture is fitted, never upscaled', geometry.ideShotFitScale(2560, 1440, 1280, 720) === 0.5 && geometry.ideShotFitScale(100, 100, 1280, 720) === 1)
+  check('a selection stays inside the capture', JSON.stringify(geometry.ideShotClampSelection({ x: -20, y: 1300, width: 200, height: 400 }, { width: 300, height: 1440 })) === JSON.stringify({ x: 0, y: 1040, width: 200, height: 400 }))
+  check('dragging any direction yields a positive rect', JSON.stringify(geometry.ideShotRectFromPoints({ x: 300, y: 200 }, { x: 100, y: 50 }, { width: 400, height: 300 })) === JSON.stringify({ x: 100, y: 50, width: 200, height: 150 }))
+  check('a rect has eight handles', geometry.ideShotHandles({ x: 10, y: 20, width: 100, height: 50 }).map((entry) => entry.id).join(',') === 'nw,n,ne,e,se,s,sw,w')
+  check('hits only inside the rect (plus slack)', geometry.ideShotHitsRect({ x: 15, y: 25 }, { x: 10, y: 20, width: 100, height: 50 }, 0) === true && geometry.ideShotHitsRect({ x: 5, y: 25 }, { x: 10, y: 20, width: 100, height: 50 }, 0) === false)
+  check('resizing from the nw handle moves the origin', JSON.stringify(geometry.ideShotResize({ x: 100, y: 100, width: 200, height: 100 }, 'nw', { x: 50, y: 60 }, { width: 1000, height: 1000 })) === JSON.stringify({ x: 50, y: 60, width: 250, height: 140 }))
+  check('the export budget is 1 MB', geometry.IDE_SHOT_BUDGET === 1024 * 1024)
+
+  check('the card offers the range, box and text tools', ['select', 'rect', 'text'].every((id) => client.includes(`'${id}'`)))
+  check('no frame is preset: the first drag draws it', client.includes('setSelection(null)') && client.includes('beginSelection(point)'))
+  check('a tiny drag is not a frame', client.includes('IDE_SHOT_MIN_SELECTION || selection.height < IDE_SHOT_MIN_SELECTION'))
+  check('the card is anchored to the frame', client.includes('iw-shot-card') && client.includes('frameTop + frameHeight'))
+  check('nothing is painted before the capture (or it lands in the picture)', client.includes('let screenshotBusy = false'))
+  check('no running-phase overlay', !client.includes("phase: 'running'"))
+  check('marks are operations, not pixels', client.includes('setOps((list) => [...list, op])') && client.includes('ideShotExport'))
+  check('the editor has an undo', client.includes('const undo = () => setOps((list) => list.slice(0, -1))'))
+
   const host = await readFile(join(root, 'index.js'), 'utf8')
   check('captures are shrunk before leaving the host', host.includes('optimizeScreenshot'))
   check('the budget is 1 MB', host.includes('1024 * 1024'))
   check('the quality ladder steps down', host.includes('[80, 70, 60, 50]') || /80, 70, 60, 50/.test(host))
   check('the raw PNG is removed after optimising', host.includes('rmSync(target'))
+  check('the capture for the editor is larger than the export', host.includes('IDE_SCREENSHOT_EDIT_EDGE = 2560'))
+  check('the host can copy an in-page image', host.includes('copyDataUrl'))
 }
 
 console.log(failures === 0 ? '\nall screenshot checks passed' : `\n${failures} check(s) failed`)

@@ -30,8 +30,9 @@
  * @property {(path: string) => boolean} needsShell  `spawn` needs `shell: true`
  * @property {(path: string) => {command: string, args: string[]}} screenshotCommand
  *   Capture the whole screen into that PNG with an OS built-in tool.
- * @property {(input: string, output: string, quality: number) => {command: string, args: string[]}} imageOptimizeCommand
- *   Shrink that PNG to a 1080p-class JPEG (long edge 1920) at `quality`.
+ * @property {(input: string, output: string, quality: number, longEdge: number) => {command: string, args: string[]}} imageOptimizeCommand
+ *   Shrink that PNG to a JPEG whose long edge is `longEdge` (1920 = 1080p on a
+ *   16:9 screen; the editor keeps a larger capture to crop from), at `quality`.
  * @property {(path: string) => {command: string, args: string[]}} clipboardImageCommand
  *   Put that image file on the system clipboard.
  *   for this path (Windows blocks `.bat`/`.cmd` without it since CVE-2024-27980).

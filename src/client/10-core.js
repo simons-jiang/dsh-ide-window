@@ -454,7 +454,7 @@ function ideCreateStore(refs) {
     themeMenu: false,
     /**
      * Screenshot dialog: `null` when closed, otherwise
-     * `{ phase: 'running' | 'ready' | 'error', dataUrl?, path?, code?, message? }`.
+     * `{ phase: 'editing' | 'error', dataUrl?, path?, code?, message? }`.
      */
     screenshot: null,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */

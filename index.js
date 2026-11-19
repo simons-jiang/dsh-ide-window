@@ -16,7 +16,7 @@
  * connection service answers whether the request may be served at all.
  */
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, openSync, fstatSync, readSync, closeSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { platform } from './platform/index.js'
@@ -765,6 +765,11 @@ function grepWorkspace(payload) {
 
 /** Largest JSON request body accepted; `/dsh-ide/kinds` sends a directory of paths. */
 const MAX_BODY_BYTES = 64 * 1024
+/**
+ * Screenshot bodies carry the annotated image itself (a data URL), which is
+ * hundreds of kilobytes by design; the default cap is for JSON commands.
+ */
+const MAX_SCREENSHOT_BODY_BYTES = 8 * 1024 * 1024
 
 /** The four queries the seam exposes; anything else is a caller bug. */
 const OPERATIONS = new Set(['goToDefinition', 'findReferences', 'goToImplementation', 'hover'])
@@ -853,8 +858,15 @@ export function screenshotLooksPermissionDenied(output) {
  * user. The data URL is what the panel previews and what gets pasted into the
  * conversation, so the client never needs a file:// URL.
  */
-/** The capture is shrunk to a 1080p-class JPEG (the platform sets the long edge). */
+/** The capture is shrunk to a JPEG (the platform sets the long edge). */
 const IDE_SCREENSHOT_MAX_BYTES = 1024 * 1024
+/**
+ * Capture resolution used by the editor.
+ *
+ * Bigger than the final 1080p export: the user crops a region, and cropping a
+ * 1080p capture would leave a blurry result.
+ */
+const IDE_SCREENSHOT_EDIT_EDGE = 2560
 /** JPEG quality ladder: the first result under the budget wins. */
 const IDE_SCREENSHOT_QUALITIES = [80, 70, 60, 50]
 
@@ -866,11 +878,11 @@ const IDE_SCREENSHOT_QUALITIES = [80, 70, 60, 50]
  * quality while a text-heavy one steps down. Returns the file that was written,
  * or the PNG when no quality produced a file (the caller still has an image).
  */
-async function optimizeScreenshot(pngPath) {
+async function optimizeScreenshot(pngPath, longEdge) {
   const jpegPath = pngPath.replace(/\.png$/i, '') + '.jpg'
   let best = null
   for (const quality of IDE_SCREENSHOT_QUALITIES) {
-    const { command, args } = platform.imageOptimizeCommand(pngPath, jpegPath, quality)
+    const { command, args } = platform.imageOptimizeCommand(pngPath, jpegPath, quality, longEdge)
     const { code, output } = await runProcess(command, args, 20000)
     let bytes = 0
     try {
@@ -889,6 +901,20 @@ async function optimizeScreenshot(pngPath) {
 }
 
 export async function captureScreen(payload) {
+  // The editor produces the final image in the page; write it out, then copy it.
+  if (typeof payload?.copyDataUrl === 'string' && payload.copyDataUrl.startsWith('data:image/')) {
+    const comma = payload.copyDataUrl.indexOf(',')
+    const binary = Buffer.from(payload.copyDataUrl.slice(comma + 1), 'base64')
+    const file = join(tmpdir(), `dsh-ide-shot-${Date.now()}.jpg`)
+    writeFileSync(file, binary)
+    const clipboard = platform.clipboardImageCommand(file)
+    const copied = await runProcess(clipboard.command, clipboard.args, 20000)
+    if (copied.code !== 0) {
+      logEvent('warn', 'screenshot', 'clipboard copy failed', copied.output)
+      throw new RouteError(500, 'clipboard-failed', copied.output.trim() || 'clipboard copy failed')
+    }
+    return { path: file, copied: true, bytes: binary.length, dataUrl: '' }
+  }
   // "只截图" after a capture only needs the existing file on the clipboard.
   if (typeof payload?.copyOf === 'string' && payload.copyOf !== '') {
     const existing = payload.copyOf
@@ -903,6 +929,7 @@ export async function captureScreen(payload) {
   const target = join(tmpdir(), `dsh-ide-shot-${Date.now()}.png`)
   const { command, args } = platform.screenshotCommand(target)
   const { code, output } = await runProcess(command, args, 20000)
+  logEvent('info', 'screenshot', 'capture: spawned', { code, bytes: output.length })
   let bytes = 0
   try {
     bytes = statSync(target).size
@@ -924,7 +951,7 @@ export async function captureScreen(payload) {
   }
   // A raw screen is far too big for a chat attachment: shrink it before it is
   // ever shown or pasted, and keep only the small file on disk.
-  const optimized = await optimizeScreenshot(target)
+  const optimized = await optimizeScreenshot(target, IDE_SCREENSHOT_EDIT_EDGE)
   try {
     rmSync(target, { force: true })
   } catch {
@@ -999,12 +1026,12 @@ function writeJson(response, status, payload) {
 }
 
 /** Read and parse the request body under a byte cap. */
-async function readJsonBody(request) {
+async function readJsonBody(request, limit = MAX_BODY_BYTES) {
   const chunks = []
   let size = 0
   for await (const chunk of request) {
     size += chunk.length
-    if (size > MAX_BODY_BYTES) throw new RouteError(413, 'body-too-large', 'request body is too large')
+    if (size > limit) throw new RouteError(413, 'body-too-large', 'request body is too large')
     chunks.push(chunk)
   }
   if (size === 0) return {}
@@ -1455,7 +1482,12 @@ function createHandler(ctx) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
-      const payload = await readJsonBody(request)
+      // The editor sends the finished image back when copying it: that body is
+      // the picture, not a command, so it gets its own ceiling.
+      const payload = await readJsonBody(
+        request,
+        pathname === ROUTE_SCREENSHOT ? MAX_SCREENSHOT_BODY_BYTES : MAX_BODY_BYTES,
+      )
       const value = pathname === ROUTE_GREP
         ? await grepWorkspace(payload)
         : pathname === ROUTE_DIFF

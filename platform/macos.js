@@ -32,10 +32,10 @@ export const macPlatform = {
   screenshotCommand: (path) => ({ command: 'screencapture', args: ['-x', '-t', 'png', String(path ?? '')] }),
   // `sips` ships with macOS: `-Z` fits the long edge and `-s formatOptions` is
   // the JPEG quality. A Retina capture is 5120×2880; 1080p is plenty for chat.
-  imageOptimizeCommand: (input, output, quality) => ({
+  imageOptimizeCommand: (input, output, quality, longEdge) => ({
     command: 'sips',
     args: [
-      '-Z', '1920',
+      '-Z', String(longEdge ?? 1920),
       '-s', 'format', 'jpeg',
       '-s', 'formatOptions', String(quality),
       String(input ?? ''),

@@ -44,9 +44,9 @@ export const windowsPlatform = {
     command: 'powershell.exe',
     args: ['-NoProfile', '-NonInteractive', '-Command', windowsScreenshotScript(path)],
   }),
-  imageOptimizeCommand: (input, output, quality) => ({
+  imageOptimizeCommand: (input, output, quality, longEdge) => ({
     command: 'powershell.exe',
-    args: ['-NoProfile', '-NonInteractive', '-Command', windowsOptimizeScript(input, output, quality)],
+    args: ['-NoProfile', '-NonInteractive', '-Command', windowsOptimizeScript(input, output, quality, longEdge)],
   }),
   clipboardImageCommand: (path) => ({
     command: 'powershell.exe',
@@ -70,15 +70,16 @@ function windowsScreenshotScript(path) {
 }
 
 /** The PowerShell that shrinks a capture to a 1080p-class JPEG. */
-function windowsOptimizeScript(input, output, quality) {
+function windowsOptimizeScript(input, output, quality, longEdge) {
   const source = String(input ?? '').replace(/'/g, "''")
   const target = String(output ?? '').replace(/'/g, "''")
   const level = Math.min(100, Math.max(10, Number.isFinite(quality) ? quality : 80))
+  const edge = Number.isFinite(longEdge) && longEdge > 0 ? Math.round(longEdge) : 1920
   return [
     'Add-Type -AssemblyName System.Drawing',
     `$source = [System.Drawing.Image]::FromFile('${source}')`,
     '$long = [Math]::Max($source.Width, $source.Height)',
-    '$scale = [Math]::Min(1.0, 1920 / $long)',
+    `$scale = [Math]::Min(1.0, ${edge} / $long)`,
     '$width = [int][Math]::Round($source.Width * $scale)',
     '$height = [int][Math]::Round($source.Height * $scale)',
     '$bitmap = New-Object System.Drawing.Bitmap $width, $height',

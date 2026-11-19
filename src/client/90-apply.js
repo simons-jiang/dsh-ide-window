@@ -304,32 +304,47 @@ function apply(ctx) {
    *    draft's text and attachments are untouched; "只截图" puts it on the system
    *    clipboard and keeps the file.
    */
+  /**
+   * Capture first, render after.
+   *
+   * Anything drawn before the Host grabs the screen ends up *inside* the
+   * screenshot — an overlay that says "capturing…" would be printed onto the
+   * picture. So the panel stays untouched until the image arrives, and a short
+   * guard keeps a double press from firing two captures.
+   */
+  let screenshotBusy = false
   async function startScreenshot() {
-    store.setScreenshot({ phase: 'running' })
-    openPanel()
-    const result = await ideShotRequest({})
-    if (!result.ok) {
-      store.setScreenshot({ phase: 'error', code: result.code, message: result.message })
-      return
+    if (screenshotBusy) return
+    if (store.getState().screenshot !== null) return
+    screenshotBusy = true
+    try {
+      const result = await ideShotRequest({})
+      if (!result.ok) {
+        store.setScreenshot({ phase: 'error', code: result.code, message: result.message })
+        return
+      }
+      // The editor owns the capture from here: range, marks, export.
+      store.setScreenshot({ phase: 'editing', ...result.value })
+    } finally {
+      screenshotBusy = false
     }
-    store.setScreenshot({ phase: 'ready', ...result.value })
   }
 
-  async function screenshotJump() {
-    const shot = store.getState().screenshot
+  /** The editor's "insert" exit: back to the chat, paste only that image. */
+  async function screenshotInsert(dataUrl) {
     store.setScreenshot(null)
     backToChat()
-    if (shot?.dataUrl === undefined || shot.dataUrl === '') return
-    const pasted = await idePasteScreenshot(shot.dataUrl)
+    if (typeof dataUrl !== 'string' || dataUrl === '') return
+    const pasted = await idePasteScreenshot(dataUrl)
     store.setNotice(pasted ? translate('shotAttached') : translate('shotNoEditor'))
   }
 
-  async function screenshotKeep() {
-    const shot = store.getState().screenshot
+  /** The editor's "copy" exit: the annotated result goes to the clipboard. */
+  async function screenshotCopy(dataUrl) {
+    if (typeof dataUrl !== 'string' || dataUrl === '') return
+    const copied = await ideShotRequest({ copyDataUrl: dataUrl })
     store.setScreenshot(null)
-    if (shot?.path === undefined) return
-    const copied = await ideShotRequest({ copyOf: shot.path })
-    store.setNotice(copied.ok ? `${translate('shotCopied')}: ${shot.path}` : translate('shotFailed'))
+    store.setNotice(copied.ok ? translate('shotCopied') : translate('shotFailed'))
   }
 
   async function screenshotOpenSettings() {
@@ -338,7 +353,6 @@ function apply(ctx) {
   }
 
   const screenshotClose = () => store.setScreenshot(null)
-  const screenshotRetry = () => { void startScreenshot() }
 
   /**
    * Back to the conversation with the reference appended to the draft.
@@ -739,11 +753,6 @@ function apply(ctx) {
       navigate,
       paletteActions,
       onReferenceToChat: referenceToChat,
-      onScreenshotJump: screenshotJump,
-      onScreenshotKeep: screenshotKeep,
-      onScreenshotRetry: screenshotRetry,
-      onScreenshotOpenSettings: screenshotOpenSettings,
-      onScreenshotClose: screenshotClose,
     }),
   }, IdePanel))
   ctx.effect(() => {
@@ -761,11 +770,6 @@ function apply(ctx) {
         navigate,
         paletteActions,
         onReferenceToChat: referenceToChat,
-        onScreenshotJump: screenshotJump,
-        onScreenshotKeep: screenshotKeep,
-        onScreenshotRetry: screenshotRetry,
-        onScreenshotOpenSettings: screenshotOpenSettings,
-        onScreenshotClose: screenshotClose,
       }),
     }, IdePanel))
     mainRegistered = true
@@ -983,6 +987,24 @@ function apply(ctx) {
     locale: IDE_NS,
     inject: () => ({ store }),
   }, IdeSessionTracker)), 'dsh-ide-window: session tracker')
+
+  // The screenshot editor lives at shell level: it must cover the window (not
+  // the centre panel) and must not be clipped by the panel's overflow.
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: `${IDE_NS}:screenshot`,
+    order: 41,
+    registrant: IDE_NS,
+    locale: IDE_NS,
+    inject: () => ({
+      store,
+      tr: translate,
+      onInsert: screenshotInsert,
+      onCopy: screenshotCopy,
+      onOpenSettings: screenshotOpenSettings,
+      onClose: screenshotClose,
+    }),
+  }, IdeScreenshotEditor)), 'dsh-ide-window: screenshot editor')
 
 
   /**
