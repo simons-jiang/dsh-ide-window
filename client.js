@@ -5613,6 +5613,7 @@ function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
         className: `${run.cls} iw-sym`,
         'data-iw-sym': symbol.name,
         'data-iw-col': at + symbol.offset,
+        'data-iw-line': String(index + 1),
       }, run.text)
     }
     if (run.cls === '') return run.text
@@ -6753,6 +6754,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
           store.setCodeSymbolMenu({
             path: tab.path,
             symbol: symbol.getAttribute('data-iw-sym') ?? '',
+            line: Number(symbol.getAttribute('data-iw-line')) || 0,
             jar: tab.kind === 'jar',
             x: event.clientX,
             y: event.clientY,
@@ -7891,17 +7893,23 @@ function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
   }
   const name = menu.symbol === '' ? ideBasename(menu.path) : menu.symbol
   const mention = ideReferenceMention(ideRelativeTo(state.rootPath, menu.path), false)
+  // A method or field reference without its line is only half the answer: the
+  // line says *where*, the name says *what*. Both are needed for the other side
+  // to read that member instead of guessing inside the file.
+  const anchor = menu.line > 0 ? `#L${menu.line}` : ''
+  const symbolName = String(menu.symbol ?? '').trim()
+  const lineSuffix = `${anchor}${symbolName === '' ? '' : ` ${symbolName}`}`
   const items = [
     { key: 'name', icon: IdeCopyIcon, label: tr('symbolMenuCopyName'), run: run(() => copy(name)) },
   ]
   if (menu.jar !== true) {
-    items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(mention)) })
+    items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(`${mention}${lineSuffix}`)) })
     items.push({
       key: 'chat',
       icon: IdeAtIcon,
       label: tr('symbolMenuReferenceToChat'),
       run: run(() => {
-        void onReferenceToChat(menu.path, false)
+        void onReferenceToChat(menu.path, false, lineSuffix)
       }),
     })
   }
@@ -11648,7 +11656,7 @@ function apply(ctx) {
    * The existing draft is never replaced: the caret is moved to its end first,
    * so text and attachments the user already had stay untouched.
    */
-  async function referenceToChat(path, isDir) {
+  async function referenceToChat(path, isDir, suffix = '') {
     const relative = ideRelativeTo(store.getState().rootPath, path)
     const mention = ideReferenceMention(relative, isDir)
     backToChat()
@@ -11662,6 +11670,12 @@ function apply(ctx) {
     caretToEnd(editor)
     const outcome = await typeReferenceMention(editor, relative, isDir)
     if (outcome !== 'chip') await finishPlainMention(editor, relative, isDir)
+    // `#L120` is typed *after* the chip: the chip must stay a real reference,
+    // and the line is the part that says which member is meant.
+    if (suffix !== '') {
+      caretToEnd(editor)
+      document.execCommand('insertText', false, suffix)
+    }
     store.setNotice(outcome === 'chip'
       ? `${translate('referenceInserted')}: ${mention}`
       : `${translate('referenceInsertedPlain')}: ${mention}`)

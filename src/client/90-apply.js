@@ -364,7 +364,7 @@ function apply(ctx) {
    * The existing draft is never replaced: the caret is moved to its end first,
    * so text and attachments the user already had stay untouched.
    */
-  async function referenceToChat(path, isDir) {
+  async function referenceToChat(path, isDir, suffix = '') {
     const relative = ideRelativeTo(store.getState().rootPath, path)
     const mention = ideReferenceMention(relative, isDir)
     backToChat()
@@ -378,6 +378,12 @@ function apply(ctx) {
     caretToEnd(editor)
     const outcome = await typeReferenceMention(editor, relative, isDir)
     if (outcome !== 'chip') await finishPlainMention(editor, relative, isDir)
+    // `#L120` is typed *after* the chip: the chip must stay a real reference,
+    // and the line is the part that says which member is meant.
+    if (suffix !== '') {
+      caretToEnd(editor)
+      document.execCommand('insertText', false, suffix)
+    }
     store.setNotice(outcome === 'chip'
       ? `${translate('referenceInserted')}: ${mention}`
       : `${translate('referenceInsertedPlain')}: ${mention}`)

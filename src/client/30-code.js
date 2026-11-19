@@ -190,6 +190,7 @@ function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
         className: `${run.cls} iw-sym`,
         'data-iw-sym': symbol.name,
         'data-iw-col': at + symbol.offset,
+        'data-iw-line': String(index + 1),
       }, run.text)
     }
     if (run.cls === '') return run.text
@@ -1330,6 +1331,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
           store.setCodeSymbolMenu({
             path: tab.path,
             symbol: symbol.getAttribute('data-iw-sym') ?? '',
+            line: Number(symbol.getAttribute('data-iw-line')) || 0,
             jar: tab.kind === 'jar',
             x: event.clientX,
             y: event.clientY,

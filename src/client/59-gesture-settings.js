@@ -405,17 +405,23 @@ function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
   }
   const name = menu.symbol === '' ? ideBasename(menu.path) : menu.symbol
   const mention = ideReferenceMention(ideRelativeTo(state.rootPath, menu.path), false)
+  // A method or field reference without its line is only half the answer: the
+  // line says *where*, the name says *what*. Both are needed for the other side
+  // to read that member instead of guessing inside the file.
+  const anchor = menu.line > 0 ? `#L${menu.line}` : ''
+  const symbolName = String(menu.symbol ?? '').trim()
+  const lineSuffix = `${anchor}${symbolName === '' ? '' : ` ${symbolName}`}`
   const items = [
     { key: 'name', icon: IdeCopyIcon, label: tr('symbolMenuCopyName'), run: run(() => copy(name)) },
   ]
   if (menu.jar !== true) {
-    items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(mention)) })
+    items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(`${mention}${lineSuffix}`)) })
     items.push({
       key: 'chat',
       icon: IdeAtIcon,
       label: tr('symbolMenuReferenceToChat'),
       run: run(() => {
-        void onReferenceToChat(menu.path, false)
+        void onReferenceToChat(menu.path, false, lineSuffix)
       }),
     })
   }
