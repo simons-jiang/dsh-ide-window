@@ -448,6 +448,10 @@ function ideCreateStore(refs) {
     revealFile: null,
     /** Files shown with Git annotate: `path → true`. */
     annotate: {},
+    /** Colour theme id (a file in `themes/`); empty follows the DSH palette. */
+    theme: typeof prefs.theme === 'string' ? prefs.theme : '',
+    /** Whether the palette popup is open (rendered at panel level, not in the bar). */
+    themeMenu: false,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -1498,6 +1502,13 @@ function ideCreateStore(refs) {
     setIndexInfo: (indexInfo) => patch({ indexInfo }),
     markRemoteReady: () => patch({ remoteReady: true }),
     /** Turn reference interception on or off (persisted). */
+    /** Open or close the palette popup. */
+    setThemeMenu: (themeMenu) => patch({ themeMenu }),
+    /** Switch the panel palette; an empty id goes back to the DSH colours. */
+    setTheme: (theme) => {
+      ideWritePrefs({ theme })
+      patch({ theme })
+    },
     /** Change the editor font size, clamped to a readable range. */
     setCodeFontSize: (size) => {
       const codeFontSize = Math.min(24, Math.max(10, Math.round(size * 2) / 2))

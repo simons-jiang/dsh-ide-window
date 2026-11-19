@@ -1,0 +1,44 @@
+/**
+ * dracula (dark) — a palette for the code workspace.
+ *
+ * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
+ * rule picks the palette up without knowing this file exists. Nothing outside
+ * `.iw-root[data-iw-theme="dracula"]` is touched.
+ */
+.iw-root[data-iw-theme="dracula"] {
+  --dsw-alias-bg-base: #282a36;
+  --dsw-alias-bg-layer-1: #21222c;
+  --dsw-alias-bg-layer-2: #343746;
+  --dsw-alias-bg-layer-3: #44475a;
+  --dsw-alias-bg-overlay: #191a21;
+  --dsw-specific-sidebar-fill: #21222c;
+  --dsw-specific-menu: #343746;
+  --dsw-alias-card-fill: #343746;
+  --dsw-alias-card-fill-hover: #44475a;
+  --dsw-alias-card-tile-fill: #343746;
+  --dsw-alias-label-primary: #f8f8f2;
+  --dsw-alias-label-secondary: #b8bcc8;
+  --dsw-alias-label-tertiary: #7c8296;
+  --dsw-alias-border-l1: #343746;
+  --dsw-alias-border-l2: #44475a;
+  --dsw-alias-border-l3: #525772;
+  --dsw-alias-border: #44475a;
+  --dsw-alias-brand-primary: #bd93f9;
+  --dsw-alias-interactive-bg-hover: #3a3d4e;
+  --dsw-alias-state-success-primary: #50fa7b;
+  --dsw-alias-state-warning-primary: #ffb86c;
+  --dsw-alias-state-error-primary: #ff5555;
+  --dsw-alias-state-business-primary: #8be9fd;
+  --dsw-alias-state-idle-primary: #6272a4;
+  --dsw-focus-ring-color: #ff79c6;
+  --iw-changes-fill: #50fa7b;
+  --iw-changes-hover: #8ffcaa;
+  --iw-syn-keyword: #ff79c6;
+  --iw-syn-string: #f1fa8c;
+  --iw-syn-number: #bd93f9;
+  --iw-syn-comment: #7285b8;
+  --iw-syn-annotation: #50fa7b;
+  --iw-syn-type: #8be9fd;
+  --iw-syn-function: #50fa7b;
+  --iw-syn-punct: #f8f8f2;
+}

@@ -1,0 +1,44 @@
+/**
+ * material-light (light) — a palette for the code workspace.
+ *
+ * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
+ * rule picks the palette up without knowing this file exists. Nothing outside
+ * `.iw-root[data-iw-theme="material-light"]` is touched.
+ */
+.iw-root[data-iw-theme="material-light"] {
+  --dsw-alias-bg-base: #fafafa;
+  --dsw-alias-bg-layer-1: #ffffff;
+  --dsw-alias-bg-layer-2: #f2f3f5;
+  --dsw-alias-bg-layer-3: #e8eaed;
+  --dsw-alias-bg-overlay: #ffffff;
+  --dsw-specific-sidebar-fill: #f5f6f7;
+  --dsw-specific-menu: #ffffff;
+  --dsw-alias-card-fill: #ffffff;
+  --dsw-alias-card-fill-hover: #eef0f3;
+  --dsw-alias-card-tile-fill: #ffffff;
+  --dsw-alias-label-primary: #2e3c43;
+  --dsw-alias-label-secondary: #5f6b74;
+  --dsw-alias-label-tertiary: #8c979d;
+  --dsw-alias-border-l1: #e3e6e8;
+  --dsw-alias-border-l2: #d3d8dc;
+  --dsw-alias-border-l3: #c2c8cd;
+  --dsw-alias-border: #e3e6e8;
+  --dsw-alias-brand-primary: #1e88e5;
+  --dsw-alias-interactive-bg-hover: #e9f2fd;
+  --dsw-alias-state-success-primary: #2e7d32;
+  --dsw-alias-state-warning-primary: #ed6c02;
+  --dsw-alias-state-error-primary: #d32f2f;
+  --dsw-alias-state-business-primary: #1565c0;
+  --dsw-alias-state-idle-primary: #a8b0b6;
+  --dsw-focus-ring-color: #1e88e5;
+  --iw-changes-fill: #2e7d32;
+  --iw-changes-hover: #43a047;
+  --iw-syn-keyword: #a626a4;
+  --iw-syn-string: #2e7d32;
+  --iw-syn-number: #986801;
+  --iw-syn-comment: #6f7079;
+  --iw-syn-annotation: #9a6700;
+  --iw-syn-type: #9a6700;
+  --iw-syn-function: #4078f2;
+  --iw-syn-punct: #383a42;
+}

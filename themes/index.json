@@ -1,0 +1,42 @@
+[
+  {
+    "id": "material-oceanic",
+    "mode": "dark"
+  },
+  {
+    "id": "material-palenight",
+    "mode": "dark"
+  },
+  {
+    "id": "dracula",
+    "mode": "dark"
+  },
+  {
+    "id": "monokai-pro",
+    "mode": "dark"
+  },
+  {
+    "id": "night-owl",
+    "mode": "dark"
+  },
+  {
+    "id": "material-light",
+    "mode": "light"
+  },
+  {
+    "id": "github-light",
+    "mode": "light"
+  },
+  {
+    "id": "atom-one-light",
+    "mode": "light"
+  },
+  {
+    "id": "solarized-light",
+    "mode": "light"
+  },
+  {
+    "id": "intellij-light",
+    "mode": "light"
+  }
+]

@@ -403,14 +403,17 @@ const IDE_CSS = `
   user-select: none;
   font-style: italic;
 }
-.iw-kw { color: #cf8ee6; }
-.iw-str { color: #9ddc8b; }
-.iw-num { color: #e0b072; }
-.iw-com { color: #6d7683; font-style: italic; }
-.iw-ann { color: #e0c56b; }
-.iw-type { color: #7fc8f0; }
-.iw-fn { color: #8fd7d0; }
-.iw-punct { color: var(--dsw-alias-label-secondary, #98a0ad); }
+/* Syntax colours are their own layer: a palette sets --iw-syn-* because a
+   keyword colour that reads on #282a36 is unreadable on #ffffff. The literals
+   are the DSH-palette defaults for "follow DSH". */
+.iw-kw { color: var(--iw-syn-keyword, #cf8ee6); }
+.iw-str { color: var(--iw-syn-string, #9ddc8b); }
+.iw-num { color: var(--iw-syn-number, #e0b072); }
+.iw-com { color: var(--iw-syn-comment, #6d7683); font-style: italic; }
+.iw-ann { color: var(--iw-syn-annotation, #e0c56b); }
+.iw-type { color: var(--iw-syn-type, #7fc8f0); }
+.iw-fn { color: var(--iw-syn-function, #8fd7d0); }
+.iw-punct { color: var(--iw-syn-punct, var(--dsw-alias-label-secondary, #98a0ad)); }
 .iw-sym { cursor: pointer; border-radius: 3px; }
 .iw-sym:hover {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 22%, transparent);
@@ -1354,6 +1357,128 @@ html.iw-select-code .iw-code .iw-vision {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ---- colour theme switcher (bottom-right corner of the status bar) ----
+   The palettes live in themes/*.css and only override the alias tokens these
+   rules consume, so nothing here knows which theme is active. */
+.iw-theme-host {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.iw-theme-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.iw-theme-button:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-theme-button[aria-expanded="true"] {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+  border-color: var(--dsw-alias-border-l1, #2c3038);
+}
+.iw-theme-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--dsw-alias-bg-base, #1b1d21) 50%, var(--dsw-alias-brand-primary, #4f8cff) 50%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary, #e6e8ec) 30%, transparent);
+}
+.iw-theme-pop {
+  /* Anchored to the panel, not the status bar: the bar clips overflow, so the
+     list would be cut off at the bottom edge. */
+  position: absolute;
+  right: 12px;
+  bottom: 34px;
+  width: 236px;
+  max-height: min(62vh, 460px);
+  overflow-y: auto;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: var(--dsw-radius-md, 8px);
+  /* A solid surface: the menu token is translucent in some DSH themes, and the
+     source would show through the list. */
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-specific-menu, #23262c));
+  box-shadow: var(--dsw-elevation-prominent, 0 10px 28px rgba(0, 0, 0, 0.35));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, none);
+  z-index: 30;
+}
+.iw-theme-title {
+  padding: 4px 8px 6px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 12px;
+  font-weight: 500;
+}
+.iw-theme-group {
+  padding: 8px 8px 4px;
+  color: var(--dsw-alias-label-tertiary, #767f8c);
+  font-size: 11px;
+}
+.iw-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-theme-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+}
+.iw-theme-row--on {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+}
+.iw-theme-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-theme-check {
+  color: var(--dsw-alias-brand-primary, #4f8cff);
+  font-size: 11px;
+}
+.iw-theme-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary, #e6e8ec) 24%, transparent);
+}
+/* One dot per palette: the same colours the theme file applies. */
+.iw-theme-dot--follow { background: linear-gradient(135deg, #1b1d21 50%, #f3f4f6 50%); }
+.iw-theme-dot--material-oceanic { background: #0f111a; }
+.iw-theme-dot--material-palenight { background: #292d3e; }
+.iw-theme-dot--dracula { background: #282a36; }
+.iw-theme-dot--monokai-pro { background: #2d2a2e; }
+.iw-theme-dot--night-owl { background: #011627; }
+.iw-theme-dot--material-light { background: #fafafa; }
+.iw-theme-dot--github-light { background: #ffffff; }
+.iw-theme-dot--atom-one-light { background: #f0f0f1; }
+.iw-theme-dot--solarized-light { background: #fdf6e3; }
+.iw-theme-dot--intellij-light { background: #f7f8fa; }
 
 `
 

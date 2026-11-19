@@ -1,0 +1,44 @@
+/**
+ * intellij-light (light) — a palette for the code workspace.
+ *
+ * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
+ * rule picks the palette up without knowing this file exists. Nothing outside
+ * `.iw-root[data-iw-theme="intellij-light"]` is touched.
+ */
+.iw-root[data-iw-theme="intellij-light"] {
+  --dsw-alias-bg-base: #f7f8fa;
+  --dsw-alias-bg-layer-1: #ffffff;
+  --dsw-alias-bg-layer-2: #ebecf0;
+  --dsw-alias-bg-layer-3: #dfe1e5;
+  --dsw-alias-bg-overlay: #ffffff;
+  --dsw-specific-sidebar-fill: #f7f8fa;
+  --dsw-specific-menu: #ffffff;
+  --dsw-alias-card-fill: #ffffff;
+  --dsw-alias-card-fill-hover: #edf0f3;
+  --dsw-alias-card-tile-fill: #ffffff;
+  --dsw-alias-label-primary: #1f2329;
+  --dsw-alias-label-secondary: #6c707e;
+  --dsw-alias-label-tertiary: #9aa0aa;
+  --dsw-alias-border-l1: #dfe1e5;
+  --dsw-alias-border-l2: #d4d6da;
+  --dsw-alias-border-l3: #c9ccd1;
+  --dsw-alias-border: #dfe1e5;
+  --dsw-alias-brand-primary: #3574f0;
+  --dsw-alias-interactive-bg-hover: #e6edfb;
+  --dsw-alias-state-success-primary: #57965c;
+  --dsw-alias-state-warning-primary: #c27c0e;
+  --dsw-alias-state-error-primary: #db3b4b;
+  --dsw-alias-state-business-primary: #3574f0;
+  --dsw-alias-state-idle-primary: #a0a4ac;
+  --dsw-focus-ring-color: #3574f0;
+  --iw-changes-fill: #57965c;
+  --iw-changes-hover: #6fb273;
+  --iw-syn-keyword: #0033b3;
+  --iw-syn-string: #067d17;
+  --iw-syn-number: #1750eb;
+  --iw-syn-comment: #6f6f6f;
+  --iw-syn-annotation: #9e880d;
+  --iw-syn-type: #1f2329;
+  --iw-syn-function: #00627a;
+  --iw-syn-punct: #1f2329;
+}

@@ -213,5 +213,20 @@
   "setupStepScript": "第 1 步：运行安装脚本（装管道包、下载服务器、写好配置；脚本不在默认位置就改成你的路径）",
   "setupStepLicence": "第 2 步：授权（会打开浏览器；已授权会直接显示 licensed）",
   "setupStepRestart": "最后：完全退出 DSH（⌘Q / 托盘退出）再打开。",
-  "setupCopyAll": "复制命令"
+  "setupCopyAll": "复制命令",
+  "theme": "主题",
+  "themeTitle": "主题切换器",
+  "themeDark": "深色主题",
+  "themeLight": "浅色主题",
+  "themeFollowDsh": "跟随 DSH",
+  "theme_material_oceanic": "海洋蓝 Oceanic",
+  "theme_material_palenight": "淡紫夜色 Palenight",
+  "theme_dracula": "德古拉 Dracula",
+  "theme_monokai_pro": "Monokai Pro",
+  "theme_night_owl": "夜枭 Night Owl",
+  "theme_material_light": "Material 浅色",
+  "theme_github_light": "GitHub 浅色",
+  "theme_atom_one_light": "Atom One 浅色",
+  "theme_solarized_light": "Solarized 浅色",
+  "theme_intellij_light": "IntelliJ 浅色"
 }

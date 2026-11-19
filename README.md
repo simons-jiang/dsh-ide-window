@@ -203,6 +203,32 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 - 字号：代码 12.5px、文件树 14.5px（10–24px 步进 0.5）
 - Maven 本地仓库：留空=自动检测（`settings.xml` → `~/.m2/repository`），下方直接显示当前实际使用的路径
 
+**主题（右下角「主题」按钮）**
+
+状态栏右下角可以切换**代码工作区自己的配色**，不会影响 DSH 外壳：
+
+- **跟随 DSH**（默认）：直接使用宿主的设计 token，深浅色随 DSH 走
+- 深色 5 套：海洋蓝 Oceanic、淡紫夜色 Palenight、德古拉 Dracula、Monokai Pro、夜枭 Night Owl
+- 浅色 5 套：Material 浅色、GitHub 浅色、Atom One 浅色、Solarized 浅色、IntelliJ 浅色
+
+每套主题就是一个文件：`themes/<id>.css`。它只做一件事——把 DSH 的 alias token 作用域内改掉：
+
+```css
+.iw-root[data-iw-theme="dracula"] {
+  --dsw-alias-bg-base: #282a36;
+  --dsw-alias-label-primary: #f8f8f2;
+  /* … */
+}
+```
+
+语法高亮有单独一层变量（`--iw-syn-keyword` / `string` / `number` / `comment` / `annotation` / `type` / `function` / `punct`），同样由主题文件提供——深色主题的关键字色放到白底上根本看不清，所以每套主题都自带一组经过对比度检查的语法色（浅色主题的关键字/字符串/类型都 ≥4.5:1）。
+
+因此：
+
+- 组件样式**一行都不用改**，切换主题只是把 `<link id="iw-theme-link">` 指到另一个文件（外加一个 `data-iw-theme` 属性）
+- 改调色板**不需要重新构建** `client.js`，刷新页面即可看到
+- 新增一套主题 = 放一个 `themes/<id>.css` + 在 `src/client/12-theme.js` 的注册表加一行（`themes/index.json`、`test/theme.mjs` 会校验三处一致：10 套、5 深 5 浅、变量集合完全相同）
+
 ---
 
 ## 四、快捷键与手势

@@ -1,0 +1,44 @@
+/**
+ * monokai-pro (dark) — a palette for the code workspace.
+ *
+ * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
+ * rule picks the palette up without knowing this file exists. Nothing outside
+ * `.iw-root[data-iw-theme="monokai-pro"]` is touched.
+ */
+.iw-root[data-iw-theme="monokai-pro"] {
+  --dsw-alias-bg-base: #2d2a2e;
+  --dsw-alias-bg-layer-1: #221f22;
+  --dsw-alias-bg-layer-2: #363337;
+  --dsw-alias-bg-layer-3: #403e41;
+  --dsw-alias-bg-overlay: #19181a;
+  --dsw-specific-sidebar-fill: #221f22;
+  --dsw-specific-menu: #363337;
+  --dsw-alias-card-fill: #363337;
+  --dsw-alias-card-fill-hover: #403e41;
+  --dsw-alias-card-tile-fill: #363337;
+  --dsw-alias-label-primary: #fcfcfa;
+  --dsw-alias-label-secondary: #c1c0c0;
+  --dsw-alias-label-tertiary: #939293;
+  --dsw-alias-border-l1: #363337;
+  --dsw-alias-border-l2: #403e41;
+  --dsw-alias-border-l3: #525053;
+  --dsw-alias-border: #403e41;
+  --dsw-alias-brand-primary: #ffd866;
+  --dsw-alias-interactive-bg-hover: #3c3a3d;
+  --dsw-alias-state-success-primary: #a9dc76;
+  --dsw-alias-state-warning-primary: #ffd866;
+  --dsw-alias-state-error-primary: #ff6188;
+  --dsw-alias-state-business-primary: #78dce8;
+  --dsw-alias-state-idle-primary: #727072;
+  --dsw-focus-ring-color: #fc9867;
+  --iw-changes-fill: #a9dc76;
+  --iw-changes-hover: #c6ee9a;
+  --iw-syn-keyword: #ff6188;
+  --iw-syn-string: #ffd866;
+  --iw-syn-number: #ae81ff;
+  --iw-syn-comment: #8b8a8c;
+  --iw-syn-annotation: #a9dc76;
+  --iw-syn-type: #78dce8;
+  --iw-syn-function: #a9dc76;
+  --iw-syn-punct: #939293;
+}

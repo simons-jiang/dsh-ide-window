@@ -501,10 +501,14 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
   }
 
+  // The palette is one stylesheet link, so it is applied here rather than in each
+  // component: a theme change swaps the file and every rule follows it.
+  ideUseTheme(ideIsThemeId(state.theme) ? state.theme : '')
   const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
   const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
   return h('div', {
     className: 'iw-root',
+    'data-iw-theme': ideIsThemeId(state.theme) ? state.theme : undefined,
     // The editor and the tree share one typographic scale, set in Settings.
     style: {
       '--iw-code-font-size': `${codeSize}px`,
@@ -516,6 +520,9 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    state.themeMenu === true
+      ? h(IdeThemePopup, { key: 'themepopup', store, themeId: ideIsThemeId(state.theme) ? state.theme : '', tr })
+      : null,
     h(IdeTreeMenu, {
       key: 'treemenu',
       store,

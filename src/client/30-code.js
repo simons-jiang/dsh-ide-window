@@ -1388,6 +1388,7 @@ function IdeStatusBar({ store, state, tab, tr }) {
       style: { display: 'inline-flex', alignItems: 'center', gap: '5px' },
     }, [h(IdeLiveDot, { key: 'dot', on: state.watching }), tr('live')]),
     h('span', { key: 'ro' }, tr('readOnly')),
+    h(IdeThemeButton, { key: 'theme', store, themeId: ideIsThemeId(state.theme) ? state.theme : '', open: state.themeMenu === true, tr }),
     total === 0 ? null : h('span', { key: 'total', style: { opacity: 0.7 } }, `${state.tabs.length}`),
   ])
 }

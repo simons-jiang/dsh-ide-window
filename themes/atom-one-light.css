@@ -1,0 +1,44 @@
+/**
+ * atom-one-light (light) — a palette for the code workspace.
+ *
+ * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
+ * rule picks the palette up without knowing this file exists. Nothing outside
+ * `.iw-root[data-iw-theme="atom-one-light"]` is touched.
+ */
+.iw-root[data-iw-theme="atom-one-light"] {
+  --dsw-alias-bg-base: #fafafa;
+  --dsw-alias-bg-layer-1: #ffffff;
+  --dsw-alias-bg-layer-2: #f0f0f1;
+  --dsw-alias-bg-layer-3: #e5e5e6;
+  --dsw-alias-bg-overlay: #ffffff;
+  --dsw-specific-sidebar-fill: #f0f0f1;
+  --dsw-specific-menu: #ffffff;
+  --dsw-alias-card-fill: #ffffff;
+  --dsw-alias-card-fill-hover: #ededee;
+  --dsw-alias-card-tile-fill: #ffffff;
+  --dsw-alias-label-primary: #383a42;
+  --dsw-alias-label-secondary: #696c77;
+  --dsw-alias-label-tertiary: #a0a1a7;
+  --dsw-alias-border-l1: #e3e3e4;
+  --dsw-alias-border-l2: #d4d5d7;
+  --dsw-alias-border-l3: #c3c4c6;
+  --dsw-alias-border: #e3e3e4;
+  --dsw-alias-brand-primary: #4078f2;
+  --dsw-alias-interactive-bg-hover: #e8f0fe;
+  --dsw-alias-state-success-primary: #50a14f;
+  --dsw-alias-state-warning-primary: #c18401;
+  --dsw-alias-state-error-primary: #e45649;
+  --dsw-alias-state-business-primary: #4078f2;
+  --dsw-alias-state-idle-primary: #a0a1a7;
+  --dsw-focus-ring-color: #a626a4;
+  --iw-changes-fill: #50a14f;
+  --iw-changes-hover: #6fbf6d;
+  --iw-syn-keyword: #a626a4;
+  --iw-syn-string: #2e7d32;
+  --iw-syn-number: #986801;
+  --iw-syn-comment: #75767d;
+  --iw-syn-annotation: #9a6700;
+  --iw-syn-type: #9a6700;
+  --iw-syn-function: #4078f2;
+  --iw-syn-punct: #383a42;
+}

@@ -35,13 +35,22 @@ function ideRequestJavaKinds(root, paths, done) {
   }
   if (wanted.size === 0) return
   const missing = [...wanted]
-  void ideKindsQuery(root, missing).then((found) => {
-    if (found.ok !== true) return
-    for (const rel of missing) {
-      ideJavaKinds.set(`${root}|${rel}`, typeof found.kinds[rel] === 'string' ? found.kinds[rel] : '')
+  // One directory can hold hundreds of long package paths; the Host caps the body,
+  // so ask in batches instead of losing the whole directory to a 413.
+  const batches = []
+  for (let index = 0; index < missing.length; index += 120) batches.push(missing.slice(index, index + 120))
+  void (async () => {
+    let answered = false
+    for (const batch of batches) {
+      const found = await ideKindsQuery(root, batch)
+      if (found.ok !== true) continue
+      answered = true
+      for (const rel of batch) {
+        ideJavaKinds.set(`${root}|${rel}`, typeof found.kinds[rel] === 'string' ? found.kinds[rel] : '')
+      }
     }
-    done()
-  })
+    if (answered) done()
+  })()
 }
 
 /**

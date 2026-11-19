@@ -220,6 +220,21 @@ window.__ModuleLoader__.load({
     "setupStepLicence": "Step 2: license the server (opens a browser; an existing license prints \"licensed\")",
     "setupStepRestart": "Finally: quit DSH completely (⌘Q / tray) and reopen it.",
     "setupCopyAll": "Copy commands",
+    "theme": "Theme",
+    "themeTitle": "Theme",
+    "themeDark": "Dark themes",
+    "themeLight": "Light themes",
+    "themeFollowDsh": "Follow DSH",
+    "theme_material_oceanic": "Oceanic",
+    "theme_material_palenight": "Palenight",
+    "theme_dracula": "Dracula",
+    "theme_monokai_pro": "Monokai Pro",
+    "theme_night_owl": "Night Owl",
+    "theme_material_light": "Material Light",
+    "theme_github_light": "GitHub Light",
+    "theme_atom_one_light": "Atom One Light",
+    "theme_solarized_light": "Solarized Light",
+    "theme_intellij_light": "IntelliJ Light",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -433,6 +448,21 @@ window.__ModuleLoader__.load({
     "setupStepLicence": "第 2 步：授权（会打开浏览器；已授权会直接显示 licensed）",
     "setupStepRestart": "最后：完全退出 DSH（⌘Q / 托盘退出）再打开。",
     "setupCopyAll": "复制命令",
+    "theme": "主题",
+    "themeTitle": "主题切换器",
+    "themeDark": "深色主题",
+    "themeLight": "浅色主题",
+    "themeFollowDsh": "跟随 DSH",
+    "theme_material_oceanic": "海洋蓝 Oceanic",
+    "theme_material_palenight": "淡紫夜色 Palenight",
+    "theme_dracula": "德古拉 Dracula",
+    "theme_monokai_pro": "Monokai Pro",
+    "theme_night_owl": "夜枭 Night Owl",
+    "theme_material_light": "Material 浅色",
+    "theme_github_light": "GitHub 浅色",
+    "theme_atom_one_light": "Atom One 浅色",
+    "theme_solarized_light": "Solarized 浅色",
+    "theme_intellij_light": "IntelliJ 浅色",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -841,14 +871,17 @@ const IDE_CSS = `
   user-select: none;
   font-style: italic;
 }
-.iw-kw { color: #cf8ee6; }
-.iw-str { color: #9ddc8b; }
-.iw-num { color: #e0b072; }
-.iw-com { color: #6d7683; font-style: italic; }
-.iw-ann { color: #e0c56b; }
-.iw-type { color: #7fc8f0; }
-.iw-fn { color: #8fd7d0; }
-.iw-punct { color: var(--dsw-alias-label-secondary, #98a0ad); }
+/* Syntax colours are their own layer: a palette sets --iw-syn-* because a
+   keyword colour that reads on #282a36 is unreadable on #ffffff. The literals
+   are the DSH-palette defaults for "follow DSH". */
+.iw-kw { color: var(--iw-syn-keyword, #cf8ee6); }
+.iw-str { color: var(--iw-syn-string, #9ddc8b); }
+.iw-num { color: var(--iw-syn-number, #e0b072); }
+.iw-com { color: var(--iw-syn-comment, #6d7683); font-style: italic; }
+.iw-ann { color: var(--iw-syn-annotation, #e0c56b); }
+.iw-type { color: var(--iw-syn-type, #7fc8f0); }
+.iw-fn { color: var(--iw-syn-function, #8fd7d0); }
+.iw-punct { color: var(--iw-syn-punct, var(--dsw-alias-label-secondary, #98a0ad)); }
 .iw-sym { cursor: pointer; border-radius: 3px; }
 .iw-sym:hover {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 22%, transparent);
@@ -1792,6 +1825,128 @@ html.iw-select-code .iw-code .iw-vision {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ---- colour theme switcher (bottom-right corner of the status bar) ----
+   The palettes live in themes/*.css and only override the alias tokens these
+   rules consume, so nothing here knows which theme is active. */
+.iw-theme-host {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.iw-theme-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.iw-theme-button:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-theme-button[aria-expanded="true"] {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+  border-color: var(--dsw-alias-border-l1, #2c3038);
+}
+.iw-theme-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--dsw-alias-bg-base, #1b1d21) 50%, var(--dsw-alias-brand-primary, #4f8cff) 50%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary, #e6e8ec) 30%, transparent);
+}
+.iw-theme-pop {
+  /* Anchored to the panel, not the status bar: the bar clips overflow, so the
+     list would be cut off at the bottom edge. */
+  position: absolute;
+  right: 12px;
+  bottom: 34px;
+  width: 236px;
+  max-height: min(62vh, 460px);
+  overflow-y: auto;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: var(--dsw-radius-md, 8px);
+  /* A solid surface: the menu token is translucent in some DSH themes, and the
+     source would show through the list. */
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-specific-menu, #23262c));
+  box-shadow: var(--dsw-elevation-prominent, 0 10px 28px rgba(0, 0, 0, 0.35));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, none);
+  z-index: 30;
+}
+.iw-theme-title {
+  padding: 4px 8px 6px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 12px;
+  font-weight: 500;
+}
+.iw-theme-group {
+  padding: 8px 8px 4px;
+  color: var(--dsw-alias-label-tertiary, #767f8c);
+  font-size: 11px;
+}
+.iw-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-theme-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+}
+.iw-theme-row--on {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.14));
+}
+.iw-theme-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-theme-check {
+  color: var(--dsw-alias-brand-primary, #4f8cff);
+  font-size: 11px;
+}
+.iw-theme-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary, #e6e8ec) 24%, transparent);
+}
+/* One dot per palette: the same colours the theme file applies. */
+.iw-theme-dot--follow { background: linear-gradient(135deg, #1b1d21 50%, #f3f4f6 50%); }
+.iw-theme-dot--material-oceanic { background: #0f111a; }
+.iw-theme-dot--material-palenight { background: #292d3e; }
+.iw-theme-dot--dracula { background: #282a36; }
+.iw-theme-dot--monokai-pro { background: #2d2a2e; }
+.iw-theme-dot--night-owl { background: #011627; }
+.iw-theme-dot--material-light { background: #fafafa; }
+.iw-theme-dot--github-light { background: #ffffff; }
+.iw-theme-dot--atom-one-light { background: #f0f0f1; }
+.iw-theme-dot--solarized-light { background: #fdf6e3; }
+.iw-theme-dot--intellij-light { background: #f7f8fa; }
 
 `
 
@@ -2963,6 +3118,10 @@ function ideCreateStore(refs) {
     revealFile: null,
     /** Files shown with Git annotate: `path → true`. */
     annotate: {},
+    /** Colour theme id (a file in `themes/`); empty follows the DSH palette. */
+    theme: typeof prefs.theme === 'string' ? prefs.theme : '',
+    /** Whether the palette popup is open (rendered at panel level, not in the bar). */
+    themeMenu: false,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -4013,6 +4172,13 @@ function ideCreateStore(refs) {
     setIndexInfo: (indexInfo) => patch({ indexInfo }),
     markRemoteReady: () => patch({ remoteReady: true }),
     /** Turn reference interception on or off (persisted). */
+    /** Open or close the palette popup. */
+    setThemeMenu: (themeMenu) => patch({ themeMenu }),
+    /** Switch the panel palette; an empty id goes back to the DSH colours. */
+    setTheme: (theme) => {
+      ideWritePrefs({ theme })
+      patch({ theme })
+    },
     /** Change the editor font size, clamped to a readable range. */
     setCodeFontSize: (size) => {
       const codeFontSize = Math.min(24, Math.max(10, Math.round(size * 2) / 2))
@@ -4125,6 +4291,178 @@ function ideCreateStore(refs) {
   }
 }
 
+// ---- 12-theme.js ---------------------------------------------------------
+/**
+ * Colour themes for the code workspace.
+ *
+ * A palette is a file: `themes/<id>.css` overrides the DSH alias tokens, scoped
+ * to `.iw-root[data-iw-theme="<id>"]`. Every `.iw-*` rule already reads those
+ * tokens, so a theme never touches a component style — switching a theme points
+ * `<link id="iw-theme-link">` at another file and sets one attribute. A palette
+ * can be edited without rebuilding the bundle.
+ *
+ * `themes/index.json` lists the same ids; `test/theme.mjs` holds the two in sync
+ * and checks that every file defines the same token set.
+ */
+
+/** Registry for the switcher: `mode` decides the group, the file name is `id`. */
+const IDE_THEMES = [
+  { id: 'material-oceanic', mode: 'dark' },
+  { id: 'material-palenight', mode: 'dark' },
+  { id: 'dracula', mode: 'dark' },
+  { id: 'monokai-pro', mode: 'dark' },
+  { id: 'night-owl', mode: 'dark' },
+  { id: 'material-light', mode: 'light' },
+  { id: 'github-light', mode: 'light' },
+  { id: 'atom-one-light', mode: 'light' },
+  { id: 'solarized-light', mode: 'light' },
+  { id: 'intellij-light', mode: 'light' },
+]
+
+/**
+ * Cache-buster for the stylesheet URL. A palette change keeps the same file
+ * name, so the browser needs a reason to fetch it again; bump this when the
+ * shipped palettes change.
+ */
+const IDE_THEME_REVISION = 1
+
+const IDE_THEME_LINK_ID = 'iw-theme-link'
+
+/** Ids the panel accepts: keeps an invalid preference from requesting a file. */
+function ideIsThemeId(value) {
+  return typeof value === 'string' && IDE_THEMES.some((theme) => theme.id === value)
+}
+
+/** Localised display name for a theme id; falls back to the id. */
+function ideThemeLabel(tr, id) {
+  const key = `theme_${id.replace(/-/g, '_')}`
+  const text = tr(key)
+  return text === key ? id : text
+}
+
+/**
+ * Point the stylesheet at `id`'s file. An empty id removes it, which is the
+ * "follow DSH" default: the panel keeps the host palette.
+ */
+function ideApplyTheme(id) {
+  const existing = document.getElementById(IDE_THEME_LINK_ID)
+  if (typeof id !== 'string' || id === '') {
+    existing?.remove()
+    return
+  }
+  const href = `/dsh-ide/theme?id=${encodeURIComponent(id)}&rev=${IDE_THEME_REVISION}`
+  if (existing === null) {
+    const link = document.createElement('link')
+    link.id = IDE_THEME_LINK_ID
+    link.rel = 'stylesheet'
+    link.href = href
+    document.head.append(link)
+    return
+  }
+  if (existing.getAttribute('href') !== href) existing.setAttribute('href', href)
+}
+
+/** Apply the saved theme once, and after every change; the panel owns the DOM. */
+function ideUseTheme(themeId) {
+  useEffect(() => {
+    ideApplyTheme(themeId)
+  }, [themeId])
+}
+
+/**
+ * The trigger in the status-bar corner. The list itself is rendered by the panel
+ * (`.iw-root` level), because `.iw-status` clips its overflow and a popup nested
+ * inside it would be cut off at the panel edge.
+ */
+function IdeThemeButton({ store, themeId, open, tr }) {
+  const current = IDE_THEMES.find((theme) => theme.id === themeId)
+  return h('span', { className: 'iw-theme-host' }, [
+    h('button', {
+      key: 'button',
+      type: 'button',
+      className: 'iw-theme-button',
+      title: current === undefined ? tr('themeFollowDsh') : ideThemeLabel(tr, current.id),
+      'aria-haspopup': 'listbox',
+      'aria-expanded': open ? 'true' : 'false',
+      onClick: (event) => {
+        event.stopPropagation()
+        store.setThemeMenu(!open)
+      },
+    }, [
+      h('span', { key: 'icon', className: 'iw-theme-swatch' }),
+      h('span', { key: 'label', className: 'iw-theme-caption' }, tr('theme')),
+    ]),
+  ])
+}
+
+/**
+ * The palette list, anchored to the panel's bottom-right corner. Three ways out:
+ * picking a theme, clicking anywhere else, and Escape.
+ */
+function IdeThemePopup({ store, themeId, tr }) {
+  useEffect(() => {
+    // A capture-phase listener runs before the row's own click, so the popup has
+    // to ignore presses inside itself (and on the trigger, which toggles): closing
+    // on those would unmount the row under the pointer and swallow the choice.
+    const closeOnOutside = (event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.iw-theme-pop, .iw-theme-button') !== null) return
+      store.setThemeMenu(false)
+    }
+    const onKey = (event) => {
+      if (event.key === 'Escape') store.setThemeMenu(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutside, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [store])
+
+  const pick = (id) => {
+    store.setTheme(id)
+    store.setThemeMenu(false)
+  }
+  const row = (theme) => h('button', {
+    key: theme.id,
+    type: 'button',
+    className: `iw-theme-row${themeId === theme.id ? ' iw-theme-row--on' : ''}`,
+    onClick: (event) => {
+      event.stopPropagation()
+      pick(theme.id)
+    },
+  }, [
+    h('span', { key: 'dot', className: `iw-theme-dot iw-theme-dot--${theme.id}` }),
+    h('span', { key: 'name', className: 'iw-theme-name' }, ideThemeLabel(tr, theme.id)),
+    themeId === theme.id ? h('span', { key: 'check', className: 'iw-theme-check' }, '✓') : null,
+  ])
+
+  return h('div', {
+    className: 'iw-theme-pop',
+    onPointerDown: (event) => event.stopPropagation(),
+  }, [
+    h('div', { key: 'title', className: 'iw-theme-title' }, tr('themeTitle')),
+    h('button', {
+      key: 'follow',
+      type: 'button',
+      className: `iw-theme-row${themeId === '' ? ' iw-theme-row--on' : ''}`,
+      onClick: (event) => {
+        event.stopPropagation()
+        pick('')
+      },
+    }, [
+      h('span', { key: 'dot', className: 'iw-theme-dot iw-theme-dot--follow' }),
+      h('span', { key: 'name', className: 'iw-theme-name' }, tr('themeFollowDsh')),
+      themeId === '' ? h('span', { key: 'check', className: 'iw-theme-check' }, '✓') : null,
+    ]),
+    h('div', { key: 'dark', className: 'iw-theme-group' }, tr('themeDark')),
+    ...IDE_THEMES.filter((theme) => theme.mode === 'dark').map(row),
+    h('div', { key: 'light', className: 'iw-theme-group' }, tr('themeLight')),
+    ...IDE_THEMES.filter((theme) => theme.mode === 'light').map(row),
+  ])
+}
+
 // ---- 20-tree.js ----------------------------------------------------------
 /**
  * The workspace file tree: lazy directories, a name filter over loaded
@@ -4163,13 +4501,22 @@ function ideRequestJavaKinds(root, paths, done) {
   }
   if (wanted.size === 0) return
   const missing = [...wanted]
-  void ideKindsQuery(root, missing).then((found) => {
-    if (found.ok !== true) return
-    for (const rel of missing) {
-      ideJavaKinds.set(`${root}|${rel}`, typeof found.kinds[rel] === 'string' ? found.kinds[rel] : '')
+  // One directory can hold hundreds of long package paths; the Host caps the body,
+  // so ask in batches instead of losing the whole directory to a 413.
+  const batches = []
+  for (let index = 0; index < missing.length; index += 120) batches.push(missing.slice(index, index + 120))
+  void (async () => {
+    let answered = false
+    for (const batch of batches) {
+      const found = await ideKindsQuery(root, batch)
+      if (found.ok !== true) continue
+      answered = true
+      for (const rel of batch) {
+        ideJavaKinds.set(`${root}|${rel}`, typeof found.kinds[rel] === 'string' ? found.kinds[rel] : '')
+      }
     }
-    done()
-  })
+    if (answered) done()
+  })()
 }
 
 /**
@@ -6203,6 +6550,7 @@ function IdeStatusBar({ store, state, tab, tr }) {
       style: { display: 'inline-flex', alignItems: 'center', gap: '5px' },
     }, [h(IdeLiveDot, { key: 'dot', on: state.watching }), tr('live')]),
     h('span', { key: 'ro' }, tr('readOnly')),
+    h(IdeThemeButton, { key: 'theme', store, themeId: ideIsThemeId(state.theme) ? state.theme : '', open: state.themeMenu === true, tr }),
     total === 0 ? null : h('span', { key: 'total', style: { opacity: 0.7 } }, `${state.tabs.length}`),
   ])
 }
@@ -6711,10 +7059,14 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     store.setNotice(`${tr('tabMenuCopied')}: ${text}`)
   }
 
+  // The palette is one stylesheet link, so it is applied here rather than in each
+  // component: a theme change swaps the file and every rule follows it.
+  ideUseTheme(ideIsThemeId(state.theme) ? state.theme : '')
   const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
   const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
   return h('div', {
     className: 'iw-root',
+    'data-iw-theme': ideIsThemeId(state.theme) ? state.theme : undefined,
     // The editor and the tree share one typographic scale, set in Settings.
     style: {
       '--iw-code-font-size': `${codeSize}px`,
@@ -6726,6 +7078,9 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     h(IdeStyles, { key: 'style' }),
     h(IdeToolbar, { key: 'toolbar', store, state, tr, projects, onSelectProject: selectProject, onToggleSidebar }),
     banner,
+    state.themeMenu === true
+      ? h(IdeThemePopup, { key: 'themepopup', store, themeId: ideIsThemeId(state.theme) ? state.theme : '', tr })
+      : null,
     h(IdeTreeMenu, {
       key: 'treemenu',
       store,

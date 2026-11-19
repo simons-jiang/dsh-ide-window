@@ -44,6 +44,10 @@ const ROUTE_PATCH = '/dsh-ide/patch'
 const ROUTE_TEXT = '/dsh-ide/text'
 const ROUTE_LICENSE = '/dsh-ide/license'
 const ROUTE_DIAG = '/dsh-ide/diagnostics'
+const ROUTE_THEME = '/dsh-ide/theme'
+
+/** Where this file lives: the themes sit next to it, not in the profile. */
+const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url))
 
 /** Entries kept in memory; the file keeps everything up to its size cap. */
 const IDE_LOG_LIMIT = 200
@@ -757,8 +761,8 @@ function grepWorkspace(payload) {
   })
 }
 
-/** Largest JSON request body accepted. */
-const MAX_BODY_BYTES = 16 * 1024
+/** Largest JSON request body accepted; `/dsh-ide/kinds` sends a directory of paths. */
+const MAX_BODY_BYTES = 64 * 1024
 
 /** The four queries the seam exposes; anything else is a caller bug. */
 const OPERATIONS = new Set(['goToDefinition', 'findReferences', 'goToImplementation', 'hover'])
@@ -769,6 +773,55 @@ class RouteError extends Error {
     super(message)
     this.status = status
     this.code = code
+  }
+}
+
+/**
+ * Read one palette stylesheet.
+ *
+ * A theme is a file, so the browser can point a `<link>` at it and switching
+ * costs one request. The name is validated before it reaches the filesystem:
+ * anything but the shipped `[a-z0-9-]` ids is refused, which also rules out
+ * `../` traversal.
+ */
+export function themeCss(id) {
+  if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,40}$/.test(id)) {
+    throw new RouteError(400, 'invalid-argument', 'invalid theme id')
+  }
+  const file = join(PLUGIN_ROOT, 'themes', `${id}.css`)
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    throw new RouteError(404, 'not-found', `unknown theme: ${id}`)
+  }
+}
+
+/** Serve one palette as CSS; the ETag keeps a reopened panel from refetching. */
+function createThemeHandler() {
+  return async (request, response) => {
+    let id = ''
+    try {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        writeJson(response, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+        return
+      }
+      id = new URL(request.url ?? '/', 'http://dsh-ide.internal').searchParams.get('id') ?? ''
+      const body = themeCss(id)
+      response.statusCode = 200
+      response.setHeader('content-type', 'text/css; charset=utf-8')
+      response.setHeader('cache-control', 'no-cache')
+      response.setHeader('etag', `"${Buffer.byteLength(body)}-${id}"`)
+      if (request.method === 'HEAD') {
+        response.end()
+        return
+      }
+      response.end(body)
+    } catch (error) {
+      const status = error instanceof RouteError ? error.status : 500
+      const code = error instanceof RouteError ? error.code : 'internal'
+      logEvent(status >= 500 ? 'error' : 'warn', 'route', `${ROUTE_THEME} → ${status} ${code}`, error?.message ?? String(error))
+      writeJson(response, status, { ok: false, error: { code, message: error?.message ?? String(error) } })
+    }
   }
 }
 
@@ -1349,4 +1402,11 @@ export function apply(ctx) {
     path: ROUTE_DIAG,
     handler,
   }), 'dsh-ide-window: diagnostics route')
+  // The palettes are the only route the browser fetches with `<link>`, so it
+  // answers GET instead of the JSON POST every other route speaks.
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_THEME,
+    handler: createThemeHandler(),
+  }), 'dsh-ide-window: theme route')
 }

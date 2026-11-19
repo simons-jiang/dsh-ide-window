@@ -56,6 +56,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `06-platform.js` | **客户端平台层**：`toPosix/toNative`、`isAbsolutePath`、手势选项与按键文案（`apply()` 里按 `ctx.shortcuts.platform` 换实例） |
 | `07-log.js` | **客户端日志**：100 条环形缓冲 `ideLogRecord/ideLogSnapshot`，供「复制诊断信息」上报 |
 | `10-core.js` | store（`useSyncExternalStore` 订阅）、偏好持久化、标签页/历史/视图状态 |
+| `12-theme.js` | **配色主题**：注册表（10 套）、`<link id="iw-theme-link">` 切换、状态栏切换器；主题同时提供 8 个语法色变量 |
 | `20-tree.js` | 文件树（展开、筛选、拖宽、`⌘P` 定位） |
 | `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
 | `40-panel.js` | 面板骨架（工具栏、横幅、布局、字号 CSS 变量） |
@@ -115,6 +116,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/patch` | 差异文本 | `git diff -U3 <base> [target] -- <path>`；根提交回退 `git show --patch`；未跟踪文件返回 `untracked` |
 | `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
 | `/dsh-ide/diagnostics` | 诊断日志 | `{action:'read'}` 返回本机最近 100 条事件 + 日志文件路径；`{action:'report', entries}` 接收浏览器缓冲的事件并写入同一文件（`level:'client'`） |
+| `/dsh-ide/theme` | 主题样式表 | `GET ?id=<主题>` 返回 `themes/<id>.css`（唯一非 JSON 路由，浏览器用 `<link>` 取）；id 只允许 `[a-z0-9-]`，未知 404、非法 400 |
 | `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
 
 ### 3.4 用到的 DSH 槽位
@@ -304,6 +306,8 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 调用链说「没有找到调用方（可能已是入口方法）」，但控制器里明明有调用 | LSP 只回了**声明**（接口签名 + 被走的实现签名，`ideContractReferences` 还会补一条接口签名），非空于是走完流程、全部被 `callerAt === 'declaration'` 丢掉，而文本兜底只在**语义结果为空**时才跑 | 语义结果非空但**一个子节点都没加上**时，必须再跑一次文本匹配兜底；`textual` 标记只在真正用到文本行时置位。首轮索引进（`ImportExecutionKt` / 索引目录还在长大）时 LSP 也会回空，两者叠加就是这个弹窗 |
 | 右键菜单离鼠标很远，飘在面板上方 | 用「条目数 × 28」估高度，估小了就 `y - 估计高度`，真实菜单更高、被夹到面板底边后整体上移 | 高度必须挂载后实测：放不下时让菜单**底边贴在指针**（`top = y - height`），不要用估算值；`useLayoutEffect` 在首帧前算好并保持 `visibility: hidden` 直到定位完成 |
 | 「复制诊断信息」点了没反应、页面像卡住 | `await navigator.clipboard.writeText()` 在无权限/嵌入式环境下可能永不 resolve | 剪贴板用 `Promise.race` 加 1.5 秒超时，上报日志优先，超时退化为「已写入宿主日志」提示 |
+| 主题弹层里点某一项没反应（真鼠标点不动，代码里 `.click()` 却正常） | 关闭弹层用的是 `document` 上的 **capture** `pointerdown`：真实鼠标先派发 pointerdown，监听器先把弹层卸载，行的 click 永远到不了 | 关闭监听要放过落在弹层/触发按钮内部的按压（`target.closest('.iw-theme-pop, .iw-theme-button')`）；**交互必须用真实指针事件验证**，程序化 `.click()` 会绕过 pointerdown |
+| 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 
 ---
 
@@ -315,7 +319,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
    - ~~包名改为可发布的名字~~（已改为 `dsh-ide-window` 并发布到 npm）
    - ~~补 `LICENSE`~~（已补 MIT）
    - ~~加 `engines.dsh` 版本约束~~（已加，锁 `0.2.2-rc.3`）
-4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。
+4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。主题的调色板不在 bundle 里（`themes/*.css`），改颜色不需要重建。
 5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。
 
 ---
@@ -327,10 +331,12 @@ index.js                      宿主：14 条路由 + jar ZIP 解析 + git 状�
 client.js                     构建产物（提交）
 build.mjs                     拼接 + 注入校验（禁止未声明的 ide* 辅助函数）
 cordis.patch.yml              profile 插入项
-locale/zh.json, en.json       UI 文案（165 键）+ 插件展示信息
+locale/zh.json, en.json       UI 文案（227 键）+ 插件展示信息
 src/client/05-shortcut-registry.js   ★ 快捷键唯一登记处
 src/client/07-log.js         客户端环形日志 + 诊断快照
 src/client/10-core.js         store / 偏好 / 标签页 / 视图持久化
+src/client/12-theme.js        配色主题：注册表 + <link> 切换 + 状态栏切换器
+themes/*.css                  10 套调色板（5 深 5 浅），只覆盖 alias token
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
 src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
 src/client/90-apply.js        全部注册 + 入口
@@ -340,6 +346,7 @@ test/diagnostics.mjs         诊断日志：环形缓冲、JSONL 文件、客户
 test/harness.mjs             VM 夹具测试（含客户端平台层）
 test/inference.mjs            归属推断（bean 字段）
 test/maven.mjs                真实 ~/.m2 jar 端到端
+test/theme.mjs                主题：注册表/清单/文件一致、token 集合一致、读取器 400/404
 check-dsh-untouched.sh        本体完整性自检（macOS/Linux）
 restore-profile.sh            恢复 profile 到可用状态（macOS/Linux）
 start-test-instance.sh        起独立自测实例（固定端口 + 复用本机账号，不再弹登录框）

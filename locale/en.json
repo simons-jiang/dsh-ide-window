@@ -213,5 +213,20 @@
   "setupStepScript": "Step 1: run the install script (packages, server download, config; use your own path if it is not at the default location)",
   "setupStepLicence": "Step 2: license the server (opens a browser; an existing license prints \"licensed\")",
   "setupStepRestart": "Finally: quit DSH completely (⌘Q / tray) and reopen it.",
-  "setupCopyAll": "Copy commands"
+  "setupCopyAll": "Copy commands",
+  "theme": "Theme",
+  "themeTitle": "Theme",
+  "themeDark": "Dark themes",
+  "themeLight": "Light themes",
+  "themeFollowDsh": "Follow DSH",
+  "theme_material_oceanic": "Oceanic",
+  "theme_material_palenight": "Palenight",
+  "theme_dracula": "Dracula",
+  "theme_monokai_pro": "Monokai Pro",
+  "theme_night_owl": "Night Owl",
+  "theme_material_light": "Material Light",
+  "theme_github_light": "GitHub Light",
+  "theme_atom_one_light": "Atom One Light",
+  "theme_solarized_light": "Solarized Light",
+  "theme_intellij_light": "IntelliJ Light"
 }

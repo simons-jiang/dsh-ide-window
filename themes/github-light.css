@@ -1,0 +1,44 @@
+/**
+ * github-light (light) — a palette for the code workspace.
+ *
+ * Only DSH alias tokens are overridden, scoped to the panel, so every `.iw-*`
+ * rule picks the palette up without knowing this file exists. Nothing outside
+ * `.iw-root[data-iw-theme="github-light"]` is touched.
+ */
+.iw-root[data-iw-theme="github-light"] {
+  --dsw-alias-bg-base: #ffffff;
+  --dsw-alias-bg-layer-1: #f6f8fa;
+  --dsw-alias-bg-layer-2: #f6f8fa;
+  --dsw-alias-bg-layer-3: #eaeef2;
+  --dsw-alias-bg-overlay: #ffffff;
+  --dsw-specific-sidebar-fill: #f6f8fa;
+  --dsw-specific-menu: #ffffff;
+  --dsw-alias-card-fill: #ffffff;
+  --dsw-alias-card-fill-hover: #eaeef2;
+  --dsw-alias-card-tile-fill: #ffffff;
+  --dsw-alias-label-primary: #1f2328;
+  --dsw-alias-label-secondary: #59636e;
+  --dsw-alias-label-tertiary: #818b98;
+  --dsw-alias-border-l1: #d0d7de;
+  --dsw-alias-border-l2: #d8dee4;
+  --dsw-alias-border-l3: #e5e9ed;
+  --dsw-alias-border: #d0d7de;
+  --dsw-alias-brand-primary: #0969da;
+  --dsw-alias-interactive-bg-hover: #eaf2fb;
+  --dsw-alias-state-success-primary: #1a7f37;
+  --dsw-alias-state-warning-primary: #9a6700;
+  --dsw-alias-state-error-primary: #cf222e;
+  --dsw-alias-state-business-primary: #0969da;
+  --dsw-alias-state-idle-primary: #8c959f;
+  --dsw-focus-ring-color: #0969da;
+  --iw-changes-fill: #1a7f37;
+  --iw-changes-hover: #28a745;
+  --iw-syn-keyword: #cf222e;
+  --iw-syn-string: #0a3069;
+  --iw-syn-number: #0550ae;
+  --iw-syn-comment: #6e7781;
+  --iw-syn-annotation: #8250df;
+  --iw-syn-type: #953800;
+  --iw-syn-function: #6639ba;
+  --iw-syn-punct: #24292f;
+}
