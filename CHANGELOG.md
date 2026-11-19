@@ -6,6 +6,15 @@
 升级方式：DSH →「插件」→ 打开插件的「版本」区 →「检查更新」，或直接卸载后重新安装。
 （`link:` 本地安装不参与版本检查，拉取仓库即可。）
 
+## [0.3.1] — 2026-11-19
+
+### 修复
+
+- **LSP 安装脚本把管道包版本写死了**：脚本固定在 `0.2.2-rc.3`，而 DSH 会自动升级（例如升到 `0.2.2-rc.5`），于是 `pnpm add` 装回旧版本的包，导航随之失效。
+  现在 `install.sh` / `install.ps1` / `enable-navigation.sh` / `enable-navigation.ps1` / `restore-profile.sh` / `restore-profile.ps1` 都改为**读取当前安装的 DSH 版本**（macOS 从 `Info.plist`、Windows 从 exe 的 `ProductVersion`），再安装同版本的 `@deepseek-ai/dsh-lsp` 与 `dsh-lsp-stdio`。
+- 版本读不到时用 `latest`；检测到的版本在注册表里还不存在（DSH 夜间版比包发布快）时，先按检测版本安装，失败才回退 `latest` 并提示，不会因为网络抖动就悄悄换版本。
+- 可用 `--lsp-version <版本>`（macOS）或 `-LspVersion <版本>`（Windows）显式指定，或用环境变量 `DSH_LSP_VERSION` 覆盖。
+
 ## [0.3.0] — 2026-11-19
 
 ### 新增

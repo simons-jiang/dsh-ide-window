@@ -19,7 +19,14 @@ if (-not $server) {
 Write-Host '== 2/4 安装插件与 LSP 包 =='
 Push-Location $profile
 try {
-  pnpm add "link:$pluginDir" '@deepseek-ai/dsh-lsp@0.2.2-rc.3' '@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3' | Out-Null
+  # Pipeline packages follow the installed DSH release (read from the executable).
+  $dshExe = (Get-Command 'DeepSeek Harness' -ErrorAction SilentlyContinue)?.Source
+  $lspVersion = 'latest'
+  if ($dshExe) {
+    $detected = (Get-Item $dshExe).VersionInfo.ProductVersion
+    if ($detected) { $lspVersion = ($detected -replace '^v', '').Trim() }
+  }
+  pnpm add "link:$pluginDir" "@deepseek-ai/dsh-lsp@$lspVersion" "@deepseek-ai/dsh-lsp-stdio@$lspVersion" | Out-Null
 } finally { Pop-Location }
 
 Write-Host '== 3/4 写入 bundle 与 LSP 配置 =='

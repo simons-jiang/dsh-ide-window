@@ -38,7 +38,9 @@ trap {
 
 $repoUrl = 'https://github.com/simons-jiang/dsh-ide-window.git'
 $packageName = 'dsh-ide-window'
-$lspPackages = @('@deepseek-ai/dsh-lsp@0.2.2-rc.5', '@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.5')
+# The pipeline packages are published per DSH release; `$lspPackages` is built
+# once the application (and therefore its version) is known. `DSH_LSP_VERSION`
+# overrides the detection.
 
 function Step([string]$Text) { Write-Host "`n==> $Text" }
 function Fail([string]$Text) {
@@ -59,6 +61,18 @@ foreach ($candidate in $candidates) {
 }
 if (-not $appBin) { Fail '没找到 DeepSeek Harness.exe，请先安装并登录 DSH。' }
 Write-Host "    DSH：$appBin"
+
+# Read the version from the executable so the pipeline packages always match the
+# running DSH; a hard-coded pin breaks on every automatic upgrade.
+function Get-DshVersion([string]$Exe) {
+  $version = (Get-Item $Exe).VersionInfo.ProductVersion
+  if (-not $version) { return '' }
+  return ($version -replace '^v', '').Trim()
+}
+$lspVersion = if ($env:DSH_LSP_VERSION) { $env:DSH_LSP_VERSION } else { Get-DshVersion $appBin }
+if (-not $lspVersion) { $lspVersion = 'latest' }
+Write-Host "    LSP 管道包版本：$lspVersion（跟随 DSH）"
+$lspPackages = @("@deepseek-ai/dsh-lsp@$lspVersion", "@deepseek-ai/dsh-lsp-stdio@$lspVersion")
 
 $dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $profileDir = Join-Path $dshHome "profiles\$Profile"
@@ -160,8 +174,20 @@ if (-not $installed) {
 }
 
 if ($WithLsp) {
-  Step '安装 LSP 管道包（语言服务器本身还要另外准备）'
-  Invoke-Pnpm (@('add') + $lspPackages) $profileDir
+  Step "安装 LSP 管道包（跟随当前 DSH：$lspVersion；语言服务器本身还要另外准备）"
+  $added = $false
+  try {
+    Invoke-Pnpm (@('add') + $lspPackages) $profileDir
+    $added = $true
+  } catch {
+    if ($lspVersion -eq 'latest') { throw }
+    Write-Host '    检测到的版本装不上（可能还没发布），改用 latest 重试' -ForegroundColor Yellow
+  }
+  if (-not $added) {
+    $lspVersion = 'latest'
+    $lspPackages = @('@deepseek-ai/dsh-lsp@latest', '@deepseek-ai/dsh-lsp-stdio@latest')
+    Invoke-Pnpm (@('add') + $lspPackages) $profileDir
+  }
 }
 
 # ---- 4. make sure the bundle is listed -------------------------------------

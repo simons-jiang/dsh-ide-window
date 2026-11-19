@@ -19,7 +19,10 @@ fi
 
 echo "== 2/4 安装插件与 LSP 包 =="
 cd "$PROFILE"
-pnpm add "link:$PLUGIN_DIR" @deepseek-ai/dsh-lsp@0.2.2-rc.3 @deepseek-ai/dsh-lsp-stdio@0.2.2-rc.3 >/dev/null
+# Pipeline packages follow the installed DSH release (see enable-navigation.sh).
+LSP_VERSION="$(defaults read "/Applications/DeepSeek Harness.app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null | tr -d '[:space:]')"
+[ -n "$LSP_VERSION" ] || LSP_VERSION="latest"
+pnpm add "link:$PLUGIN_DIR" "@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}" >/dev/null
 
 echo "== 3/4 写入 bundle 与 LSP 配置 =="
 python3 - "$PROFILE" "$SERVER" <<'PY'

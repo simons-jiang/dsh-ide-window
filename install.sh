@@ -14,7 +14,16 @@ set -euo pipefail
 
 REPO_URL="https://github.com/simons-jiang/dsh-ide-window.git"
 PACKAGE="dsh-ide-window"
-LSP_PACKAGES=("@deepseek-ai/dsh-lsp@0.2.2-rc.5" "@deepseek-ai/dsh-lsp-stdio@0.2.2-rc.5")
+# Pipeline packages follow the installed DSH release (see enable-navigation.sh).
+APP_PLIST="/Applications/DeepSeek Harness.app/Contents/Info.plist"
+lsp_version() {
+  [ -f "$APP_PLIST" ] || { printf 'latest'; return; }
+  local detected
+  detected="$(defaults read "$APP_PLIST" CFBundleShortVersionString 2>/dev/null | tr -d '[:space:]')"
+  printf '%s' "${detected:-latest}"
+}
+LSP_VERSION="$(lsp_version)"
+LSP_PACKAGES=("@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}")
 
 PROFILE="desktop"
 DIR="${DSH_IDE_DIR:-$HOME/dev/dsh-ide-window}"
@@ -137,11 +146,25 @@ if ! dsh_cli plugin --profile "$PROFILE" add "link:$DIR"; then
 fi
 
 if [ "$WITH_LSP" = 1 ]; then
-  step "安装 LSP 管道包（语言服务器本身还要另外准备）"
-  if ! dsh_cli plugin --profile "$PROFILE" add "${LSP_PACKAGES[@]}"; then
+  step "安装 LSP 管道包（跟随当前 DSH：${LSP_VERSION}；语言服务器本身还要另外准备）"
+  add_pipeline() {
+    if dsh_cli plugin --profile "$PROFILE" add "${LSP_PACKAGES[@]}" 2>/dev/null; then
+      return 0
+    fi
     echo "    该 profile 由应用托管，改用 profile 内的 pnpm"
     command -v pnpm >/dev/null 2>&1 || fail "需要 pnpm（DSH 安装插件也依赖它）：npm i -g pnpm"
     ( cd "$PROFILE_DIR" && pnpm add "${LSP_PACKAGES[@]}" )
+  }
+  # A newer DSH build may not have published pipeline packages yet: fall back to
+  # `latest` only when the detected version cannot be installed at all.
+  if ! add_pipeline; then
+    if [ "$LSP_VERSION" = "latest" ]; then
+      fail "安装 LSP 管道包失败，见上面的 pnpm 输出。"
+    fi
+    echo "提示：${LSP_VERSION} 的 LSP 包装不上（可能还没发布），改用 latest 重试。"
+    LSP_VERSION="latest"
+    LSP_PACKAGES=("@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}")
+    add_pipeline || fail "安装 LSP 管道包失败，见上面的 pnpm 输出。"
   fi
 fi
 

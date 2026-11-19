@@ -13,7 +13,8 @@
 
 - 仓库：`https://github.com/simons-jiang/dsh-ide-window`（分支 `main`）
 - 包名：`@local/dsh-ide-window`（以 `link:` 方式装进 DSH 的 profile）
-- 目标 DSH 版本：`0.2.2-rc.3`（桌面应用 + Web profile 都要能跑）
+- 目标 DSH 版本：`0.2.2-rc.3` 及以上（桌面应用 + Web profile 都要能跑）
+- LSP 管道包版本**跟随当前 DSH**（脚本从 Info.plist / exe 版本读，不写死；DSH 升级后重跑脚本）
 - 语言栈：宿主 `index.js`（Node ESM）+ 客户端 `src/client/*.js`（无构建链，手写 `h()`）
 
 ---

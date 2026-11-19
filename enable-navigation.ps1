@@ -11,7 +11,8 @@
 #   powershell -ExecutionPolicy Bypass -File .\enable-navigation.ps1
 param(
   [string]$Profile = 'desktop',
-  [switch]$NoDownload
+  [switch]$NoDownload,
+  [string]$LspVersion = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -30,8 +31,34 @@ trap {
   exit 1
 }
 
-$lspVersion = '0.2.2-rc.5'
+# The pipeline packages are published per DSH release: read the version from the
+# installed application instead of pinning it, so a DSH nightly upgrade cannot
+# leave this script installing packages for the old version. `-LspVersion`
+# overrides the detection.
+function Get-DshVersion {
+  $candidates = @()
+  if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\DeepSeek Harness.exe') }
+  if ($env:ProgramFiles) { $candidates += (Join-Path $env:ProgramFiles 'DeepSeek Harness\DeepSeek Harness.exe') }
+  if (${env:ProgramFiles(x86)}) { $candidates += (Join-Path ${env:ProgramFiles(x86)} 'DeepSeek Harness\DeepSeek Harness.exe') }
+  foreach ($candidate in $candidates) {
+    if (-not (Test-Path $candidate)) { continue }
+    $version = (Get-Item $candidate).VersionInfo.ProductVersion
+    if ($version) { return ($version -replace '^v', '').Trim() }
+  }
+  return 'latest'
+}
+
+$lspVersion = if ($LspVersion) { $LspVersion } else { Get-DshVersion }
+
 $packages = @("@deepseek-ai/dsh-lsp@$lspVersion", "@deepseek-ai/dsh-lsp-stdio@$lspVersion")
+
+# Only when the detected version cannot be installed at all (not published yet)
+# fall back to `latest`; a network hiccup must not silently change the version.
+function Set-LatestPipeline {
+  $script:lspVersion = 'latest'
+  $script:packages = @('@deepseek-ai/dsh-lsp@latest', '@deepseek-ai/dsh-lsp-stdio@latest')
+  Write-Host "    提示：检测到的版本装不上（可能还没发布），改用 latest。"
+}
 
 # JetBrains publishes the server per platform under the same build. The CDN host
 # only serves signed URLs, so the download always goes through
@@ -96,15 +123,24 @@ function Install-Packages([string[]]$Arguments) {
   }
 }
 
-$attempt = Install-Packages (@('add') + @($packages))
-if ($attempt.Code -ne 0) {
-  Write-Host '    第一次安装失败，pnpm 输出如下：' -ForegroundColor Yellow
-  Write-Host $attempt.Output
-  Write-Host '    改用 npmmirror 镜像重试…' -ForegroundColor Yellow
-  $attempt = Install-Packages (@('add', '--registry', 'https://registry.npmmirror.com') + @($packages))
+function Install-PipelinePackages {
+  $attempt = Install-Packages (@('add') + @($packages))
+  if ($attempt.Code -ne 0) {
+    Write-Host '    第一次安装失败，pnpm 输出如下：' -ForegroundColor Yellow
+    Write-Host $attempt.Output
+    Write-Host '    改用 npmmirror 镜像重试…' -ForegroundColor Yellow
+    $attempt = Install-Packages (@('add', '--registry', 'https://registry.npmmirror.com') + @($packages))
+  }
+  return $attempt
+}
+
+$attempt = Install-PipelinePackages
+if ($attempt.Code -ne 0 -and $lspVersion -ne 'latest') {
+  Set-LatestPipeline
+  $attempt = Install-PipelinePackages
 }
 if ($attempt.Code -ne 0) {
-  Write-Host '    镜像也失败，pnpm 输出如下：' -ForegroundColor Red
+  Write-Host '    安装失败，pnpm 输出如下：' -ForegroundColor Red
   Write-Host $attempt.Output
   Fail "pnpm add 失败（exit $($attempt.Code)）：看上面的 npm 错误码。ERR_PNPM_UNEXPECTED_STORE 表示 pnpm 的 store 版本和 profile 里的不一致；EAI_AGAIN/ETIMEDOUT/ECONNREFUSED 是网络或代理。"
 }

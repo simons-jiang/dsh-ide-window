@@ -5,13 +5,27 @@
 #   ./enable-navigation.sh                 # packages + server download + patch lines
 #   ./enable-navigation.sh --no-download   # skip the server download (already have it)
 #   ./enable-navigation.sh --profile web   # another profile
+#   ./enable-navigation.sh --lsp-version 0.2.2-rc.5   # pin the pipeline packages
 #
 # Safe to re-run. Only writes under ~/.dsh (profile, lsp-bin, lsp-data); the DSH
 # application itself is never modified.
 set -euo pipefail
 
-LSP_VERSION="0.2.2-rc.5"
+# The pipeline packages are published per DSH release, so the version is read
+# from the installed application instead of being pinned here: a DSH nightly
+# upgrade would otherwise leave this script installing packages for the old
+# version. `--lsp-version` (or `DSH_LSP_VERSION`) overrides the detection.
+APP_PLIST="/Applications/DeepSeek Harness.app/Contents/Info.plist"
+
+dsh_version() {
+  [ -f "$APP_PLIST" ] || return 1
+  defaults read "$APP_PLIST" CFBundleShortVersionString 2>/dev/null | tr -d '[:space:]'
+}
+
+LSP_VERSION="${DSH_LSP_VERSION:-$(dsh_version || true)}"
+[ -n "$LSP_VERSION" ] || LSP_VERSION="latest"
 PACKAGES=("@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}")
+
 SERVER_URL="https://download.jetbrains.com/language-server/intellij-server/271.2085.0/intellij-server-271.2085.0-aarch64.sit"
 
 PROFILE="${DSH_PROFILE:-desktop}"
@@ -25,6 +39,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --profile) PROFILE="${2:-}"; PROFILE_DIR="$DSH_HOME_DIR/profiles/$PROFILE"; shift 2 ;;
     --no-download) DOWNLOAD=0; shift ;;
+    --lsp-version) LSP_VERSION="${2:-}"; PACKAGES=("@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}"); shift 2 ;;
     -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "未知参数：$1" >&2; exit 1 ;;
   esac
@@ -39,8 +54,28 @@ command -v python3 >/dev/null 2>&1 || fail "需要 python3（macOS 自带）。"
 
 # ---- 1. pipeline packages ---------------------------------------------------
 
-step "安装 LSP 管道包（${LSP_VERSION}）"
-( cd "$PROFILE_DIR" && pnpm add "${PACKAGES[@]}" >/dev/null && echo "    已安装：@deepseek-ai/dsh-lsp、dsh-lsp-stdio" )
+if [ "$LSP_VERSION" = "latest" ]; then
+  step "安装 LSP 管道包（没读到 DSH 版本，用 latest）"
+else
+  step "安装 LSP 管道包（跟随当前 DSH：${LSP_VERSION}）"
+fi
+install_packages() {
+  ( cd "$PROFILE_DIR" && pnpm add "${PACKAGES[@]}" >/dev/null )
+}
+
+# A DSH build can be newer than the published packages. Try the detected version
+# first; only when that install fails fall back to `latest`, so a network hiccup
+# does not silently downgrade the pipeline.
+if ! install_packages; then
+  if [ "$LSP_VERSION" = "latest" ]; then
+    fail "安装 LSP 管道包失败，见上面的 pnpm 输出。"
+  fi
+  printf '提示：%s 的 LSP 包装不上（可能还没发布），改用 latest 重试。\n' "$LSP_VERSION"
+  LSP_VERSION="latest"
+  PACKAGES=("@deepseek-ai/dsh-lsp@${LSP_VERSION}" "@deepseek-ai/dsh-lsp-stdio@${LSP_VERSION}")
+  install_packages || fail "安装 LSP 管道包失败，见上面的 pnpm 输出。"
+fi
+echo "    已安装：@deepseek-ai/dsh-lsp、dsh-lsp-stdio（${LSP_VERSION}）"
 
 # ---- 2. language server -----------------------------------------------------
 
