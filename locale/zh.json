@@ -242,8 +242,6 @@
   "shotNoEditor": "没找到对话框：截图已复制到剪贴板，按 ⌘V 粘贴",
   "shotOpenFailed": "打不开系统设置，请手动打开：系统设置 → 隐私与安全性 → 屏幕录制",
   "paletteActionScreenshot": "截图",
-  "shotSelectHint": "按住鼠标左键拖动，框出要截的范围；松开后完成选框，Esc 取消",
-  "shotMarkHint": "在选框内拖动可画矩形，选「文字」后点一下输入；⌘Z 撤销，Esc 关闭",
   "shotTool_rect": "矩形",
   "shotTool_text": "文字",
   "shotUndo": "撤销",

@@ -74,12 +74,13 @@ function windowsOptimizeScript(input, output, quality, longEdge) {
   const source = String(input ?? '').replace(/'/g, "''")
   const target = String(output ?? '').replace(/'/g, "''")
   const level = Math.min(100, Math.max(10, Number.isFinite(quality) ? quality : 80))
-  const edge = Number.isFinite(longEdge) && longEdge > 0 ? Math.round(longEdge) : 1920
+  // `null` / 0 = keep the capture at its native size (no resize step).
+  const edge = Number.isFinite(longEdge) && longEdge > 0 ? Math.round(longEdge) : 0
   return [
     'Add-Type -AssemblyName System.Drawing',
     `$source = [System.Drawing.Image]::FromFile('${source}')`,
     '$long = [Math]::Max($source.Width, $source.Height)',
-    `$scale = [Math]::Min(1.0, ${edge} / $long)`,
+    `$scale = ${edge > 0 ? `[Math]::Min(1.0, ${edge} / $long)` : '1.0'}`,
     '$width = [int][Math]::Round($source.Width * $scale)',
     '$height = [int][Math]::Round($source.Height * $scale)',
     '$bitmap = New-Object System.Drawing.Bitmap $width, $height',

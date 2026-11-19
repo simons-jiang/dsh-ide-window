@@ -36,7 +36,8 @@ const samplePath = '/tmp/shot.png'
 
   const optimize = macPlatform.imageOptimizeCommand('/tmp/in.png', '/tmp/out.jpg', 80)
   check('macOS optimises with sips', optimize.command === 'sips', optimize.command)
-  check('macOS fits the long edge to 1080p', optimize.args.join(' ').includes('-Z 1920'), optimize.args.join(' '))
+  check('macOS keeps native pixels when no edge is given', !macPlatform.imageOptimizeCommand('/tmp/in.png', '/tmp/out.jpg', 80, null).args.includes('-Z'))
+  check('macOS resizes when an edge is asked for', macPlatform.imageOptimizeCommand('/tmp/in.png', '/tmp/out.jpg', 80, 2560).args.join(' ').includes('-Z 2560'))
   check('macOS encodes JPEG at the given quality', /format jpeg/.test(optimize.args.join(' ')) && optimize.args.includes('80'), optimize.args.join(' '))
   check('macOS writes the optimised file', optimize.args.join(' ').includes('--out /tmp/out.jpg'), optimize.args.join(' '))
 
@@ -60,7 +61,8 @@ const samplePath = '/tmp/shot.png'
   const optimize = windowsPlatform.imageOptimizeCommand('C:\\in.png', 'C:\\out.jpg', 70)
   const optimizeScript = optimize.args.join(' ')
   check('Windows optimises with PowerShell', optimize.command === 'powershell.exe', optimize.command)
-  check('Windows scales to the 1920 long edge', /1920 \/ \$long/.test(optimizeScript), optimizeScript.slice(0, 80))
+  check('Windows keeps native pixels when no edge is given', windowsPlatform.imageOptimizeCommand('/tmp/in.png', '/tmp/out.jpg', 70, null).args.join(' ').includes('[Math]::Min(1.0, 0 / $long)') === false)
+  check('Windows scales when an edge is asked for', windowsPlatform.imageOptimizeCommand('/tmp/in.png', '/tmp/out.jpg', 70, 2560).args.join(' ').includes('[Math]::Min(1.0, 2560 / $long)'))
   check('Windows resamples smoothly', /HighQualityBicubic/.test(optimizeScript), optimizeScript.slice(0, 80))
   check('Windows saves JPEG with the quality', optimizeScript.includes('Encoder]::Quality') && optimizeScript.includes('[long]70'), optimizeScript.slice(-80))
 
@@ -136,6 +138,8 @@ return { ideShotFitScale, ideShotClampSelection, ideShotRectFromPoints, ideShotH
   check('a tiny drag is not a frame', client.includes('IDE_SHOT_MIN_SELECTION || selection.height < IDE_SHOT_MIN_SELECTION'))
   check('the card is anchored to the frame', client.includes('iw-shot-card') && client.includes('frameTop + frameHeight'))
   check('nothing is painted before the capture (or it lands in the picture)', client.includes('let screenshotBusy = false'))
+  check('the Host capture request has no runtime-specific flags', client.includes('ideShotRequest({})'))
+  check('the same flow runs in a browser tab and on the desktop', !client.includes('shotWebOnly') && !client.includes('ideScreenshotAllowed'))
   check('no running-phase overlay', !client.includes("phase: 'running'"))
   check('marks are operations, not pixels', client.includes('setOps((list) => [...list, op])') && client.includes('ideShotExport'))
   check('the editor has an undo', client.includes('const undo = () => setOps((list) => list.slice(0, -1))'))
@@ -145,7 +149,8 @@ return { ideShotFitScale, ideShotClampSelection, ideShotRectFromPoints, ideShotH
   check('the budget is 1 MB', host.includes('1024 * 1024'))
   check('the quality ladder steps down', host.includes('[80, 70, 60, 50]') || /80, 70, 60, 50/.test(host))
   check('the raw PNG is removed after optimising', host.includes('rmSync(target'))
-  check('the capture for the editor is larger than the export', host.includes('IDE_SCREENSHOT_EDIT_EDGE = 2560'))
+  check('the capture keeps the screen pixels (no 1080p cap)', host.includes('IDE_SCREENSHOT_EDIT_EDGE = null') && host.includes('optimizeScreenshot(target, null)'))
+  check('the export is not capped at 1920 either', !client.includes('IDE_SHOT_EXPORT_EDGE'))
   check('the host can copy an in-page image', host.includes('copyDataUrl'))
 }
 

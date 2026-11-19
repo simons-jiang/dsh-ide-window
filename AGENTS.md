@@ -68,7 +68,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `66-callchain.js` | 调用链（Alt+单击）：沿 `findReferences` 向上递归，思维导图式浮层 |
 | `68-grep.js` | 工作区搜索 + jar 源码查询客户端 |
 | `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
-| `72-screenshot.js` | **截图编辑器**：宿主抓屏 → 拖框选区（无预设）→ 选框下方浮动条（矩形/文字/撤销 | 截图/截图并跳转会话）→ 裁切导出（长边 1920、≤1 MB）；含 macOS 授权引导 |
+| `72-screenshot.js` | **截图编辑器**：宿主按设备像素抓屏 → 铺满窗口显示 → 拖框选区（无预设）→ 选框下方浮动条（矩形/文字/撤销 | 截图/截图并跳转会话）→ 裁切导出（原始像素、≤1 MB）；含 macOS 授权引导 |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
 
 ### 3.2 平台层（`platform/`，只支持 macOS + Windows）
@@ -217,21 +217,33 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 ### 4.2.1 截图编辑器
 
 - 快捷键 `⌘⇧S`（Windows `Ctrl+Shift+S`），设置里可改；Search Everywhere 的「操作」里也有
-- **抓屏**（宿主，系统自带工具，**不装任何第三方程序**）：macOS `screencapture -x -t png`、Windows PowerShell + `System.Drawing`（`CopyFromScreen` 抓虚拟屏幕，多显示器也覆盖）；抓完先压到 2560 长边的 JPEG（编辑用，比导出的 1080p 高，框小块也清晰），原 PNG 用完即删
+- **桌面端与浏览器端同一套流程**：抓屏由**宿主**完成（宿主就跑在拥有屏幕的那台机器上），页面里的 `getDisplayMedia` 被 DSH 关掉不影响它。所以浏览器 tab 里按快捷键同样能截，不区分运行时
+- **一次抓整屏，再在图上框选**：`screencapture -x` / Windows `CopyFromScreen` 抓完整屏 → 编辑器里拖出选框 → 只导出选框内那块（+ 标注）
+- **按设备像素抓屏，不限 1080p**：`optimizeScreenshot(target, null)`（`IDE_SCREENSHOT_EDIT_EDGE = null`）——`sips` 不带 `-Z`、Windows 脚本不缩放，抓到多少像素就是多少像素。2560×1440 的屏就存 2560×1440 的 JPEG（q80 约 400 KB），原 PNG 用完即删
+- **导出同样保原始像素**：不再强制 1920 长边，先按质量阶梯压到 ≤1 MB，只有实在压不下去才按 `1 → 1/1.25 → 1/1.5 → 1/2` 逐级缩小
+- **为什么不在抓屏前用系统十字光标（`screencapture -i`）**：试过，跨平台不一致（Windows 没有等价 CLI），而且框选完就没有可标注的画布了。现在统一成「先截、后框、再标注」
 - **交互**（客户端 Canvas，两个平台同一套代码）：编辑器挂在 `shell.overlay` 上，覆盖整个窗口、不被面板 overflow 裁剪
+  - **画面按屏幕坐标 1:1 贴上去**：`scale = 1 / devicePixelRatio`，画布用 `position: absolute` + `left/top = -(window.screenX / window.screenY)`。截图是整屏，而浮层只盖住这个窗口——不减去窗口在屏幕上的偏移，画面就会在窗口里居中，于是**窗口自己的菜单栏/标题栏在画面里又出现一次**，看起来就是「重影/重叠」（用户实测截图里两条标题栏叠在一起）。减掉偏移后，冻结的画面正好落在原来屏幕的位置上，窗口外的部分被浮层裁掉
+  - **指针换算以画布为准**：`ideShotPoint(event, canvas, scale, bounds)` 用 `canvas.getBoundingClientRect()`，不要再按 stage 居中算（画布可能超出 stage）
+  - **不显示任何提示文案**：拖框去选范围这件事用的人一眼就懂，屏幕边缘那行字只会挡内容
   - **没有预设选框**：打开时整屏压暗，用户按下左键并拖动 → 选框实时扩张 → 松开左键完成并固定
   - **Esc 随时退出整个操作**：没开始拉框、正在拉框（拖到一半）、已经拉完 —— 三种状态下按 Esc 都直接关掉编辑器，并把拖动状态清空（随后那次 `pointerup` 不会再把它救回来）。监听挂在 **window 的捕获阶段**：浮层自己永远拿不到焦点，挂在浮层上的 `onKeyDown` 基本不会触发
-  - 操作条**只在松开左键之后出现**（`dragging` 为 true 时不渲染），拉框过程中只有一个提示行
+  - 操作条**只在松开左键之后出现**（`dragging` 为 true 时不渲染），拉框过程中界面上没有任何多余元素
   - **先抓屏、再渲染**：抓屏期间界面上不能出现任何自己的元素（连「正在截图…」的字都会被截进图里）。`startScreenshot()` 里 `screenshotBusy` 守住不重复触发，等 Host 返回后才 `setScreenshot({phase:'editing'})`；编辑器的「加载中」卡片只会在图片已经拿到之后出现
   - 选框下方 10px 弹出**浮动操作条**（底边放不下时浮到上方）：`矩形 / 文字 / 撤销 | 截图 / 截图并跳转会话`；按钮 `flex: 0 0 auto` + `white-space: nowrap`，卡片宽 392px（否则中文按钮会折成三行）
   - **外观跟随工作区**：编辑器在 `shell.overlay` 里，**不在 `.iw-root` 内**，所以必须自己 `h(IdeStyles)` 注入样式表、自己带 `data-dsh-theme`（工作区主题属性）与字体变量。漏掉前者 = 卡片掉回浏览器默认样式（白底白字按钮）；漏掉后者 = 深色工作区上出现白色卡片
   - 卡片按钮直接复用面板的 `.iw-btn`（含 `.on` / `.primary`），字号取用户在设置里配的字号（`treeFontSize`，默认 14.5px）
   - 标注只提供**矩形**与**文字**：`select` 是范围工具，`rect`/`text` 是标记；椭圆/箭头/画笔/马赛克的绘制代码仍在 `ideShotDrawOp` 里，但**不进操作条**（保持卡片小），要放开只需往 `IDE_SHOT_TOOLS` 与按钮里加一项
-  - 文字用 DOM `<input>` 收输入（中文输入法可用），回车落到画布
+  - 文字用 DOM `<input>` 收输入（中文输入法可用），回车落到画布：
+    - 输入框装在 `.iw-shot-frame`（与画布等宽的定位容器）里，`left/top` 直接用**点击点**的图像坐标 × 缩放——早先直接按 stage 定位，画布居中时输入框会飘出去很远
+    - 样式是**透明**的：无底色、只有 1px 虚线描边（当前标注色），文字带阴影保证在任意背景上可读；字号跟着缩放走，落笔的 `stroke` 存的是同一个尺寸（图像像素），所见即所画
+    - 打开时**在别处按下就取消**，但**按在输入框自己身上不算「别处」**：stage 的 `onPointerDown` 先看 `event.target.closest('.iw-shot-text')`，input 自己再 `stopPropagation()`。漏了这条，用户点一下刚出现的输入框想输入文字，输入框立刻被当成「点了别处」取消——永远打不进字（用户实测反馈）
+    - Esc 先取消输入框（浮层让给 input 自己处理），再按一次才退出编辑器
+  - 文字框打开期间不要用 window 捕获去抢 Esc 再自己关一次：一次按键只能做一件事，重复处理会把整个编辑器关掉
   - 标注存为**操作列表**（`{tool, color, stroke, x, y, width, height, points}`），重绘 = 底图 + 操作，撤销是 `pop()`
   - `stroke` 是笔宽，`width/height` 是图形本身——**两者绝不能共用一个字段**（踩过：共用后 lineWidth 变成矩形宽度，整屏红块）
   - 拖出来太小（< 24px）视为误点，选框清空、回到「整屏压暗」状态
-- **导出**：裁出选框 → 长边 1920 → JPEG 质量阶梯 `0.8/0.7/0.6/0.5/0.4`，第一个 ≤1 MB 的用；客户端算好 data URL，两个出口：
+- **导出**：裁出选框 → 原始像素 → JPEG 质量阶梯 `0.8/0.7/0.6/0.5/0.4`，第一个 ≤1 MB 的用（仍不合规才降分辨率）；客户端算好 data URL，两个出口：
   - **截图并跳转会话**：合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 塞进 Lexical 输入框，草稿里的文字/引用/附件不动
   - **截图**：`{copyDataUrl}` 回传宿主（宿主写临时文件再 `osascript`/`.NET` 写剪贴板）——该路由请求体上限单独放宽到 8 MB（默认 64 KB 是给命令用的）
 - **macOS 屏幕录制权限**：没授权时 `screencapture` 报 `could not create image from display`，宿主归类 `403 no-screen-permission`，编辑器位置的卡片给系统化指引 + 「打开系统设置」（`x-apple.systempreferences:…Privacy_ScreenCapture`），授权后必须**完全退出应用重开**。Windows 无此权限
@@ -349,11 +361,17 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 | 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
 | 截图编辑器画出巨大的实心色块 | 操作对象里 `width` 同时被当成"笔宽"和"矩形宽度"，`lineWidth` 变成几百像素 | 笔宽叫 `stroke`、几何叫 `width/height`；`ideShotDrawOp` 只从 `stroke` 取线宽 |
+| 截图里看到自己的窗口重影（两条标题栏） | 截图是整屏、浮层只盖住窗口，却把画面在窗口里居中显示：窗口自己的菜单栏/标题栏在画面里又出现一次 | 画布按 `1/dpr` 画在 `left/top = -(screenX/screenY)`，让冻结的画面与真实屏幕对齐；指针换算统一用画布的 `getBoundingClientRect()` |
+| 文字框刚出现，一点它就消失，永远输不进字 | stage 的 `onPointerDown` 把「按下即取消输入框」写成了无差别判断，点在 input 上冒泡到 stage 也算「点了别处」 | 取消逻辑要放过落在输入框内的按压（`event.target.closest('.iw-shot-text')` 直接 return），input 自己再 `stopPropagation()` |
+| 文字框离鼠标很远 / 是白底方块盖住图 | 输入框按 stage 定位（画布在 stage 里居中，偏移丢了）；样式用了不透明底色 + 实线边框 | 画布与输入框放进同宽的 `.iw-shot-frame`，坐标直接用图像点 × 缩放；输入框透明 + 虚线描边 |
+| 按 Esc 关不掉文字框 | 浮层窗口级的 Esc 处理器在 `textAt !== null` 时直接 return，把「取消输入框」寄托在 input 自己的 onKeyDown 上，而 DSH 可能先吞掉 keydown | 一次按键只做一件事：输入框打开时窗口处理器**不参与**，由 input 自己的 onKeyDown 取消；没有输入框时窗口处理器才退出编辑器 |
+| 浏览器里按截图快捷键什么都不发生 | 浏览器侧本来就没有屏幕权限（DSH 的 `configureSession` 把 display-media 源给空），代码却照常发请求 | 先判运行环境：`runtime === 'web'` 直接给「请移步桌面端」的提示，别发请求；调试用 `localStorage['dsh-ide:screenshot-force']` 显式放开 |
 | 截图里带上了自己的「正在截图…」字 | 抓屏前就把浮层渲染出来了：`screencapture` 会把当前屏幕原样拍下，包括刚画上去的浮层 | **先抓屏再渲染**：抓屏期间 DOM 里不许有任何自己的元素；需要反馈也只能在 Host 返回后显示 |
+| 以为截图里带着「蓝色选框」 | 选框是编辑器画的，导出走的是「底图 + 标注」重绘，实测四边偏蓝像素为 1（画面内容本身）；曾误判为要先框选再抓屏，`screencapture -i` 反而让 Windows 没有等价物、框完也没法标注 | 保持「先截整屏、再框选」，选框只存在于编辑器图层，绝不进入导出 |
 | 浮层里按 Esc 没反应 | 编辑器挂在 `shell.overlay`，浮层从不获得焦点，`onKeyDown` 只在该元素内按键才触发 | Esc / ⌘Z 都挂到 `window` 捕获阶段（`globalThis.addEventListener('keydown', handler, true)`），别依赖焦点 |
 | 截图画框后的操作条是白底白字、字体也不对 | 编辑器渲染在 `shell.overlay`，不在 `.iw-root` 里：① 面板组件才注入 `IdeStyles`，浮层没注入 → 全部 `.iw-*` 规则失效，掉回浏览器默认按钮；② `[data-dsh-theme]` 只在面板根节点上 → 浮层拿不到工作区调色板，用宿主 token | 浮层自己 `h(IdeStyles)` + 自带 `data-dsh-theme` 与字体变量；按钮复用 `.iw-btn` 而不是自造一套 |
 | 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
-| 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 压缩是**必做步骤**不是可选项：统一 1920 长边 JPEG，质量阶梯 80→50 直到 ≤1 MB；原 PNG 用完就删，只留小文件 |
+| 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 质量阶梯 80→40 直到 ≤1 MB；仍超标才降分辨率（1 → 1/1.25 → 1/1.5 → 1/2）。**不预设 1080p**：抓屏与导出都保持设备像素 |
 | 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |
 | 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
 

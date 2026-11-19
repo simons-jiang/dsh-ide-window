@@ -313,9 +313,13 @@ function apply(ctx) {
    * guard keeps a double press from firing two captures.
    */
   let screenshotBusy = false
+  /**
+   * Same flow on the desktop window and in a browser tab: the Host (which runs
+   * on the machine that owns the screen) grabs the picture, the editor frames
+   * it. Nothing here depends on the shell's own screen-capture permission.
+   */
   async function startScreenshot() {
     if (screenshotBusy) return
-    if (store.getState().screenshot !== null) return
     screenshotBusy = true
     try {
       const result = await ideShotRequest({})
@@ -323,7 +327,7 @@ function apply(ctx) {
         store.setScreenshot({ phase: 'error', code: result.code, message: result.message })
         return
       }
-      // The editor owns the capture from here: range, marks, export.
+      // The editor owns the capture from here: frame, marks, export.
       store.setScreenshot({ phase: 'editing', ...result.value })
     } finally {
       screenshotBusy = false
@@ -426,6 +430,8 @@ function apply(ctx) {
     { id: 'jump', labelKey: 'paletteActionJump', run: () => store.setJumpEnabled(!store.getState().jumpEnabled) },
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
+    // Kept in the list on every runtime: in a browser the entry explains why the
+    // feature needs the desktop app instead of silently doing nothing.
     { id: 'screenshot', labelKey: 'paletteActionScreenshot', run: () => { void startScreenshot() } },
     { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
     { id: 'diagnostics', labelKey: 'paletteActionDiagnostics', run: () => { void exportDiagnostics() } },

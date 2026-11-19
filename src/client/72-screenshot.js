@@ -22,11 +22,12 @@ const IDE_SHOT_ROUTE = '/dsh-ide/screenshot'
 const IDE_SHOT_PERMISSION_ROUTE = '/dsh-ide/screen-permission'
 
 /** Long edge of the export; 1920 keeps a 16:9 crop at 1080p. */
-const IDE_SHOT_EXPORT_EDGE = 1920
 /** The export must not exceed this when it becomes a chat attachment. */
 const IDE_SHOT_BUDGET = 1024 * 1024
 /** JPEG qualities tried in order until the budget is met. */
 const IDE_SHOT_QUALITIES = [0.8, 0.7, 0.6, 0.5, 0.4]
+/** Extra passes that only run when the JPEG still exceeds the budget. */
+const IDE_SHOT_SHRINK_STEPS = [1, 1.25, 1.5, 2]
 
 /**
  * Tools the popup card offers.
@@ -128,6 +129,21 @@ function ideShotFitScale(width, height, boxWidth, boxHeight) {
   return Math.min(boxWidth / width, boxHeight / height, 1)
 }
 
+/**
+ * How big to draw the capture.
+ *
+ * The whole picture has to stay visible — cropping it would put the screen's
+ * edges out of reach, and a selection there would silently lose content. So it
+ * is drawn at life size (a Retina capture is 2× the CSS pixels, hence `1/ratio`)
+ * and only scaled down when the window cannot hold it. On a window that is
+ * nearly the screen this fills it edge to edge.
+ */
+function ideShotDisplayScale(imageWidth, imageHeight, boxWidth, boxHeight, ratio) {
+  if (!(imageWidth > 0) || !(imageHeight > 0) || !(boxWidth > 0) || !(boxHeight > 0)) return 1
+  const life = 1 / (ratio > 0 ? ratio : 1)
+  return Math.min(life, boxWidth / imageWidth, boxHeight / imageHeight)
+}
+
 /** Keep a rectangle inside `bounds` without changing its size (unless it must shrink). */
 function ideShotClampSelection(rect, bounds) {
   const width = Math.min(rect.width, bounds.width)
@@ -195,12 +211,10 @@ function ideShotResize(rect, handle, point, bounds) {
  * within the stage is half of the leftover space; `bounds` is the image size
  * (the stage element itself has no width/height of its own).
  */
-function ideShotPoint(event, stage, scale, bounds) {
-  const box = stage.getBoundingClientRect()
-  const drawnWidth = bounds.width * scale
-  const drawnHeight = bounds.height * scale
-  const x = (event.clientX - box.left - (box.width - drawnWidth) / 2) / scale
-  const y = (event.clientY - box.top - (box.height - drawnHeight) / 2) / scale
+function ideShotPoint(event, canvas, scale, bounds) {
+  const box = canvas.getBoundingClientRect()
+  const x = (event.clientX - box.left) / scale
+  const y = (event.clientY - box.top) / scale
   return {
     x: Math.max(0, Math.min(Number.isFinite(x) ? x : 0, bounds.width)),
     y: Math.max(0, Math.min(Number.isFinite(y) ? y : 0, bounds.height)),
@@ -252,7 +266,7 @@ function ideShotDrawOp(ctx, op, image) {
       ctx.stroke()
     }
   } else if (op.tool === 'text') {
-    ctx.font = `${Math.max(12, stroke * 5)}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
+    ctx.font = `${Math.max(12, Math.round(stroke))}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
     ctx.textBaseline = 'top'
     // A dark halo keeps the label readable on light and dark captures alike.
     ctx.lineWidth = Math.max(2, stroke / 2)
@@ -331,23 +345,32 @@ function ideShotExport(image, ops, selection) {
   const sourceY = Math.max(0, Math.round(selection.y))
   const sourceWidth = Math.max(1, Math.round(Math.min(selection.width, image.width - sourceX)))
   const sourceHeight = Math.max(1, Math.round(Math.min(selection.height, image.height - sourceY)))
-  const scale = Math.min(1, IDE_SHOT_EXPORT_EDGE / Math.max(sourceWidth, sourceHeight))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(sourceWidth * scale))
-  canvas.height = Math.max(1, Math.round(sourceHeight * scale))
-  const ctx = canvas.getContext('2d')
-  if (ctx === null) return ''
-  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height)
-  ctx.save()
-  ctx.scale(scale, scale)
-  ctx.translate(-sourceX, -sourceY)
-  for (const op of ops) ideShotDrawOp(ctx, op, image)
-  ctx.restore()
-  let smallest = canvas.toDataURL('image/jpeg', IDE_SHOT_QUALITIES[IDE_SHOT_QUALITIES.length - 1])
-  for (const quality of IDE_SHOT_QUALITIES) {
-    const url = canvas.toDataURL('image/jpeg', quality)
-    if (url.length * 0.75 <= IDE_SHOT_BUDGET) return url
-    if (url.length < smallest.length) smallest = url
+  const render = (scale) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) return null
+    ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height)
+    ctx.save()
+    ctx.scale(scale, scale)
+    ctx.translate(-sourceX, -sourceY)
+    for (const op of ops) ideShotDrawOp(ctx, op, image)
+    ctx.restore()
+    return canvas
+  }
+  // The crop keeps the screen's own pixels (no forced 1920 edge). Quality is
+  // spent first; the picture is only ever shrunk if it still cannot fit the
+  // attachment budget.
+  let smallest = ''
+  for (const step of IDE_SHOT_SHRINK_STEPS) {
+    const canvas = render(Math.min(1, 1 / step))
+    if (canvas === null) return ''
+    for (const quality of IDE_SHOT_QUALITIES) {
+      const url = canvas.toDataURL('image/jpeg', quality)
+      if (url.length * 0.75 <= IDE_SHOT_BUDGET) return url
+      if (smallest === '' || url.length < smallest.length) smallest = url
+    }
   }
   return smallest
 }
@@ -386,7 +409,14 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
   const [textAt, setTextAt] = useState(null)
   const [textValue, setTextValue] = useState('')
   const [scale, setScale] = useState(1)
+  /**
+   * On-screen size of a text mark. The operation stores the same size in image
+   * pixels (divided by the zoom), so what you type is exactly what gets drawn.
+   */
+  const textFont = Math.max(12, Math.round(width * 2.4 * scale))
   const [stageRect, setStageRect] = useState(null)
+  /** Where image pixel (0,0) goes, in viewport coordinates. */
+  const [origin, setOrigin] = useState({ left: 0, top: 0 })
   const canvasRef = useRef(null)
   const frameRef = useRef(null)
   const dragRef = useRef(null)
@@ -408,16 +438,22 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
     element.src = shot.dataUrl
   }, [editing, shot?.dataUrl])
 
-  // Fit the capture into the window and keep it fitted across resizes.
+  /**
+   * Put the frozen picture exactly where the screen was.
+   *
+   * The capture is the whole screen in device pixels, and the overlay only
+   * covers this window — so it is drawn 1:1 (`1 / devicePixelRatio`) and moved
+   * up/left by the window's own screen offset. Without that offset the picture
+   * is centred inside the window: its menu bar and title bar land *inside* the
+   * window too, and you see everything doubled.
+   */
   useEffect(() => {
     if (image === null) return
-    const fit = () => {
-      const box = { width: Math.max(320, globalThis.innerWidth - 96), height: Math.max(240, globalThis.innerHeight - 180) }
-      setScale(ideShotFitScale(image.naturalWidth, image.naturalHeight, box.width, box.height))
-    }
-    fit()
-    globalThis.addEventListener?.('resize', fit)
-    return () => globalThis.removeEventListener?.('resize', fit)
+    setScale(1 / (globalThis.devicePixelRatio || 1))
+    setOrigin({
+      left: -(globalThis.screenX ?? globalThis.screenLeft ?? 0),
+      top: -(globalThis.screenY ?? globalThis.screenTop ?? 0),
+    })
   }, [image])
 
   // Repaint whenever anything visible changed.
@@ -473,10 +509,18 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
    * the active tool decides (range adjust, rectangle, or text).
    */
   const onPointerDown = (event) => {
+    // Pressing the box itself has to place the caret, not cancel it: the event
+    // bubbles from the <input> up to this stage handler.
+    if (event.target?.closest?.('.iw-shot-text')) return
+    if (textAt !== null) {
+      setTextAt(null)
+      setTextValue('')
+      return
+    }
     if (image === null) return
     const frame = frameRef.current
     if (frame === null) return
-    const point = ideShotPoint(event, frame, scale, bounds)
+    const point = ideShotPoint(event, canvasRef.current ?? frame, scale, bounds)
     try {
       frame.setPointerCapture?.(event.pointerId)
     } catch {
@@ -511,7 +555,7 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
     const drag = dragRef.current
     const frame = frameRef.current
     if (frame === null) return
-    const point = ideShotPoint(event, frame, scale, bounds)
+    const point = ideShotPoint(event, canvasRef.current ?? frame, scale, bounds)
     if (drag !== null) {
       if (drag.mode === 'move') {
         const dx = point.x - drag.origin.x
@@ -575,7 +619,9 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
       setTextAt(null)
       return
     }
-    setOps((list) => [...list, { tool: 'text', x: textAt.x, y: textAt.y, text: textValue.trim(), color, stroke: width }])
+    // `stroke` doubles as the font size for text marks, in image pixels; the
+    // preview is that number times the zoom, so the two agree.
+    setOps((list) => [...list, { tool: 'text', x: textAt.x, y: textAt.y, text: textValue.trim(), color, stroke: Math.max(12, Math.round(textFont / scale)) }])
     setTextAt(null)
     setTextValue('')
   }
@@ -593,8 +639,13 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
    */
   useEffect(() => {
     if (!editing) return undefined
+    /**
+     * Esc leaves the editor — except while a text box is open: then the box
+     * owns the key and closes itself (its own `onKeyDown`), so one press never
+     * does two things. Nothing here stops propagation for that case.
+     */
     const onKey = (event) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented === true) return
       if (textAt !== null) return
       event.preventDefault()
       event.stopPropagation()
@@ -718,7 +769,6 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
       }
     },
   }, [
-    h('div', { key: 'hint', className: 'iw-shot-hint iw-shot-hint--top' }, selection === null || dragging ? tr('shotSelectHint') : tr('shotMarkHint')),
     h('div', {
       key: 'stage',
       ref: frameRef,
@@ -728,35 +778,57 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
       onPointerUp: onPointerUp,
       onPointerCancel: onPointerUp,
     }, [
-      h('canvas', {
-        key: 'canvas',
-        ref: canvasRef,
-        className: 'iw-shot-canvas',
+      h('div', {
+        key: 'frame',
+        className: 'iw-shot-frame',
         style: {
+          position: 'absolute',
+          left: `${origin.left}px`,
+          top: `${origin.top}px`,
           width: `${Math.round(image.naturalWidth * scale)}px`,
           height: `${Math.round(image.naturalHeight * scale)}px`,
         },
-      }),
-      textAt === null ? null : h('input', {
-        key: 'text',
-        className: 'iw-shot-text',
-        autoFocus: true,
-        value: textValue,
-        placeholder: tr('shotTextPlaceholder'),
-        style: {
-          left: `${textAt.x * scale}px`,
-          top: `${textAt.y * scale}px`,
-        },
-        onChange: (event) => setTextValue(event.target.value),
-        onKeyDown: (event) => {
-          event.stopPropagation()
-          if (event.key === 'Enter') commitText()
-          if (event.key === 'Escape') {
-            setTextAt(null)
-            setTextValue('')
-          }
-        },
-      }),
+      }, [
+        h('canvas', {
+          key: 'canvas',
+          ref: canvasRef,
+          className: 'iw-shot-canvas',
+        }),
+        textAt === null ? null : h('input', {
+          key: 'text',
+          className: 'iw-shot-text',
+          autoFocus: true,
+          // The stage cancels an open box on pointerdown; a click in the box
+          // itself must not bubble up to it.
+          onPointerDown: (event) => event.stopPropagation(),
+          value: textValue,
+          placeholder: tr('shotTextPlaceholder'),
+          style: {
+            left: `${Math.round(textAt.x * scale)}px`,
+            top: `${Math.round(textAt.y * scale) - textFont}px`,
+            color,
+            fontSize: `${textFont}px`,
+            width: `${Math.max(96, Math.round((textValue.length + 1) * textFont * 0.62))}px`,
+          },
+          onChange: (event) => setTextValue(event.target.value),
+          onKeyDown: (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              event.stopPropagation()
+              commitText()
+              return
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              setTextAt(null)
+              setTextValue('')
+              return
+            }
+            event.stopPropagation()
+          },
+        }),
+      ]),
     ]),
     card,
   ]))

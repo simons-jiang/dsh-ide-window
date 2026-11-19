@@ -242,8 +242,6 @@
   "shotNoEditor": "Composer not found: the screenshot is on the clipboard, press ⌘V",
   "shotOpenFailed": "Could not open System Settings. Open it manually: Privacy & Security → Screen Recording",
   "paletteActionScreenshot": "Take a screenshot",
-  "shotSelectHint": "Press the left button and drag to frame the area; release to finish, Esc cancels.",
-  "shotMarkHint": "Drag inside the frame to draw a box, or pick Text and click to type. ⌘Z undoes, Esc closes.",
   "shotTool_rect": "Box",
   "shotTool_text": "Text",
   "shotUndo": "Undo",

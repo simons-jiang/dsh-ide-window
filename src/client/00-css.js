@@ -1492,11 +1492,12 @@ html.iw-select-code .iw-code .iw-vision {
 }
 .iw-shot-veil--editor {
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  gap: 0;
+  padding: 0;
   box-sizing: border-box;
-  background: rgba(8, 10, 14, 0.92);
+  background: #000;
   outline: none;
+  overflow: hidden;
 }
 .iw-shot {
   width: 420px;
@@ -1607,22 +1608,41 @@ html.iw-select-code .iw-code .iw-vision {
   touch-action: none;
   cursor: crosshair;
 }
+.iw-shot-frame {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+}
 .iw-shot-canvas {
   display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 4px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
+/* The text box has to sit *on* the picture without covering it: no fill, no
+   chrome, just a hairline so the caret has somewhere to live. Its colour is the
+   annotation colour, so what you type looks like the mark you will get. */
 .iw-shot-text {
   position: absolute;
-  min-width: 160px;
-  padding: 4px 6px;
-  border: 1px solid var(--dsw-alias-brand-primary, #4f8cff);
-  border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-2, #23262c);
-  color: var(--dsw-alias-label-primary, #e6e8ec);
-  font: inherit;
-  font-size: 13px;
+  min-width: 0;
+  margin: 0;
+  padding: 1px 2px;
+  border: 1px dashed color-mix(in srgb, currentColor 55%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  color: currentColor;
+  font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+  font-weight: 600;
+  line-height: 1.25;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  caret-color: currentColor;
   outline: none;
+}
+.iw-shot-text::placeholder {
+  color: currentColor;
+  opacity: 0.45;
+  font-weight: 400;
 }
 
 `

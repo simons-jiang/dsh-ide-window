@@ -866,7 +866,8 @@ const IDE_SCREENSHOT_MAX_BYTES = 1024 * 1024
  * Bigger than the final 1080p export: the user crops a region, and cropping a
  * 1080p capture would leave a blurry result.
  */
-const IDE_SCREENSHOT_EDIT_EDGE = 2560
+/** `null`: keep the capture at the screen's real pixel size. */
+const IDE_SCREENSHOT_EDIT_EDGE = null
 /** JPEG quality ladder: the first result under the budget wins. */
 const IDE_SCREENSHOT_QUALITIES = [80, 70, 60, 50]
 
@@ -926,22 +927,20 @@ export async function captureScreen(payload) {
     }
     return { path: existing, copied: true, bytes: 0, dataUrl: '' }
   }
+
+  // One capture path for both runtimes: grab the whole screen, then let the
+  // editor frame it. The Host runs on the machine that owns the screen, so this
+  // works from a browser tab as well as from the desktop window.
   const target = join(tmpdir(), `dsh-ide-shot-${Date.now()}.png`)
   const { command, args } = platform.screenshotCommand(target)
-  const { code, output } = await runProcess(command, args, 20000)
-  logEvent('info', 'screenshot', 'capture: spawned', { code, bytes: output.length })
-  let bytes = 0
-  try {
-    bytes = statSync(target).size
-  } catch {
-    bytes = 0
-  }
-  if (code !== 0 || bytes === 0) {
-    if (screenshotLooksPermissionDenied(output)) {
-      throw new RouteError(403, 'no-screen-permission', output.trim() || 'screen recording is not permitted')
+  const attempt = await runProcess(command, args, 20000)
+  if (attempt.code !== 0) {
+    if (screenshotLooksPermissionDenied(attempt.output)) {
+      throw new RouteError(403, 'no-screen-permission', attempt.output.trim() || 'screen recording is not permitted')
     }
-    throw new RouteError(500, 'capture-failed', output.trim() || `screenshot exited ${code}`)
+    throw new RouteError(500, 'capture-failed', attempt.output.trim() || `screenshot exited ${attempt.code}`)
   }
+
   if (payload?.copy === true) {
     const clipboard = platform.clipboardImageCommand(target)
     const copied = await runProcess(clipboard.command, clipboard.args, 20000)
@@ -951,7 +950,8 @@ export async function captureScreen(payload) {
   }
   // A raw screen is far too big for a chat attachment: shrink it before it is
   // ever shown or pasted, and keep only the small file on disk.
-  const optimized = await optimizeScreenshot(target, IDE_SCREENSHOT_EDIT_EDGE)
+  // Native device pixels: the editor displays 1:1 and the crop keeps its detail.
+  const optimized = await optimizeScreenshot(target, null)
   try {
     rmSync(target, { force: true })
   } catch {
@@ -962,12 +962,8 @@ export async function captureScreen(payload) {
   }
   const mime = /\.jpe?g$/i.test(optimized.path) ? 'image/jpeg' : 'image/png'
   const dataUrl = `data:${mime};base64,${readFileSync(optimized.path).toString('base64')}`
-  logEvent('info', 'screenshot', 'captured', {
-    bytes: optimized.bytes,
-    quality: optimized.quality,
-    path: optimized.path,
-  })
-  // The temp file stays for "只截图" (the notice shows the path).
+  logEvent('info', 'screenshot', 'captured', { bytes: optimized.bytes, quality: optimized.quality, path: optimized.path })
+  // Two facts the editor needs: the file to keep for "只截图", and the picture.
   return { path: optimized.path, bytes: optimized.bytes, quality: optimized.quality, dataUrl }
 }
 
