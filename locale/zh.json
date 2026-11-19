@@ -228,5 +228,22 @@
   "theme_github_light": "GitHub 浅色",
   "theme_atom_one_light": "Atom One 浅色",
   "theme_solarized_light": "Solarized 浅色",
-  "theme_intellij_light": "IntelliJ 浅色"
+  "theme_intellij_light": "IntelliJ 浅色",
+  "shortcutScreenshot": "截图（可跳转会话）",
+  "shotTitle": "截图完成",
+  "shotBusy": "正在截图…",
+  "shotPreview": "截图预览",
+  "shotJump": "截图并跳转会话",
+  "shotKeep": "只截图（复制到剪贴板）",
+  "shotRetry": "重试",
+  "shotFailed": "截图失败",
+  "shotNoPermissionTitle": "无法截图：缺少屏幕录制权限",
+  "shotNoPermissionMac": "请在「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 DeepSeek Harness，然后完全退出并重新打开应用（授权后必须重启才生效）。",
+  "shotNoPermissionWindows": "Windows 截图不需要授权。请确认没有锁屏、远程桌面占用或企业策略拦截，然后重试。",
+  "shotOpenSettings": "打开系统设置",
+  "shotAttached": "已把截图插入对话",
+  "shotCopied": "截图已复制到剪贴板",
+  "shotNoEditor": "没找到对话框：截图已复制到剪贴板，按 ⌘V 粘贴",
+  "shotOpenFailed": "打不开系统设置，请手动打开：系统设置 → 隐私与安全性 → 屏幕录制",
+  "paletteActionScreenshot": "截图"
 }

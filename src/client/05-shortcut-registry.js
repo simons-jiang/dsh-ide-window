@@ -89,6 +89,18 @@ const IDE_SHORTCUTS = [
     action: 'focus-filter',
   },
   {
+    id: 'code-workspace.screenshot',
+    kind: 'key',
+    labelKey: 'shortcutScreenshot',
+    aliases: ['screenshot', 'capture', 'shot', '截图', '截屏'],
+    // ⌘⇧4 belongs to macOS itself, so the workspace uses its own combination.
+    defaults: {
+      desktop: { code: 'KeyS', modifiers: ['primary', 'shift'] },
+      web: { code: 'KeyS', modifiers: ['primary', 'shift'] },
+    },
+    action: 'screenshot',
+  },
+  {
     id: 'code-workspace.gesture-definition',
     kind: 'gesture',
     labelKey: 'gestureDefinition',

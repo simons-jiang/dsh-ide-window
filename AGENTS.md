@@ -68,6 +68,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `66-callchain.js` | 调用链（Alt+单击）：沿 `findReferences` 向上递归，思维导图式浮层 |
 | `68-grep.js` | 工作区搜索 + jar 源码查询客户端 |
 | `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
+| `72-screenshot.js` | **截图**：宿主抓屏、预览弹层、「跳转会话（粘贴图片）/ 只截图」、macOS 授权引导 |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
 
 ### 3.2 平台层（`platform/`，只支持 macOS + Windows）
@@ -81,7 +82,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `platform/windows.js` | `\` ↔ `/` 互转、`cmd /c start` 打开 URL、`rg.exe`、`intellij-server.bat`、`.bat/.cmd` 需要 shell |
 | `platform/index.js` | `createPlatform(os)`：**只有 macOS（`darwin`/`macos`/`mac`）用 macOS 实现，其他一律 Windows** |
 
-接口：`name`、`toPosix()`、`toNative()`、`isAbsolutePath()`、`expandUserPath()`、`ripgrepSuffixes`、`serverLauncherNames`、`needsShell()`、`openUrlCommand()`。
+接口：`name`、`toPosix()`、`toNative()`、`isAbsolutePath()`、`expandUserPath()`、`ripgrepSuffixes`、`serverLauncherNames`、`needsShell()`、`openUrlCommand()`、`screenshotCommand()`、`clipboardImageCommand()`。
 
 根路径不是平台差异：需要时用 `node:path` 的 `parse(path).root`。
 
@@ -118,6 +119,8 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `/dsh-ide/text` | 复制文件内容 | 读整个文件（≤512 KB），返回 `{text, truncated}` |
 | `/dsh-ide/diagnostics` | 诊断日志 | `{action:'read'}` 返回本机最近 100 条事件 + 日志文件路径；`{action:'report', entries}` 接收浏览器缓冲的事件并写入同一文件（`level:'client'`） |
 | `/dsh-ide/theme` | 主题样式表 | `GET ?id=<主题>` 返回 `themes/<id>.css`（唯一非 JSON 路由，浏览器用 `<link>` 取）；id 只允许 `[a-z0-9-]`，未知 404、非法 400 |
+| `/dsh-ide/screenshot` | 截屏 | `{copy:true}` 抓屏并复制；`{copyOf:path}` 只把已有文件复制到剪贴板；返回 `{path, bytes, quality, dataUrl}`（1080p JPEG，质量阶梯保证 ≤1 MB）。失败时 `403 no-screen-permission`（macOS 未授权）或 `500 capture-failed` |
+| `/dsh-ide/screen-permission` | 打开授权面板 | 只 macOS 有效：`open x-apple.systempreferences:…Privacy_ScreenCapture`；其他系统回 `{opened:false}` |
 | `/dsh-ide/license` | JetBrains 授权 | `{action:'status'}` 跑 `intellij-server license status`；`{action:'open'}` 后台跑 `license login --browser` 并回传授权 URL（6 秒内没出现 URL 就回传工具输出）。给这两个 JVM 动词加 `-Didea.log.path=<tmp>`，避免受限环境下写 `~/Library/Logs` 失败 |
 
 ### 3.3.1 跨插件主题约定（和 dsh-git-window）
@@ -211,6 +214,15 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **源码里的符号右键菜单**：在方法名、字段、类名等任意符号上右键 →「复制名称」/「复制引用」/「复制引用回对话」。引用统一是 DSH 的 `@相对路径` 形式（目录带尾斜杠、含空格时加引号，规则与 DSH 的 reference codec 一致）；jar 源码标签页只有「复制名称」，因为 jar 内的路径不是工作区路径
 - **复制引用回对话**：直接回到对话，并把 `@引用` **追加**到草稿末尾——已有文本和附件一律不动，插入的是真正的引用芯片（不是纯文本）。实现方式：对话输入框是 Lexical 编辑器，`@` 触发菜单，只有从菜单里选中候选才会变成芯片，所以按「人打字」的顺序逐段输入（Tab 进入目录、最后一段回车确认），每一步都核对菜单候选；任何一步对不上就退化成纯文本 `@相对路径`，绝不选错文件。目录无法用芯片表达，直接插入 `@目录/` 文本
 
+### 4.2.1 截图
+
+- 快捷键 `⌘⇧S`（Windows `Ctrl+Shift+S`），设置里可改；Search Everywhere 的「操作」里也有
+- 宿主用系统自带工具抓全屏：macOS `screencapture -x -t png`、Windows PowerShell + `System.Drawing`（`CopyFromScreen` 抓虚拟屏幕，多显示器也覆盖）；**不装任何第三方程序**
+- 抓完统一**压成 1920×1080 JPEG**：macOS `sips -Z 1920 -s format jpeg -s formatOptions <质量>`、Windows PowerShell 双三次缩放 + `EncoderParameters` 质量；质量阶梯 `80/70/60/50`，第一个 ≤1 MB 的就用，原 PNG 随后删除。实测 2560×1440 的 Retina 截图 = 1.2 MB → **270 KB / q80**
+- 抓完弹预览，两个出口：**截图并跳转会话**（回到对话，把图片作为 `File` 通过合成 `ClipboardEvent('paste')` 粘进 Lexical 输入框——只派发 paste，不碰 editor 内容，所以已有文字/引用/附件原样保留）；**只截图**（`{copyOf}` 让宿主把该文件写进系统剪贴板，通知给出路径）
+- **macOS 屏幕录制权限**：没授权时 `screencapture` 报 `could not create image from display`，宿主归类为 `403 no-screen-permission`，弹层给系统化指引 + 「打开系统设置」按钮（`x-apple.systempreferences:…Privacy_ScreenCapture`），授权后必须**完全退出应用重开**。Windows 无此权限
+- 合成 paste 已验证可用（输入框里出现 `blob:` 图片、原有文字不变）；若某天 DSH 忽略合成事件，代码退化成「已复制到剪贴板，按 ⌘V」
+
 ### 4.3 搜索
 - **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
@@ -230,6 +242,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 | `dsh-ide-window.back-to-chat` | key | 桌面 `⌘1` / Web `⌥⌘U` |
 | `code-workspace.search-everywhere` | sequence | 双击 `Shift`（窗口 400ms） |
 | `code-workspace.file-search` | key | `⌘P` |
+| `code-workspace.screenshot` | key | `⌘⇧S`（Windows `Ctrl+Shift+S`） |
 | `code-workspace.gesture-definition` | gesture | 双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击 |
 | `code-workspace.gesture-usages` | gesture | 同上（互斥） |
 | `code-workspace.gesture-chain` | gesture | ⌥+单击（三个动作互斥） |
@@ -321,6 +334,9 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 「复制诊断信息」点了没反应、页面像卡住 | `await navigator.clipboard.writeText()` 在无权限/嵌入式环境下可能永不 resolve | 剪贴板用 `Promise.race` 加 1.5 秒超时，上报日志优先，超时退化为「已写入宿主日志」提示 |
 | 主题弹层里点某一项没反应（真鼠标点不动，代码里 `.click()` 却正常） | 关闭弹层用的是 `document` 上的 **capture** `pointerdown`：真实鼠标先派发 pointerdown，监听器先把弹层卸载，行的 click 永远到不了 | 关闭监听要放过落在弹层/触发按钮内部的按压（`target.closest('.iw-theme-pop, .iw-theme-button')`）；**交互必须用真实指针事件验证**，程序化 `.click()` 会绕过 pointerdown |
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
+| 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
+| 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 压缩是**必做步骤**不是可选项：统一 1920 长边 JPEG，质量阶梯 80→50 直到 ≤1 MB；原 PNG 用完就删，只留小文件 |
+| 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |
 | 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
 
 ---
@@ -335,6 +351,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
    - ~~加 `engines.dsh` 版本约束~~（已加，锁 `0.2.2-rc.3`）
 4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。主题的调色板不在 bundle 里（`themes/*.css`），改颜色不需要重建。
 5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。
+6. **截图的临时文件不主动删除**：每次截图压在系统临时目录（`os.tmpdir()/dsh-ide-shot-<ts>.jpg`，中间生成的 PNG 用完即删），由操作系统按自己的节奏清理；「只截图」时那个路径就是交给用户的产物，所以不删。
 
 ---
 
@@ -353,6 +370,7 @@ src/client/12-theme.js        配色主题：注册表 + <link> 切换 + 状态�
 themes/*.css                  10 套调色板（5 深 5 浅），只覆盖 alias token
 src/client/30-code.js         代码视图 + 跳转 + 右键菜单挂载
 src/client/59-gesture-settings.js  设置分区 + 标签页菜单组件
+src/client/72-screenshot.js   截图：宿主抓屏 + 预览弹层 + 授权引导
 src/client/90-apply.js        全部注册 + 入口
 platform/{contract,macos,windows,index}.js  平台层（macOS / Windows 的差异都在这里）
 test/platform.mjs            平台层测试：两个实现满足同一契约
@@ -361,6 +379,7 @@ test/harness.mjs             VM 夹具测试（含客户端平台层）
 test/inference.mjs            归属推断（bean 字段）
 test/maven.mjs                真实 ~/.m2 jar 端到端
 test/theme.mjs                主题：注册表/清单/文件一致、token 集合一致、读取器 400/404
+test/screenshot.mjs           截图：两平台命令行、授权错误归类、客户端接法
 check-dsh-untouched.sh        本体完整性自检（macOS/Linux）
 restore-profile.sh            恢复 profile 到可用状态（macOS/Linux）
 start-test-instance.sh        起独立自测实例（固定端口 + 复用本机账号，不再弹登录框）

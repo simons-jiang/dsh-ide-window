@@ -228,5 +228,22 @@
   "theme_github_light": "GitHub Light",
   "theme_atom_one_light": "Atom One Light",
   "theme_solarized_light": "Solarized Light",
-  "theme_intellij_light": "IntelliJ Light"
+  "theme_intellij_light": "IntelliJ Light",
+  "shortcutScreenshot": "Screenshot (can jump to chat)",
+  "shotTitle": "Screenshot taken",
+  "shotBusy": "Capturing…",
+  "shotPreview": "Screenshot preview",
+  "shotJump": "Screenshot and jump to chat",
+  "shotKeep": "Screenshot only (copy to clipboard)",
+  "shotRetry": "Retry",
+  "shotFailed": "Screenshot failed",
+  "shotNoPermissionTitle": "Cannot capture: Screen Recording permission is missing",
+  "shotNoPermissionMac": "Enable DeepSeek Harness under System Settings → Privacy & Security → Screen Recording, then quit and reopen the app (the grant only applies after a relaunch).",
+  "shotNoPermissionWindows": "Windows needs no permission for this. Check that the screen is unlocked and no remote-desktop session or policy blocks capture, then retry.",
+  "shotOpenSettings": "Open System Settings",
+  "shotAttached": "Screenshot inserted into the conversation",
+  "shotCopied": "Screenshot copied to the clipboard",
+  "shotNoEditor": "Composer not found: the screenshot is on the clipboard, press ⌘V",
+  "shotOpenFailed": "Could not open System Settings. Open it manually: Privacy & Security → Screen Recording",
+  "paletteActionScreenshot": "Take a screenshot"
 }

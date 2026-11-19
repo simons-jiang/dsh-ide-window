@@ -27,4 +27,23 @@ export const macPlatform = {
   serverLauncherNames: ['intellij-server'],
   needsShell: () => false,
   openUrlCommand: (url) => ({ command: 'open', args: [url] }),
+  // Both tools ship with macOS: `screencapture` writes the PNG and AppleScript
+  // puts it on the pasteboard, so nothing has to be installed.
+  screenshotCommand: (path) => ({ command: 'screencapture', args: ['-x', '-t', 'png', String(path ?? '')] }),
+  // `sips` ships with macOS: `-Z` fits the long edge and `-s formatOptions` is
+  // the JPEG quality. A Retina capture is 5120×2880; 1080p is plenty for chat.
+  imageOptimizeCommand: (input, output, quality) => ({
+    command: 'sips',
+    args: [
+      '-Z', '1920',
+      '-s', 'format', 'jpeg',
+      '-s', 'formatOptions', String(quality),
+      String(input ?? ''),
+      '--out', String(output ?? ''),
+    ],
+  }),
+  clipboardImageCommand: (path) => ({
+    command: 'osascript',
+    args: ['-e', `set the clipboard to (read (POSIX file "${String(path ?? '')}") as «class PNGf»)`],
+  }),
 }

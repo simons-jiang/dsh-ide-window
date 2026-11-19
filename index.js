@@ -45,6 +45,8 @@ const ROUTE_TEXT = '/dsh-ide/text'
 const ROUTE_LICENSE = '/dsh-ide/license'
 const ROUTE_DIAG = '/dsh-ide/diagnostics'
 const ROUTE_THEME = '/dsh-ide/theme'
+const ROUTE_SCREENSHOT = '/dsh-ide/screenshot'
+const ROUTE_SCREEN_PERMISSION = '/dsh-ide/screen-permission'
 
 /** Where this file lives: the themes sit next to it, not in the profile. */
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url))
@@ -796,6 +798,168 @@ export function themeCss(id) {
   }
 }
 
+/**
+ * Run a one-shot command and collect its output.
+ *
+ * Screenshot and clipboard helpers are short-lived OS tools; the same shell
+ * rule as the licence verbs applies on Windows (a `.bat`/`.cmd` needs a shell).
+ */
+function runProcess(command, args, timeoutMs) {
+  return new Promise((resolve) => {
+    let child
+    try {
+      child = spawn(command, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: platform.needsShell(command),
+      })
+    } catch (error) {
+      resolve({ code: -1, output: String(error?.message ?? error) })
+      return
+    }
+    let output = ''
+    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
+    const collect = (chunk) => {
+      output += String(chunk)
+      if (output.length > 20000) output = output.slice(-20000)
+    }
+    child.stdout.on('data', collect)
+    child.stderr.on('data', collect)
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      resolve({ code: -1, output: String(error?.message ?? error) })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve({ code: code ?? -1, output })
+    })
+  })
+}
+
+/**
+ * Whether a failed capture looks like a missing screen-recording grant.
+ *
+ * `screencapture` says "could not create image from display" when macOS denied
+ * the permission; the wording is the only signal available, so it is pinned by
+ * a test rather than being an inline regex.
+ */
+export function screenshotLooksPermissionDenied(output) {
+  return /could not create image|not permitt|permission|denied|屏幕录制|隐私/i.test(String(output ?? ''))
+}
+
+/**
+ * Capture the screen into a temp PNG.
+ *
+ * `copy` also puts it on the system clipboard, which is what "只截图" hands the
+ * user. The data URL is what the panel previews and what gets pasted into the
+ * conversation, so the client never needs a file:// URL.
+ */
+/** The capture is shrunk to a 1080p-class JPEG (the platform sets the long edge). */
+const IDE_SCREENSHOT_MAX_BYTES = 1024 * 1024
+/** JPEG quality ladder: the first result under the budget wins. */
+const IDE_SCREENSHOT_QUALITIES = [80, 70, 60, 50]
+
+/**
+ * Shrink a capture to a 1080p-class JPEG under 1 MB.
+ *
+ * A Retina full-screen capture is several megabytes and no chat needs that. The
+ * ladder stops at the first size that fits, so a mostly-flat screen keeps its
+ * quality while a text-heavy one steps down. Returns the file that was written,
+ * or the PNG when no quality produced a file (the caller still has an image).
+ */
+async function optimizeScreenshot(pngPath) {
+  const jpegPath = pngPath.replace(/\.png$/i, '') + '.jpg'
+  let best = null
+  for (const quality of IDE_SCREENSHOT_QUALITIES) {
+    const { command, args } = platform.imageOptimizeCommand(pngPath, jpegPath, quality)
+    const { code, output } = await runProcess(command, args, 20000)
+    let bytes = 0
+    try {
+      bytes = statSync(jpegPath).size
+    } catch {
+      bytes = 0
+    }
+    if (code !== 0 || bytes === 0) {
+      logEvent('warn', 'screenshot', `optimise failed at quality ${quality}`, output.trim())
+      continue
+    }
+    best = { path: jpegPath, bytes, quality }
+    if (bytes <= IDE_SCREENSHOT_MAX_BYTES) break
+  }
+  return best
+}
+
+export async function captureScreen(payload) {
+  // "只截图" after a capture only needs the existing file on the clipboard.
+  if (typeof payload?.copyOf === 'string' && payload.copyOf !== '') {
+    const existing = payload.copyOf
+    const clipboard = platform.clipboardImageCommand(existing)
+    const copied = await runProcess(clipboard.command, clipboard.args, 20000)
+    if (copied.code !== 0) {
+      logEvent('warn', 'screenshot', 'clipboard copy failed', copied.output)
+      throw new RouteError(500, 'clipboard-failed', copied.output.trim() || 'clipboard copy failed')
+    }
+    return { path: existing, copied: true, bytes: 0, dataUrl: '' }
+  }
+  const target = join(tmpdir(), `dsh-ide-shot-${Date.now()}.png`)
+  const { command, args } = platform.screenshotCommand(target)
+  const { code, output } = await runProcess(command, args, 20000)
+  let bytes = 0
+  try {
+    bytes = statSync(target).size
+  } catch {
+    bytes = 0
+  }
+  if (code !== 0 || bytes === 0) {
+    if (screenshotLooksPermissionDenied(output)) {
+      throw new RouteError(403, 'no-screen-permission', output.trim() || 'screen recording is not permitted')
+    }
+    throw new RouteError(500, 'capture-failed', output.trim() || `screenshot exited ${code}`)
+  }
+  if (payload?.copy === true) {
+    const clipboard = platform.clipboardImageCommand(target)
+    const copied = await runProcess(clipboard.command, clipboard.args, 20000)
+    if (copied.code !== 0) {
+      logEvent('warn', 'screenshot', 'clipboard copy failed', copied.output)
+    }
+  }
+  // A raw screen is far too big for a chat attachment: shrink it before it is
+  // ever shown or pasted, and keep only the small file on disk.
+  const optimized = await optimizeScreenshot(target)
+  try {
+    rmSync(target, { force: true })
+  } catch {
+    /* the OS will clean the temp dir anyway */
+  }
+  if (optimized === null) {
+    throw new RouteError(500, 'capture-failed', 'the capture could not be optimised')
+  }
+  const mime = /\.jpe?g$/i.test(optimized.path) ? 'image/jpeg' : 'image/png'
+  const dataUrl = `data:${mime};base64,${readFileSync(optimized.path).toString('base64')}`
+  logEvent('info', 'screenshot', 'captured', {
+    bytes: optimized.bytes,
+    quality: optimized.quality,
+    path: optimized.path,
+  })
+  // The temp file stays for "只截图" (the notice shows the path).
+  return { path: optimized.path, bytes: optimized.bytes, quality: optimized.quality, dataUrl }
+}
+
+/**
+ * Open the OS place where screen recording is granted.
+ *
+ * Only macOS gates capture behind a permission; on Windows the answer says so
+ * instead of opening a settings window that does not exist.
+ */
+export async function openScreenPermission() {
+  if (platform.name !== 'mac') {
+    return { opened: false, hint: platform.name === 'windows' ? 'windows-no-permission' : 'unsupported' }
+  }
+  const url = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+  const opened = platform.openUrlCommand(url)
+  const { code } = await runProcess(opened.command, opened.args, 10000)
+  return { opened: code === 0, hint: 'macos-screen-recording' }
+}
+
 /** Serve one palette as CSS; the ETag keeps a reopened panel from refetching. */
 function createThemeHandler() {
   return async (request, response) => {
@@ -1287,7 +1451,7 @@ function createHandler(ctx) {
         return
       }
       pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE && pathname !== ROUTE_DIAG) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE && pathname !== ROUTE_DIAG && pathname !== ROUTE_SCREENSHOT && pathname !== ROUTE_SCREEN_PERMISSION) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -1318,6 +1482,10 @@ function createHandler(ctx) {
                 ? await licenseCommand(payload)
               : pathname === ROUTE_DIAG
                 ? diagnosticsReport(payload)
+              : pathname === ROUTE_SCREENSHOT
+                ? await captureScreen(payload)
+              : pathname === ROUTE_SCREEN_PERMISSION
+                ? await openScreenPermission()
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -1409,4 +1577,14 @@ export function apply(ctx) {
     path: ROUTE_THEME,
     handler: createThemeHandler(),
   }), 'dsh-ide-window: theme route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_SCREENSHOT,
+    handler,
+  }), 'dsh-ide-window: screenshot route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_SCREEN_PERMISSION,
+    handler,
+  }), 'dsh-ide-window: screen permission route')
 }

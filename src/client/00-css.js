@@ -1480,6 +1480,74 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-theme-dot--solarized-light { background: #fdf6e3; }
 .iw-theme-dot--intellij-light { background: #f7f8fa; }
 
+/* ---- screenshot dialog (panel level, above the editor) ---- */
+.iw-shot {
+  position: absolute;
+  right: 16px;
+  bottom: 40px;
+  width: 420px;
+  max-width: calc(100% - 32px);
+  padding: 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: var(--dsw-radius-lg, 10px);
+  background: var(--dsw-alias-bg-layer-2, #23262c);
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.4));
+  z-index: 45;
+}
+.iw-shot-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-shot-guide {
+  margin-top: 8px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.iw-shot-preview {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  margin-top: 10px;
+  object-fit: contain;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: var(--dsw-alias-bg-base, #16181c);
+}
+.iw-shot-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.iw-shot-busy {
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 12px;
+}
+.iw-shot-button,
+.iw-shot-primary {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--dsw-radius-sm, 4px);
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.iw-shot-primary {
+  border-color: transparent;
+  background: var(--dsw-alias-brand-primary, #4f8cff);
+  color: #fff;
+}
+.iw-shot-button:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.16));
+}
+
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

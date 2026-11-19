@@ -1547,12 +1547,14 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 // ---- the single shortcut registry ------------------------------------------
 {
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
-  check(Array.isArray(registry) && registry.length === 7, 'the registry holds every code-workspace shortcut', String(registry?.length))
+  check(Array.isArray(registry) && registry.length === 8, 'the registry holds every code-workspace shortcut', String(registry?.length))
   const kinds = registry.map((entry) => entry.kind)
-  check(kinds.filter((kind) => kind === 'key').length === 3, 'three keyboard commands (toggle, back, ⌘P)', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'key').length === 4, 'four keyboard commands (toggle, back, ⌘P, screenshot)', kinds.join(','))
   check(kinds.filter((kind) => kind === 'gesture').length === 3, 'three are pointer gestures', kinds.join(','))
   check(kinds.filter((kind) => kind === 'sequence').length === 1, 'one is a double-press sequence (double Shift)', kinds.join(','))
   check(kinds.every((kind) => kind !== 'fixed'), 'every shortcut is editable', kinds.join(','))
+  const screenshot = registry.find((entry) => entry.action === 'screenshot')
+  check(screenshot?.kind === 'key' && screenshot?.defaults?.desktop?.code === 'KeyS', 'the screenshot shortcut is bindable', JSON.stringify(screenshot?.defaults))
 
   const ids = registry.map((entry) => entry.id)
   check(new Set(ids).size === ids.length, 'registry ids are unique', ids.join(','))

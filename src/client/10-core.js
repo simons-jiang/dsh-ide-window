@@ -452,6 +452,11 @@ function ideCreateStore(refs) {
     theme: typeof prefs.theme === 'string' ? prefs.theme : '',
     /** Whether the palette popup is open (rendered at panel level, not in the bar). */
     themeMenu: false,
+    /**
+     * Screenshot dialog: `null` when closed, otherwise
+     * `{ phase: 'running' | 'ready' | 'error', dataUrl?, path?, code?, message? }`.
+     */
+    screenshot: null,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -1504,6 +1509,8 @@ function ideCreateStore(refs) {
     /** Turn reference interception on or off (persisted). */
     /** Open or close the palette popup. */
     setThemeMenu: (themeMenu) => patch({ themeMenu }),
+    /** Show, replace or clear the screenshot dialog. */
+    setScreenshot: (screenshot) => patch({ screenshot }),
     /** Switch the panel palette; an empty id goes back to the DSH colours. */
     setTheme: (theme) => {
       ideWritePrefs({ theme })

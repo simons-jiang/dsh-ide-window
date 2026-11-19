@@ -236,6 +236,19 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 - 改调色板**不需要重新构建** `client.js`，刷新页面即可看到
 - 新增一套主题 = 放一个 `themes/<id>.css` + 在 `src/client/12-theme.js` 的注册表加一行（`themes/index.json`、`test/theme.mjs` 会校验三处一致：10 套、5 深 5 浅、变量集合完全相同）
 
+### 截图
+
+按 `⌘⇧S`（Windows `Ctrl+Shift+S`，可在设置里改）抓一张全屏，随后可以：
+
+- **截图并跳转会话** — 回到对话，把图片贴在输入框里。已有的文字、引用、附件一个都不动，只是多一张图
+- **只截图** — 图片复制到剪贴板，通知里给出文件路径
+
+抓屏用的是系统自带工具（macOS `screencapture`、Windows .NET），**不装任何额外程序**。
+
+截图会压到 **1920×1080 的 JPEG、约 250–400 KB**（超过 1 MB 会自动降一档质量重压），粘进对话不会撑大附件：Retina 全屏原图有 1 MB 以上，聊天里没必要。
+
+**macOS 第一次用会需要授权**：系统设置 → 隐私与安全性 → 屏幕录制 → 勾选 DeepSeek Harness，然后**完全退出应用重开**。没授权时插件会直接弹窗说明，点「打开系统设置」就能跳到那个面板；Windows 不需要授权。
+
 ---
 
 ## 四、快捷键与手势
@@ -246,6 +259,7 @@ dsh plugin --profile desktop add "git+https://github.com/simons-jiang/dsh-ide-wi
 | 返回对话 | `⌘1` | `Ctrl+1` |
 | 搜索无处不在 | 双击 `Shift` | 双击 `Shift` |
 | 定位文件搜索框 | `⌘P` | `Ctrl+P` |
+| 截图（可跳转会话） | `⌘⇧S` | `Ctrl+Shift+S` |
 | 转到定义 / 查看实现 / 查看调用链 | 下拉选择：双击 / `⌘+单击` / `Ctrl+单击` / `⌥+单击`（默认：双击 / `⌘+单击` / `⌥+单击`） | 双击 / `Ctrl+单击` / `Alt+单击` |
 
 键位全部在 设置 → 通用设置 → 代码工作区快捷键 里改；改完立即生效，存于插件偏好（不写 DSH 的快捷键目录）。

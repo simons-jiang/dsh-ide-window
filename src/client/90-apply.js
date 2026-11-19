@@ -295,6 +295,52 @@ function apply(ctx) {
   }
 
   /**
+   * Screenshot flow.
+   *
+   * 1. capture in the Host (OS built-in tool, no permission on Windows, Screen
+   *    Recording on macOS);
+   * 2. show the preview with the two choices;
+   * 3. "截图并跳转会话" returns to the conversation and *pastes* the image, so the
+   *    draft's text and attachments are untouched; "只截图" puts it on the system
+   *    clipboard and keeps the file.
+   */
+  async function startScreenshot() {
+    store.setScreenshot({ phase: 'running' })
+    openPanel()
+    const result = await ideShotRequest({})
+    if (!result.ok) {
+      store.setScreenshot({ phase: 'error', code: result.code, message: result.message })
+      return
+    }
+    store.setScreenshot({ phase: 'ready', ...result.value })
+  }
+
+  async function screenshotJump() {
+    const shot = store.getState().screenshot
+    store.setScreenshot(null)
+    backToChat()
+    if (shot?.dataUrl === undefined || shot.dataUrl === '') return
+    const pasted = await idePasteScreenshot(shot.dataUrl)
+    store.setNotice(pasted ? translate('shotAttached') : translate('shotNoEditor'))
+  }
+
+  async function screenshotKeep() {
+    const shot = store.getState().screenshot
+    store.setScreenshot(null)
+    if (shot?.path === undefined) return
+    const copied = await ideShotRequest({ copyOf: shot.path })
+    store.setNotice(copied.ok ? `${translate('shotCopied')}: ${shot.path}` : translate('shotFailed'))
+  }
+
+  async function screenshotOpenSettings() {
+    const result = await ideOpenScreenPermission()
+    if (result.opened !== true) store.setNotice(translate('shotOpenFailed'))
+  }
+
+  const screenshotClose = () => store.setScreenshot(null)
+  const screenshotRetry = () => { void startScreenshot() }
+
+  /**
    * Back to the conversation with the reference appended to the draft.
    *
    * The existing draft is never replaced: the caret is moved to its end first,
@@ -366,6 +412,7 @@ function apply(ctx) {
     { id: 'jump', labelKey: 'paletteActionJump', run: () => store.setJumpEnabled(!store.getState().jumpEnabled) },
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
+    { id: 'screenshot', labelKey: 'paletteActionScreenshot', run: () => { void startScreenshot() } },
     { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
     { id: 'diagnostics', labelKey: 'paletteActionDiagnostics', run: () => { void exportDiagnostics() } },
   ]
@@ -692,6 +739,11 @@ function apply(ctx) {
       navigate,
       paletteActions,
       onReferenceToChat: referenceToChat,
+      onScreenshotJump: screenshotJump,
+      onScreenshotKeep: screenshotKeep,
+      onScreenshotRetry: screenshotRetry,
+      onScreenshotOpenSettings: screenshotOpenSettings,
+      onScreenshotClose: screenshotClose,
     }),
   }, IdePanel))
   ctx.effect(() => {
@@ -709,6 +761,11 @@ function apply(ctx) {
         navigate,
         paletteActions,
         onReferenceToChat: referenceToChat,
+        onScreenshotJump: screenshotJump,
+        onScreenshotKeep: screenshotKeep,
+        onScreenshotRetry: screenshotRetry,
+        onScreenshotOpenSettings: screenshotOpenSettings,
+        onScreenshotClose: screenshotClose,
       }),
     }, IdePanel))
     mainRegistered = true
@@ -873,6 +930,7 @@ function apply(ctx) {
         event.preventDefault()
         if (command.action === 'toggle') openPanel()
         else if (command.action === 'back') selectPanel(null)
+        else if (command.action === 'screenshot') void startScreenshot()
         return
       }
     }, true)

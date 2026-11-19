@@ -38,4 +38,70 @@ export const windowsPlatform = {
   // goes through a shell layer; `cmd /c start ""` is the documented form and
   // keeps the empty title argument that `start` needs for a quoted URL.
   openUrlCommand: (url) => ({ command: 'cmd', args: ['/c', 'start', '', url] }),
+  // .NET (part of Windows) captures the virtual screen and fills the clipboard,
+  // so no third-party tool is needed. The script writes a real PNG file.
+  screenshotCommand: (path) => ({
+    command: 'powershell.exe',
+    args: ['-NoProfile', '-NonInteractive', '-Command', windowsScreenshotScript(path)],
+  }),
+  imageOptimizeCommand: (input, output, quality) => ({
+    command: 'powershell.exe',
+    args: ['-NoProfile', '-NonInteractive', '-Command', windowsOptimizeScript(input, output, quality)],
+  }),
+  clipboardImageCommand: (path) => ({
+    command: 'powershell.exe',
+    args: ['-NoProfile', '-NonInteractive', '-STA', '-Command', windowsClipboardScript(path)],
+  }),
+}
+
+/** The PowerShell that grabs every monitor into one PNG. */
+function windowsScreenshotScript(path) {
+  const target = String(path ?? '').replace(/'/g, "''")
+  return [
+    'Add-Type -AssemblyName System.Windows.Forms,System.Drawing',
+    '$bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen',
+    '$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height',
+    '$graphics = [System.Drawing.Graphics]::FromImage($bitmap)',
+    '$graphics.CopyFromScreen($bounds.X, $bounds.Y, 0, 0, $bitmap.Size)',
+    `$bitmap.Save('${target}', [System.Drawing.Imaging.ImageFormat]::Png)`,
+    '$graphics.Dispose()',
+    '$bitmap.Dispose()',
+  ].join('; ')
+}
+
+/** The PowerShell that shrinks a capture to a 1080p-class JPEG. */
+function windowsOptimizeScript(input, output, quality) {
+  const source = String(input ?? '').replace(/'/g, "''")
+  const target = String(output ?? '').replace(/'/g, "''")
+  const level = Math.min(100, Math.max(10, Number.isFinite(quality) ? quality : 80))
+  return [
+    'Add-Type -AssemblyName System.Drawing',
+    `$source = [System.Drawing.Image]::FromFile('${source}')`,
+    '$long = [Math]::Max($source.Width, $source.Height)',
+    '$scale = [Math]::Min(1.0, 1920 / $long)',
+    '$width = [int][Math]::Round($source.Width * $scale)',
+    '$height = [int][Math]::Round($source.Height * $scale)',
+    '$bitmap = New-Object System.Drawing.Bitmap $width, $height',
+    '$graphics = [System.Drawing.Graphics]::FromImage($bitmap)',
+    '$graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic',
+    '$graphics.DrawImage($source, 0, 0, $width, $height)',
+    '$codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }',
+    '$parameters = New-Object System.Drawing.Imaging.EncoderParameters(1)',
+    `$parameters.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]${level})`,
+    `$bitmap.Save('${target}', $codec, $parameters)`,
+    '$graphics.Dispose()',
+    '$bitmap.Dispose()',
+    '$source.Dispose()',
+  ].join('; ')
+}
+
+/** The PowerShell that puts an existing PNG on the clipboard. */
+function windowsClipboardScript(path) {
+  const target = String(path ?? '').replace(/'/g, "''")
+  return [
+    'Add-Type -AssemblyName System.Windows.Forms,System.Drawing',
+    `$image = [System.Drawing.Image]::FromFile('${target}')`,
+    '[System.Windows.Forms.Clipboard]::SetImage($image)',
+    '$image.Dispose()',
+  ].join('; ')
 }

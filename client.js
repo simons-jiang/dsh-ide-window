@@ -235,6 +235,23 @@ window.__ModuleLoader__.load({
     "theme_atom_one_light": "Atom One Light",
     "theme_solarized_light": "Solarized Light",
     "theme_intellij_light": "IntelliJ Light",
+    "shortcutScreenshot": "Screenshot (can jump to chat)",
+    "shotTitle": "Screenshot taken",
+    "shotBusy": "Capturing…",
+    "shotPreview": "Screenshot preview",
+    "shotJump": "Screenshot and jump to chat",
+    "shotKeep": "Screenshot only (copy to clipboard)",
+    "shotRetry": "Retry",
+    "shotFailed": "Screenshot failed",
+    "shotNoPermissionTitle": "Cannot capture: Screen Recording permission is missing",
+    "shotNoPermissionMac": "Enable DeepSeek Harness under System Settings → Privacy & Security → Screen Recording, then quit and reopen the app (the grant only applies after a relaunch).",
+    "shotNoPermissionWindows": "Windows needs no permission for this. Check that the screen is unlocked and no remote-desktop session or policy blocks capture, then retry.",
+    "shotOpenSettings": "Open System Settings",
+    "shotAttached": "Screenshot inserted into the conversation",
+    "shotCopied": "Screenshot copied to the clipboard",
+    "shotNoEditor": "Composer not found: the screenshot is on the clipboard, press ⌘V",
+    "shotOpenFailed": "Could not open System Settings. Open it manually: Privacy & Security → Screen Recording",
+    "paletteActionScreenshot": "Take a screenshot",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -463,6 +480,23 @@ window.__ModuleLoader__.load({
     "theme_atom_one_light": "Atom One 浅色",
     "theme_solarized_light": "Solarized 浅色",
     "theme_intellij_light": "IntelliJ 浅色",
+    "shortcutScreenshot": "截图（可跳转会话）",
+    "shotTitle": "截图完成",
+    "shotBusy": "正在截图…",
+    "shotPreview": "截图预览",
+    "shotJump": "截图并跳转会话",
+    "shotKeep": "只截图（复制到剪贴板）",
+    "shotRetry": "重试",
+    "shotFailed": "截图失败",
+    "shotNoPermissionTitle": "无法截图：缺少屏幕录制权限",
+    "shotNoPermissionMac": "请在「系统设置 → 隐私与安全性 → 屏幕录制」里勾选 DeepSeek Harness，然后完全退出并重新打开应用（授权后必须重启才生效）。",
+    "shotNoPermissionWindows": "Windows 截图不需要授权。请确认没有锁屏、远程桌面占用或企业策略拦截，然后重试。",
+    "shotOpenSettings": "打开系统设置",
+    "shotAttached": "已把截图插入对话",
+    "shotCopied": "截图已复制到剪贴板",
+    "shotNoEditor": "没找到对话框：截图已复制到剪贴板，按 ⌘V 粘贴",
+    "shotOpenFailed": "打不开系统设置，请手动打开：系统设置 → 隐私与安全性 → 屏幕录制",
+    "paletteActionScreenshot": "截图",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1948,6 +1982,74 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-theme-dot--solarized-light { background: #fdf6e3; }
 .iw-theme-dot--intellij-light { background: #f7f8fa; }
 
+/* ---- screenshot dialog (panel level, above the editor) ---- */
+.iw-shot {
+  position: absolute;
+  right: 16px;
+  bottom: 40px;
+  width: 420px;
+  max-width: calc(100% - 32px);
+  padding: 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: var(--dsw-radius-lg, 10px);
+  background: var(--dsw-alias-bg-layer-2, #23262c);
+  box-shadow: var(--dsw-elevation-prominent, 0 12px 32px rgba(0, 0, 0, 0.4));
+  z-index: 45;
+}
+.iw-shot-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-shot-guide {
+  margin-top: 8px;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.iw-shot-preview {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  margin-top: 10px;
+  object-fit: contain;
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: var(--dsw-alias-bg-base, #16181c);
+}
+.iw-shot-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.iw-shot-busy {
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-size: 12px;
+}
+.iw-shot-button,
+.iw-shot-primary {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--dsw-radius-sm, 4px);
+  border: 1px solid var(--dsw-alias-border-l1, #2c3038);
+  background: transparent;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.iw-shot-primary {
+  border-color: transparent;
+  background: var(--dsw-alias-brand-primary, #4f8cff);
+  color: #fff;
+}
+.iw-shot-button:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.16));
+}
+
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -2424,6 +2526,18 @@ const IDE_SHORTCUTS = [
       web: { code: 'KeyP', modifiers: ['primary'] },
     },
     action: 'focus-filter',
+  },
+  {
+    id: 'code-workspace.screenshot',
+    kind: 'key',
+    labelKey: 'shortcutScreenshot',
+    aliases: ['screenshot', 'capture', 'shot', '截图', '截屏'],
+    // ⌘⇧4 belongs to macOS itself, so the workspace uses its own combination.
+    defaults: {
+      desktop: { code: 'KeyS', modifiers: ['primary', 'shift'] },
+      web: { code: 'KeyS', modifiers: ['primary', 'shift'] },
+    },
+    action: 'screenshot',
   },
   {
     id: 'code-workspace.gesture-definition',
@@ -3122,6 +3236,11 @@ function ideCreateStore(refs) {
     theme: typeof prefs.theme === 'string' ? prefs.theme : '',
     /** Whether the palette popup is open (rendered at panel level, not in the bar). */
     themeMenu: false,
+    /**
+     * Screenshot dialog: `null` when closed, otherwise
+     * `{ phase: 'running' | 'ready' | 'error', dataUrl?, path?, code?, message? }`.
+     */
+    screenshot: null,
     /** Editor and tree font sizes, in px, shared by the whole workspace. */
     codeFontSize: Number.isFinite(prefs.codeFontSize) ? prefs.codeFontSize : 12.5,
     treeFontSize: Number.isFinite(prefs.treeFontSize) ? prefs.treeFontSize : 14.5,
@@ -4174,6 +4293,8 @@ function ideCreateStore(refs) {
     /** Turn reference interception on or off (persisted). */
     /** Open or close the palette popup. */
     setThemeMenu: (themeMenu) => patch({ themeMenu }),
+    /** Show, replace or clear the screenshot dialog. */
+    setScreenshot: (screenshot) => patch({ screenshot }),
     /** Switch the panel palette; an empty id goes back to the DSH colours. */
     setTheme: (theme) => {
       ideWritePrefs({ theme })
@@ -6862,7 +6983,7 @@ function IdeSetupDialog({ tr, open, busy, still, onCheck, onClose, store }) {
 /** How many times the panel body has rendered; a probe can read it. */
 let idePanelRenders = 0
 
-function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions, onReferenceToChat }) {
+function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, useSessions, useWorkspaces, navigate, paletteActions, onReferenceToChat, onScreenshotJump, onScreenshotKeep, onScreenshotRetry, onScreenshotOpenSettings, onScreenshotClose }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const actions = paletteActions ?? []
 
@@ -7122,6 +7243,18 @@ function IdePanel({ store, translate, onBackToChat, onToggleSidebar, onEnter, us
     state.themeMenu === true
       ? h(IdeThemePopup, { key: 'themepopup', store, themeId: ideIsThemeId(state.theme) ? state.theme : '', tr })
       : null,
+    state.screenshot === null || state.screenshot === undefined
+      ? null
+      : h(IdeScreenshotPopup, {
+        key: 'shotpopup',
+        state,
+        tr,
+        onJump: onScreenshotJump,
+        onKeep: onScreenshotKeep,
+        onRetry: onScreenshotRetry,
+        onOpenSettings: onScreenshotOpenSettings,
+        onClose: onScreenshotClose,
+      }),
     h(IdeTreeMenu, {
       key: 'treemenu',
       store,
@@ -10221,6 +10354,153 @@ function IdePalette({ store, tr, actions, onClose }) {
   ])
 }
 
+// ---- 72-screenshot.js ----------------------------------------------------
+/**
+ * Screenshots: the Host captures, the panel decides what to do with it.
+ *
+ * The Web page cannot read the screen (the shell answers `getDisplayMedia` with
+ * a refusal), so the capture happens in the Host with an OS built-in tool and
+ * comes back as a data URL. Two outcomes are offered:
+ *
+ * - **截图并跳转会话** — go back to the conversation and paste the image into the
+ *   composer. The paste is a synthetic `ClipboardEvent` carrying a `File`: the
+ *   shell treats it as a normal paste, so the draft's text, references and
+ *   pending attachments are left exactly as they were.
+ * - **只截图** — copy it to the system clipboard and keep the file around; the
+ *   notice shows the path.
+ *
+ * macOS gates screen capture behind Screen Recording permission. A refusal is
+ * classified by the Host (`no-screen-permission`) and answered with a guide that
+ * opens the right settings pane in one click (Windows needs no such grant).
+ */
+
+const IDE_SHOT_ROUTE = '/dsh-ide/screenshot'
+const IDE_SHOT_PERMISSION_ROUTE = '/dsh-ide/screen-permission'
+
+/** POST one screenshot request; never throws, returns `{ ok }` shapes. */
+async function ideShotRequest(body) {
+  let response
+  try {
+    response = await fetch(IDE_SHOT_ROUTE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    })
+  } catch (error) {
+    return { ok: false, code: 'network', message: String(error?.message ?? error) }
+  }
+  const parsed = await response.json().catch(() => null)
+  if (parsed === null) return { ok: false, code: `http-${response.status}`, message: '' }
+  if (parsed.ok !== true) {
+    return {
+      ok: false,
+      code: parsed.error?.code ?? 'capture-failed',
+      message: parsed.error?.message ?? '',
+    }
+  }
+  return { ok: true, value: parsed.value }
+}
+
+/** Ask the OS to open the place where screen recording is granted. */
+async function ideOpenScreenPermission() {
+  let response
+  try {
+    response = await fetch(IDE_SHOT_PERMISSION_ROUTE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+  } catch {
+    return { opened: false }
+  }
+  const parsed = await response.json().catch(() => null)
+  return parsed?.ok === true ? parsed.value : { opened: false }
+}
+
+/** The image inside a `data:image/png;base64,…` URL as a `File`. */
+function ideShotFile(dataUrl, name = 'screenshot.png') {
+  const comma = dataUrl.indexOf(',')
+  const head = dataUrl.slice(0, comma)
+  const type = /^data:(image\/[a-z+]+)/.exec(head)?.[1] ?? 'image/png'
+  const binary = atob(dataUrl.slice(comma + 1))
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return new File([bytes], name, { type })
+}
+
+/**
+ * Paste the image into the conversation composer.
+ *
+ * Only a paste is dispatched — no editor mutation, no `@` mention flow — so the
+ * draft keeps whatever the user already typed or attached. Returns `false` when
+ * no composer is on screen, which the caller degrades to "copy it and paste
+ * yourself".
+ */
+async function idePasteScreenshot(dataUrl) {
+  const findEditor = () => (typeof document === 'undefined' ? null : document.querySelector('[data-lexical-editor="true"]'))
+  const deadline = Date.now() + 2000
+  let editor = findEditor()
+  while (editor === null && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    editor = findEditor()
+  }
+  if (editor === null) return false
+  const file = ideShotFile(dataUrl)
+  const transfer = new DataTransfer()
+  transfer.items.add(file)
+  editor.focus()
+  const event = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true })
+  editor.dispatchEvent(event)
+  return true
+}
+
+/**
+ * The screenshot dialog: a preview with the two choices, or the permission guide
+ * when the capture was refused. Rendered at panel level so it is not clipped.
+ */
+function IdeScreenshotPopup({ state, tr, onJump, onKeep, onRetry, onOpenSettings, onClose }) {
+  const shot = state.screenshot ?? null
+  if (shot === null) return null
+  const busy = shot.phase === 'running'
+  const failed = shot.phase === 'error'
+  const needsPermission = failed && shot.code === 'no-screen-permission'
+  // The guide depends on the machine running the Host, which is the same machine
+  // as the browser: `ideHostIsMacos()` reads the runtime platform, then the UA.
+  const isMac = ideHostIsMacos()
+
+  const actions = []
+  if (busy) {
+    actions.push(h('span', { key: 'busy', className: 'iw-shot-busy' }, tr('shotBusy')))
+  } else if (needsPermission) {
+    if (isMac) actions.push(h('button', { key: 'settings', type: 'button', className: 'iw-shot-primary', onClick: onOpenSettings }, tr('shotOpenSettings')))
+    actions.push(h('button', { key: 'retry', type: 'button', className: 'iw-shot-button', onClick: onRetry }, tr('shotRetry')))
+    actions.push(h('button', { key: 'close', type: 'button', className: 'iw-shot-button', onClick: onClose }, tr('setupClose')))
+  } else if (failed) {
+    actions.push(h('button', { key: 'retry', type: 'button', className: 'iw-shot-primary', onClick: onRetry }, tr('shotRetry')))
+    actions.push(h('button', { key: 'close', type: 'button', className: 'iw-shot-button', onClick: onClose }, tr('setupClose')))
+  } else {
+    actions.push(h('button', { key: 'jump', type: 'button', className: 'iw-shot-primary', onClick: onJump }, tr('shotJump')))
+    actions.push(h('button', { key: 'keep', type: 'button', className: 'iw-shot-button', onClick: onKeep }, tr('shotKeep')))
+    actions.push(h('button', { key: 'close', type: 'button', className: 'iw-shot-button', onClick: onClose }, tr('setupClose')))
+  }
+
+  const guide = needsPermission
+    ? (isMac ? tr('shotNoPermissionMac') : tr('shotNoPermissionWindows'))
+    : failed ? (shot.message === '' ? tr('shotFailed') : `${tr('shotFailed')}：${shot.message}`) : ''
+
+  return h('div', {
+    className: 'iw-shot',
+    onPointerDown: (event) => event.stopPropagation(),
+  }, [
+    h('div', { key: 'title', className: 'iw-shot-title' }, needsPermission ? tr('shotNoPermissionTitle') : tr('shotTitle')),
+    guide === '' ? null : h('div', { key: 'guide', className: 'iw-shot-guide' }, guide),
+    shot.dataUrl === undefined || shot.dataUrl === ''
+      ? null
+      : h('img', { key: 'preview', className: 'iw-shot-preview', src: shot.dataUrl, alt: tr('shotPreview') }),
+    h('div', { key: 'actions', className: 'iw-shot-actions' }, actions),
+  ])
+}
+
 // ---- 90-apply.js ---------------------------------------------------------
 /**
  * Client activation.
@@ -10519,6 +10799,52 @@ function apply(ctx) {
   }
 
   /**
+   * Screenshot flow.
+   *
+   * 1. capture in the Host (OS built-in tool, no permission on Windows, Screen
+   *    Recording on macOS);
+   * 2. show the preview with the two choices;
+   * 3. "截图并跳转会话" returns to the conversation and *pastes* the image, so the
+   *    draft's text and attachments are untouched; "只截图" puts it on the system
+   *    clipboard and keeps the file.
+   */
+  async function startScreenshot() {
+    store.setScreenshot({ phase: 'running' })
+    openPanel()
+    const result = await ideShotRequest({})
+    if (!result.ok) {
+      store.setScreenshot({ phase: 'error', code: result.code, message: result.message })
+      return
+    }
+    store.setScreenshot({ phase: 'ready', ...result.value })
+  }
+
+  async function screenshotJump() {
+    const shot = store.getState().screenshot
+    store.setScreenshot(null)
+    backToChat()
+    if (shot?.dataUrl === undefined || shot.dataUrl === '') return
+    const pasted = await idePasteScreenshot(shot.dataUrl)
+    store.setNotice(pasted ? translate('shotAttached') : translate('shotNoEditor'))
+  }
+
+  async function screenshotKeep() {
+    const shot = store.getState().screenshot
+    store.setScreenshot(null)
+    if (shot?.path === undefined) return
+    const copied = await ideShotRequest({ copyOf: shot.path })
+    store.setNotice(copied.ok ? `${translate('shotCopied')}: ${shot.path}` : translate('shotFailed'))
+  }
+
+  async function screenshotOpenSettings() {
+    const result = await ideOpenScreenPermission()
+    if (result.opened !== true) store.setNotice(translate('shotOpenFailed'))
+  }
+
+  const screenshotClose = () => store.setScreenshot(null)
+  const screenshotRetry = () => { void startScreenshot() }
+
+  /**
    * Back to the conversation with the reference appended to the draft.
    *
    * The existing draft is never replaced: the caret is moved to its end first,
@@ -10590,6 +10916,7 @@ function apply(ctx) {
     { id: 'jump', labelKey: 'paletteActionJump', run: () => store.setJumpEnabled(!store.getState().jumpEnabled) },
     { id: 'closeTabs', labelKey: 'paletteActionCloseTabs', run: () => store.closeAllTabs() },
     { id: 'back', labelKey: 'paletteActionBack', run: () => backToChat() },
+    { id: 'screenshot', labelKey: 'paletteActionScreenshot', run: () => { void startScreenshot() } },
     { id: 'licenseRelogin', labelKey: 'paletteActionLicenseRelogin', run: () => { void reloginLicense() } },
     { id: 'diagnostics', labelKey: 'paletteActionDiagnostics', run: () => { void exportDiagnostics() } },
   ]
@@ -10916,6 +11243,11 @@ function apply(ctx) {
       navigate,
       paletteActions,
       onReferenceToChat: referenceToChat,
+      onScreenshotJump: screenshotJump,
+      onScreenshotKeep: screenshotKeep,
+      onScreenshotRetry: screenshotRetry,
+      onScreenshotOpenSettings: screenshotOpenSettings,
+      onScreenshotClose: screenshotClose,
     }),
   }, IdePanel))
   ctx.effect(() => {
@@ -10933,6 +11265,11 @@ function apply(ctx) {
         navigate,
         paletteActions,
         onReferenceToChat: referenceToChat,
+        onScreenshotJump: screenshotJump,
+        onScreenshotKeep: screenshotKeep,
+        onScreenshotRetry: screenshotRetry,
+        onScreenshotOpenSettings: screenshotOpenSettings,
+        onScreenshotClose: screenshotClose,
       }),
     }, IdePanel))
     mainRegistered = true
@@ -11097,6 +11434,7 @@ function apply(ctx) {
         event.preventDefault()
         if (command.action === 'toggle') openPanel()
         else if (command.action === 'back') selectPanel(null)
+        else if (command.action === 'screenshot') void startScreenshot()
         return
       }
     }, true)

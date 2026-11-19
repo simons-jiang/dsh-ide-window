@@ -1,6 +1,6 @@
 {
   "name": "dsh-ide-window",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "IDEA-style code workspace for DeepSeek Harness: a centre panel with a workspace file tree, editor tabs and live-updating source, while the left navigation column hides.",
   "type": "module",
   "icon": "icon.svg",
@@ -30,7 +30,7 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "node --check index.js && node --check client.js",
-    "test": "node test/platform.mjs && node test/diagnostics.mjs && node test/status.mjs && node test/harness.mjs && node test/inference.mjs && node test/maven.mjs && node test/theme.mjs"
+    "test": "node test/platform.mjs && node test/diagnostics.mjs && node test/status.mjs && node test/harness.mjs && node test/inference.mjs && node test/maven.mjs && node test/theme.mjs && node test/screenshot.mjs"
   },
   "dsh": {
     "bundle": {
