@@ -1286,6 +1286,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   // 这类引用错误只在真实跳转时炸出来。这里把函数体取出来，用桩跑一遍。
   const source = grabSource('jumpToDefinition', '30-code.js')
   const fallback = grabSource('openLocalDeclaration', '30-code.js')
+  const mapperJump = grabSource('openMapperStatement', '30-code.js')
   const accessor = grabSource('openAccessorProperty', '30-code.js')
   const typeLookup = grabSource('openLocalType', '30-code.js')
   const implementation = grabSource('openImplementation', '30-code.js')
@@ -1309,7 +1310,10 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
       'ideLspQuery', 'ideTextualImplementations', 'ideAccessorProperty', 'ideIsFieldDeclaration', 'ideIsTypeDeclaration', 'ideAbs', 'ideReceiverOfCall', 'ideReceiverChain', 'ideLspLicenseMissing',
       `${sourceFunction('ideRegexEscape', '65-lsp.js')}
       ${sourceFunction('ideDeclarationPattern', '65-lsp.js')}
+      ${grabSource('ideMapperLooksLikeMapper', '30-code.js')}
+      ${grabSource('ideMapperStatementPattern', '30-code.js')}
       ${fallback}
+      ${mapperJump}
       ${accessor}
       ${typeLookup}
       ${implementation}
@@ -1425,6 +1429,89 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   const implementationNotice = String(withImplementation.notices.slice(-1)[0] ?? '')
   check(implementationNotice.includes('OrderClearingServiceImpl.java:332') && implementationNotice.includes('implementationLabel'),
     'a declaration click opens its implementation', implementationNotice)
+
+  // A MyBatis mapper method has no Java body: the click must land on the XML
+  // statement, not on the "this is the definition" message.
+  const mapperBuild = build(
+    { definition: async () => ({ locations: [] }) },
+    true,
+    {
+      lines: [
+        'package com.demo.mapper;',
+        '',
+        '@Mapper',
+        'public interface DemoMapper {',
+        '  List<String> listCandidates(@Param("id") Long id);',
+        '}',
+      ],
+      greps: [],
+      tab: { path: 'src/main/java/com/demo/mapper/DemoMapper.java' },
+    },
+  )
+  {
+    const url = 'src/main/resources/mapper/DemoMapper.xml'
+    const mapperNavigate = { definition: async () => ({ locations: [] }) }
+    const notices = []
+    const opened = []
+    const factory = new Function(
+      'store', 'tab', 'tr', 'navigate', 'setPopup', 'openFromJar', 'popupAt', 'ideBasename',
+      'ideAnnotationTypeAt', 'openAnnotationAttribute', 'lines',
+      'ideIsMethodDeclaration', 'ideReceiverToken', 'ideDeclaredType', 'ideGrepQuery',
+      'ideLspQuery', 'ideTextualImplementations', 'ideAccessorProperty', 'ideIsFieldDeclaration', 'ideIsTypeDeclaration', 'ideAbs', 'ideReceiverOfCall', 'ideReceiverChain', 'ideLspLicenseMissing',
+      `${sourceFunction('ideRegexEscape', '65-lsp.js')}
+      ${sourceFunction('ideDeclarationPattern', '65-lsp.js')}
+      ${grabSource('ideMapperLooksLikeMapper', '30-code.js')}
+      ${grabSource('ideMapperStatementPattern', '30-code.js')}
+      ${fallback}
+      ${mapperJump}
+      ${implementation}
+      ${source}
+      return { jump: jumpToDefinition }`,
+    )
+    const mapperLines = [
+      'package com.demo.mapper;',
+      '',
+      '@Mapper',
+      'public interface DemoMapper {',
+      '  List<String> listCandidates(@Param("id") Long id);',
+      '}',
+    ]
+    const grep = async (root, pattern) => {
+      if (pattern.includes('namespace')) return { ok: true, matches: [{ path: url, line: 3, text: '<mapper namespace="com.demo.mapper.DemoMapper">' }] }
+      if (pattern.includes('listCandidates')) return { ok: true, matches: [{ path: url, line: 6, text: '<select id="listCandidates" resultType="x">' }] }
+      return { ok: true, matches: [] }
+    }
+    const api = factory(
+      { setNotice: (text) => notices.push(text), openAt: (path, line) => { opened.push([path, line]); return true }, getState: () => ({ lastLoadMs: 1, rootPath: '/ws' }) },
+      { path: 'src/main/java/com/demo/mapper/DemoMapper.java', text: mapperLines.join('\n') },
+      (key) => key,
+      mapperNavigate,
+      () => {},
+      async () => false,
+      () => ({ x: 1, y: 2 }),
+      (path) => path.split('/').pop(),
+      () => '',
+      async () => false,
+      mapperLines,
+      (text, name) => matcher(text, name),
+      receiverOf,
+      declaredTypeOf,
+      grep,
+      async () => ({ locations: [] }),
+      async () => [],
+      accessorProperty,
+      fieldDeclaration,
+      typeDeclaration,
+      (root, path) => `${root}/${path}`,
+      receiverOfCall,
+      receiverChain,
+      false,
+    )
+    await api.jump('listCandidates', { line: 4, character: 20 }, { clientX: 1, clientY: 2 })
+    check(opened.length === 1 && opened[0][0] === url, 'a mapper method jumps to its XML statement', JSON.stringify(opened))
+    check(opened[0]?.[1] === 6, 'the XML statement line is the one with the id', String(opened[0]?.[1]))
+  }
+  check(mapperBuild !== undefined, 'the mapper fixture is wired', 'built')
 
   // 双击 Lombok 属性访问器：跳到字段，而不是某个同名方法。
   const propertyClick = build({ definition: async () => ({ locations: [], ms: 3 }) }, true, {

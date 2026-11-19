@@ -534,6 +534,24 @@ function ideRequestVision(store, tab, declarations, done) {
 }
 
 /**
+ * Whether an interface is a MyBatis mapper, i.e. its methods have a statement in
+ * an XML file instead of an implementation in Java.
+ *
+ * The annotation is authoritative when it is there; otherwise the file name is
+ * the convention every MyBatis project follows.
+ */
+function ideMapperLooksLikeMapper(source, fileName) {
+  if (typeof source !== 'string' || typeof fileName !== 'string') return false
+  if (!/\binterface\s+\w+/.test(source)) return false
+  return /@Mapper\b/.test(source) || /Mapper$/.test(fileName)
+}
+
+/** Pattern matching the XML statement a mapper method is bound to. */
+function ideMapperStatementPattern(methodName) {
+  return `<[a-zA-Z]+[^>]*\\bid\\s*=\\s*"${ideRegexEscape(methodName)}"`
+}
+
+/**
  * How long a blame answer stays fresh.
  *
  * Committing changes no file content, so no workspace change arrives; without a
@@ -734,6 +752,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         // contract method, so the useful destination is its implementation.
         const sameAsClick = locations[0].path === tab.path && locations[0].line === position.line + 1
         if (sameAsClick && declaresHere) {
+          if (await openMapperStatement(name, position)) return
           if (await openImplementation(name, position, event)) return
           store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
           return
@@ -757,6 +776,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // A declaration click without a server answer still means "the code that
       // runs", not "the first same-named method in the workspace".
       if (declaresHere) {
+        if (await openMapperStatement(name, position)) return
         if (await openImplementation(name, position, event)) return
         store.setNotice(`${tr('alreadyAtDefinition')}: ${name}`)
         return
@@ -827,6 +847,46 @@ function IdeCodeView({ tab, tr, store, navigate }) {
    *
    * @returns whether a tab was opened.
    */
+  /**
+   * Jump from a mapper method to the statement that implements it.
+   *
+   * A MyBatis interface method has no Java body: the SQL lives in the mapper XML,
+   * bound by `namespace` + statement `id`. Answering "this IS the definition"
+   * leaves the reader with nothing to open, so the XML is where the click should
+   * land. The XML is found by namespace first (exact) and by file name second.
+   */
+  const openMapperStatement = async (name, position) => {
+    const root = store.getState().rootPath
+    if (root === '' || typeof name !== 'string' || name === '') return false
+    if (!String(tab.path).endsWith('.java')) return false
+    const fileName = ideBasename(tab.path).replace(/\.java$/, '')
+    if (!ideMapperLooksLikeMapper(tab.text ?? '', fileName)) return false
+    if (!ideIsMethodDeclaration(lines[position.line] ?? '', name)) return false
+    const packageLine = lines.find((text) => /^\s*package\s+[\w.]+\s*;/.test(text ?? '')) ?? ''
+    const packageName = packageLine.replace(/^\s*package\s+/, '').replace(/\s*;.*$/, '').trim()
+    const fqn = packageName === '' ? fileName : `${packageName}.${fileName}`
+    const xmlOnly = (found) => (found.ok === true
+      ? found.matches.filter((match) => String(match?.path ?? '').toLowerCase().endsWith('.xml'))
+      : [])
+    const byNamespace = xmlOnly(await ideGrepQuery(root, `namespace\\s*=\\s*"${ideRegexEscape(fqn)}"`, { extensions: ['xml'], caseSensitive: true }))
+    const byName = byNamespace.length > 0
+      ? []
+      : xmlOnly(await ideGrepQuery(root, `<mapper\\b[^>]*namespace`, { extensions: ['xml'] }))
+        .filter((match) => ideBasename(match.path) === `${fileName}.xml`)
+    const xmlPath = (byNamespace[0] ?? byName[0])?.path ?? ''
+    if (xmlPath === '') return false
+    const statements = xmlOnly(await ideGrepQuery(root, ideMapperStatementPattern(name), {
+      path: xmlPath,
+      extensions: ['xml'],
+      caseSensitive: true,
+    }))
+    const hit = statements.find((match) => match.path === xmlPath) ?? undefined
+    if (hit === undefined) return false
+    if (!store.openAt(xmlPath, hit.line)) return false
+    store.setNotice(`\u2192 ${ideBasename(xmlPath)}:${hit.line}`)
+    return true
+  }
+
   const openLocalDeclaration = async (name, position) => {
     const root = store.getState().rootPath
     if (root === '' || typeof name !== 'string' || name === '') return false
