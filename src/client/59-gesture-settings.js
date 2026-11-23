@@ -434,6 +434,24 @@ function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
   ]
   if (menu.jar !== true) {
     items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(`${mention}${lineSuffix}`)) })
+    if (ideDataWindowAvailable() && /\.(java|kt)$/i.test(menu.path)) {
+      items.push({
+        key: 'data-window-table',
+        icon: IdeFileIcon,
+        label: tr('symbolMenuOpenTableInDataWindow'),
+        run: run(() => { void ideDataWindowOpenEntity(store, tr, state.rootPath, menu.path) }),
+      })
+    }
+    if (ideDataWindowAvailable() && /Mapper\.(java|kt)$/i.test(menu.path)) {
+      items.push({
+        key: 'data-window',
+        icon: IdeLinkIcon,
+        label: tr('symbolMenuOpenInDataWindow'),
+        run: run(() => {
+          void ideDataWindowOpenMapper(store, tr, state.rootPath, menu.path, symbolName, menu.line)
+        }),
+      })
+    }
     items.push({
       key: 'chat',
       icon: IdeAtIcon,

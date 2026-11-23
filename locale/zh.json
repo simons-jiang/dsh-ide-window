@@ -249,5 +249,19 @@
   "shotCopy": "截图",
   "shotJump": "截图并跳转会话",
   "settingsNav": "代码工作区",
-  "settingsCollapse": "收起"
+  "settingsCollapse": "收起",
+  "treeOpenInDataWindow": "在数据窗口打开表",
+  "symbolMenuOpenInDataWindow": "在数据窗口打开 SQL",
+  "dataWindowNoTableName": "当前文件没有 @TableName",
+  "dataWindowNoWorkspace": "当前没有工作区",
+  "dataWindowNoSql": "未找到对应的 Mapper SQL",
+  "dataWindowNotInstalled": "数据窗口插件未安装",
+  "dataWindowTimeout": "数据窗口没有响应",
+  "dataWindowNoDatasource": "工作区没有解析到数据源",
+  "dataWindowNoTable": "没有找到这张表",
+  "dataWindowOpened": "已在数据窗口打开",
+  "dataWindowOpening": "正在打开数据窗口…",
+  "dataWindowQueryFailed": "在数据窗口执行失败",
+  "dataWindowFailed": "数据窗口跳转失败",
+  "symbolMenuOpenTableInDataWindow": "在数据窗口打开表"
 }

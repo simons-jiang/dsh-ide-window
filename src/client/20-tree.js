@@ -568,6 +568,14 @@ function IdeTreeMenu({ store, state, tr, onReferenceToChat }) {
   if (!isDir && /\.(java|kt|kts|scala|groovy)$/i.test(path)) {
     items.push({ key: 'copy-fqn', icon: IdeLinkIcon, label: tr('treeCopyFqn'), run: then(() => ideCopyWithNotice(store, tr, ideFqnOf(path))) })
   }
+  if (!isDir && /\.(java|kt)$/i.test(path) && ideDataWindowAvailable()) {
+    items.push({
+      key: 'data-window',
+      icon: IdeLinkIcon,
+      label: tr('treeOpenInDataWindow'),
+      run: then(() => { void ideDataWindowOpenEntity(store, tr, root, path) }),
+    })
+  }
   if (!isDir) {
     items.push({ key: 'sep2', separator: true })
     items.push({ key: 'git', section: tr('treeGitSection') })

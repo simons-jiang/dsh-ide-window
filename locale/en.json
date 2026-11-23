@@ -249,5 +249,19 @@
   "shotCopy": "Capture",
   "shotJump": "Capture and open chat",
   "settingsNav": "Code workspace",
-  "settingsCollapse": "Collapse"
+  "settingsCollapse": "Collapse",
+  "treeOpenInDataWindow": "Open table in data window",
+  "symbolMenuOpenInDataWindow": "Open SQL in data window",
+  "dataWindowNoTableName": "This file has no @TableName",
+  "dataWindowNoWorkspace": "No workspace is open",
+  "dataWindowNoSql": "No Mapper SQL found for this method",
+  "dataWindowNotInstalled": "The data window plugin is not installed",
+  "dataWindowTimeout": "The data window did not respond",
+  "dataWindowNoDatasource": "No datasource was resolved for this workspace",
+  "dataWindowNoTable": "The table was not found",
+  "dataWindowOpened": "Opened in the data window",
+  "dataWindowOpening": "Opening the data window…",
+  "dataWindowQueryFailed": "The data window query failed",
+  "dataWindowFailed": "Opening the data window failed",
+  "symbolMenuOpenTableInDataWindow": "Open table in data window"
 }

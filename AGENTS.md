@@ -259,6 +259,15 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
 
+### 4.4.1 与数据窗口联动
+
+`src/client/73-data-bridge.js` 是数据窗口（`dsh-data-window`）事件桥的**调用方**，契约在对方仓库的 `docs/BRIDGE.md`：
+
+- 数据窗口激活时设置 `window.__DSH_DATA_WINDOW_BRIDGE__ = { v: 1 }`；本插件只在标记存在时显示菜单项；
+- 请求 `dsh-data-window:request`（`openTable` / `openSql`），回执 `dsh-data-window:response`，按 `id` 匹配，2s 超时；
+- 文件树右键 Java/Kotlin 文件 → 解析 `@TableName` 发 `openTable`；编辑器符号右键 → Mapper 方法发 `openSql`（`@Select` 等注解优先，其次按 namespace 在 XML 里找 statement，动态 SQL 会带注释提示原文粘贴）；
+- 本插件只解析、不执行 SQL；定位库、只读校验都在数据窗口与它的 Host 里。
+
 ### 4.4 与对话联动
 - 用 DSH 自带的「已编辑 N 个文件」卡片即可：**点文件行**直接进本插件工作区（见 4.1 的拦截项）；插件不再渲染自己的改动卡片（原 `turnTail` 卡片已删除，`58-turn.js` 随之移除）
 
