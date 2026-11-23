@@ -93,7 +93,7 @@
   "noSourceInJar": "该 jar 没有源码",
   "shortcutToggle": "代码工作区: 打开 / 关闭",
   "shortcutBackToChat": "代码工作区: 返回对话",
-  "gestureSection": "代码工作区快捷键",
+  "gestureSection": "快捷键",
   "gestureSectionHint": "本插件的全部快捷键，就在这里查看与修改（不占用 DSH 自己的快捷键列表）",
   "gestureEdit": "查看",
   "gestureClose": "关闭",
@@ -247,5 +247,7 @@
   "shotUndo": "撤销",
   "shotTextPlaceholder": "输入文字后回车",
   "shotCopy": "截图",
-  "shotJump": "截图并跳转会话"
+  "shotJump": "截图并跳转会话",
+  "settingsNav": "代码工作区",
+  "settingsCollapse": "收起"
 }

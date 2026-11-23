@@ -697,34 +697,82 @@ function apply(ctx) {
   }
 
   /**
-   * Rows of DSH's own 「已编辑」 card open this workspace instead of the review.
+   * File cards in the conversation open this workspace instead of a preview.
    *
-   * The card is a shipped plugin and stays untouched: the click is swallowed in
-   * the capture phase, and the row's own hidden span carries the absolute path.
-   * The card's header keeps its meaning (open the review) — only the file rows
-   * switch target.
+   * Three shipped surfaces name a file and open something else — the 「已编辑」
+   * card's rows, that same card when it has a single file (the header *is* the
+   * file), and the delivered-file card the agent presents:
+   *
+   *  - `[data-changed-files] .…_row` — the row carries a hidden span with the
+   *    absolute path; its siblings' preview still works when it is not claimed.
+   *  - `[data-changed-files][data-single]` — one file, so the whole card means
+   *    that file; the same hidden span is directly under the card.
+   *  - `[data-presented-file]` — the full-card preview button carries the
+   *    resolved path in its `title`. The card's own action buttons (a trailing
+   *    edit/reveal group) keep their meaning: only the preview surface is taken.
+   *
+   * The click is swallowed in the capture phase and the panel is selected, so the
+   * right pane is never opened on the way.
    */
   ctx.effect(() => {
     if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined
+    const openInWorkspace = (path) => {
+      if (path === '') return false
+      if (!store.openAt(path, undefined)) return false
+      store.setNotice('')
+      selectPanel(IDE_PANEL_ID)
+      return true
+    }
+    const cardPath = (card) => ideRelativeWorkspacePath(
+      card.querySelector('span[hidden]')?.textContent?.trim() ?? '',
+      store.getState().rootPath,
+      '',
+    )
     const onChangedFileClick = (event) => {
       const target = event.target
       if (!(target instanceof Element)) return
+
+      // A delivered file: take the preview surface, leave its action buttons be.
+      const presented = target.closest('[data-presented-file]')
+      if (presented !== null) {
+        const cardButton = presented.querySelector('button')
+        const clicked = target.closest('button')
+        if (clicked !== null && clicked !== cardButton) return
+        const title = cardButton?.getAttribute('title')?.trim() ?? ''
+        const path = ideRelativeWorkspacePath(title, store.getState().rootPath, '')
+        if (!openInWorkspace(path)) return
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      // One changed file: the card header opens the review, but it means the file.
+      const single = target.closest('[data-changed-files="true"][data-single]')
+      if (single !== null) {
+        const path = cardPath(single)
+        if (!openInWorkspace(path)) return
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      // Several changed files: only the rows switch target; the header keeps the
+      // review, which is the useful thing to do with a list.
       const row = target.closest('[data-changed-files="true"] .vdszpW_row')
       if (row === null || row.parentElement === null) return
-      const hidden = row.parentElement.querySelector('span[hidden]')
       const display = row.querySelector('.vdszpW_path')?.textContent ?? ''
-      const path = ideRelativeWorkspacePath(hidden?.textContent?.trim() ?? '', store.getState().rootPath, display.trim())
-      if (path === '') return
+      const path = ideRelativeWorkspacePath(
+        row.parentElement.querySelector('span[hidden]')?.textContent?.trim() ?? '',
+        store.getState().rootPath,
+        display.trim(),
+      )
+      if (!openInWorkspace(path)) return
       event.preventDefault()
       event.stopPropagation()
-      if (store.openAt(path, undefined)) {
-        store.setNotice('')
-        selectPanel(IDE_PANEL_ID)
-      }
     }
     document.addEventListener('click', onChangedFileClick, true)
     return () => document.removeEventListener('click', onChangedFileClick, true)
-  }, 'dsh-ide-window: edited-file rows open the workspace')
+  }, 'dsh-ide-window: file cards open the workspace')
 
   /** Mount effect of the panel: fold the navigation column, nothing else. */
   function enter() {
@@ -953,16 +1001,18 @@ function apply(ctx) {
   }
 
   /**
-   * The code workspace's mouse gestures.
+   * The code workspace's own settings page.
    *
-   * Double click and ⌘+click are pointer gestures: DSH's shortcut catalog binds a
-   * physical `code` plus modifiers, so these cannot live there. They get their own
-   * General-settings row instead, and the code view dispatches by this preference.
+   * It is a `settings.section`, so it gets its own row in the settings navigation
+   * instead of being one more collapsible row inside 通用设置. The code view reads
+   * these preferences directly: gestures cannot live in DSH's shortcut catalog
+   * (that one binds a physical key plus modifiers).
    */
-  ctx.effect(() => ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item',
-    id: `${IDE_NS}:gestures`,
-    order: 17,
+  ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: IDE_NS,
+    order: 70,
+    label: () => translate('settingsNav'),
     registrant: IDE_NS,
     locale: IDE_NS,
     inject: () => ({
@@ -981,7 +1031,7 @@ function apply(ctx) {
       onRecord: startShortcutRecord,
       onReset: resetShortcut,
     }),
-  }, IdeWorkspaceSettingsItem)), 'dsh-ide-window: workspace settings')
+  }, IdeWorkspaceSettingsSection)), 'dsh-ide-window: workspace settings')
 
   // The conversation header's leading seat: global navigation, left of the title.
   ctx.effect(() => ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({

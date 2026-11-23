@@ -1144,6 +1144,15 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-turn-status.s-d { color: var(--dsw-alias-state-error-primary, #c95c5c); }
 .iw-turn-status.s-\? { color: var(--dsw-alias-label-tertiary, inherit); }
 
+/* The plugin's own settings section: a page, not a row inside 通用设置. */
+.iw-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 16px;
+  max-width: 720px;
+}
+.iw-settings-section .iw-settings-item:first-child { border-top: 0; padding-top: 0; }
 .iw-settings-item {
   display: flex;
   align-items: center;

@@ -99,7 +99,7 @@ window.__ModuleLoader__.load({
     "noSourceInJar": "No sources in that jar",
     "shortcutToggle": "Code workspace: open / close",
     "shortcutBackToChat": "Code workspace: back to conversation",
-    "gestureSection": "Code workspace shortcuts",
+    "gestureSection": "Shortcuts",
     "gestureSectionHint": "Every shortcut of this plugin, viewable and editable here (kept out of DSH's own list)",
     "gestureEdit": "View",
     "gestureClose": "Close",
@@ -254,6 +254,8 @@ window.__ModuleLoader__.load({
     "shotTextPlaceholder": "Type, then press Enter",
     "shotCopy": "Capture",
     "shotJump": "Capture and open chat",
+    "settingsNav": "Code workspace",
+    "settingsCollapse": "Collapse",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -346,7 +348,7 @@ window.__ModuleLoader__.load({
     "noSourceInJar": "该 jar 没有源码",
     "shortcutToggle": "代码工作区: 打开 / 关闭",
     "shortcutBackToChat": "代码工作区: 返回对话",
-    "gestureSection": "代码工作区快捷键",
+    "gestureSection": "快捷键",
     "gestureSectionHint": "本插件的全部快捷键，就在这里查看与修改（不占用 DSH 自己的快捷键列表）",
     "gestureEdit": "查看",
     "gestureClose": "关闭",
@@ -501,6 +503,8 @@ window.__ModuleLoader__.load({
     "shotTextPlaceholder": "输入文字后回车",
     "shotCopy": "截图",
     "shotJump": "截图并跳转会话",
+    "settingsNav": "代码工作区",
+    "settingsCollapse": "收起",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1650,6 +1654,15 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-turn-status.s-d { color: var(--dsw-alias-state-error-primary, #c95c5c); }
 .iw-turn-status.s-\? { color: var(--dsw-alias-label-tertiary, inherit); }
 
+/* The plugin's own settings section: a page, not a row inside 通用设置. */
+.iw-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 16px;
+  max-width: 720px;
+}
+.iw-settings-section .iw-settings-item:first-child { border-top: 0; padding-top: 0; }
 .iw-settings-item {
   display: flex;
   align-items: center;
@@ -7738,11 +7751,17 @@ function mavenRowHint(tr, state) {
   ])
 }
 
-function IdeWorkspaceSettingsItem(props) {
+/**
+ * The whole 代码工作区 settings page.
+ *
+ * It used to be one collapsible row inside 通用设置, which crowded that page and
+ * hid everything behind an「查看」button. It is now its own section in the settings
+ * navigation (like 归档管理), so the content is always visible.
+ */
+function IdeWorkspaceSettingsSection(props) {
   const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
-  const open = state.gestureEditorOpen === true
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
   // The detected repository is only known after the Host answers; ask once if
@@ -7824,21 +7843,7 @@ function IdeWorkspaceSettingsItem(props) {
 
   return h(React.Fragment, null, [
     h(IdeStyles, { key: 'style' }),
-    h('div', { key: 'row', className: 'iw-gesture-item' }, [
-      h('div', { key: 'text', className: 'iw-gesture-item-text' }, [
-        h('span', { key: 't', className: 'iw-gesture-item-title' }, tr('settingsTitle')),
-        h('span', { key: 'h', className: 'iw-gesture-item-hint' }, tr('settingsHint')),
-      ]),
-      h('button', {
-        key: 'b',
-        type: 'button',
-        className: 'iw-gesture-btn',
-        'aria-expanded': open ? 'true' : 'false',
-        onClick: () => store.setGestureEditor(!open),
-      }, open ? tr('gestureClose') : tr('gestureEdit')),
-    ]),
-    open
-      ? h('div', { key: 'panel', className: 'iw-gesture-panel' }, [
+    h('div', { key: 'panel', className: 'iw-settings-section' }, [
         // Shortcuts: a sub-item, so the section keeps room for more settings.
         h('div', { key: 'sc', className: 'iw-settings-item' }, [
           h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('gestureSection')),
@@ -7847,7 +7852,7 @@ function IdeWorkspaceSettingsItem(props) {
             type: 'button',
             className: 'iw-gesture-chip',
             onClick: () => setShortcutsOpen(!shortcutsOpen),
-          }, shortcutsOpen ? tr('gestureClose') : `${tr('gestureEdit')} (${rows.length})`),
+          }, shortcutsOpen ? tr('settingsCollapse') : `${tr('gestureEdit')} (${rows.length})`),
         ]),
         shortcutsOpen
           ? h('div', { key: 'sclist', className: 'iw-settings-body' }, [
@@ -7874,7 +7879,7 @@ function IdeWorkspaceSettingsItem(props) {
             type: 'button',
             className: 'iw-gesture-chip',
             onClick: () => setFontsOpen(!fontsOpen),
-          }, fontsOpen ? tr('gestureClose') : `${codeSize} / ${treeSize} px`),
+          }, fontsOpen ? tr('settingsCollapse') : `${codeSize} / ${treeSize} px`),
         ]),
         fontsOpen
           ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
@@ -7903,8 +7908,7 @@ function IdeWorkspaceSettingsItem(props) {
           ]),
           mavenRowHint(tr, state),
         ]),
-      ])
-      : null,
+    ]),
   ])
 }
 
@@ -12161,34 +12165,82 @@ function apply(ctx) {
   }
 
   /**
-   * Rows of DSH's own 「已编辑」 card open this workspace instead of the review.
+   * File cards in the conversation open this workspace instead of a preview.
    *
-   * The card is a shipped plugin and stays untouched: the click is swallowed in
-   * the capture phase, and the row's own hidden span carries the absolute path.
-   * The card's header keeps its meaning (open the review) — only the file rows
-   * switch target.
+   * Three shipped surfaces name a file and open something else — the 「已编辑」
+   * card's rows, that same card when it has a single file (the header *is* the
+   * file), and the delivered-file card the agent presents:
+   *
+   *  - `[data-changed-files] .…_row` — the row carries a hidden span with the
+   *    absolute path; its siblings' preview still works when it is not claimed.
+   *  - `[data-changed-files][data-single]` — one file, so the whole card means
+   *    that file; the same hidden span is directly under the card.
+   *  - `[data-presented-file]` — the full-card preview button carries the
+   *    resolved path in its `title`. The card's own action buttons (a trailing
+   *    edit/reveal group) keep their meaning: only the preview surface is taken.
+   *
+   * The click is swallowed in the capture phase and the panel is selected, so the
+   * right pane is never opened on the way.
    */
   ctx.effect(() => {
     if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined
+    const openInWorkspace = (path) => {
+      if (path === '') return false
+      if (!store.openAt(path, undefined)) return false
+      store.setNotice('')
+      selectPanel(IDE_PANEL_ID)
+      return true
+    }
+    const cardPath = (card) => ideRelativeWorkspacePath(
+      card.querySelector('span[hidden]')?.textContent?.trim() ?? '',
+      store.getState().rootPath,
+      '',
+    )
     const onChangedFileClick = (event) => {
       const target = event.target
       if (!(target instanceof Element)) return
+
+      // A delivered file: take the preview surface, leave its action buttons be.
+      const presented = target.closest('[data-presented-file]')
+      if (presented !== null) {
+        const cardButton = presented.querySelector('button')
+        const clicked = target.closest('button')
+        if (clicked !== null && clicked !== cardButton) return
+        const title = cardButton?.getAttribute('title')?.trim() ?? ''
+        const path = ideRelativeWorkspacePath(title, store.getState().rootPath, '')
+        if (!openInWorkspace(path)) return
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      // One changed file: the card header opens the review, but it means the file.
+      const single = target.closest('[data-changed-files="true"][data-single]')
+      if (single !== null) {
+        const path = cardPath(single)
+        if (!openInWorkspace(path)) return
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      // Several changed files: only the rows switch target; the header keeps the
+      // review, which is the useful thing to do with a list.
       const row = target.closest('[data-changed-files="true"] .vdszpW_row')
       if (row === null || row.parentElement === null) return
-      const hidden = row.parentElement.querySelector('span[hidden]')
       const display = row.querySelector('.vdszpW_path')?.textContent ?? ''
-      const path = ideRelativeWorkspacePath(hidden?.textContent?.trim() ?? '', store.getState().rootPath, display.trim())
-      if (path === '') return
+      const path = ideRelativeWorkspacePath(
+        row.parentElement.querySelector('span[hidden]')?.textContent?.trim() ?? '',
+        store.getState().rootPath,
+        display.trim(),
+      )
+      if (!openInWorkspace(path)) return
       event.preventDefault()
       event.stopPropagation()
-      if (store.openAt(path, undefined)) {
-        store.setNotice('')
-        selectPanel(IDE_PANEL_ID)
-      }
     }
     document.addEventListener('click', onChangedFileClick, true)
     return () => document.removeEventListener('click', onChangedFileClick, true)
-  }, 'dsh-ide-window: edited-file rows open the workspace')
+  }, 'dsh-ide-window: file cards open the workspace')
 
   /** Mount effect of the panel: fold the navigation column, nothing else. */
   function enter() {
@@ -12417,16 +12469,18 @@ function apply(ctx) {
   }
 
   /**
-   * The code workspace's mouse gestures.
+   * The code workspace's own settings page.
    *
-   * Double click and ⌘+click are pointer gestures: DSH's shortcut catalog binds a
-   * physical `code` plus modifiers, so these cannot live there. They get their own
-   * General-settings row instead, and the code view dispatches by this preference.
+   * It is a `settings.section`, so it gets its own row in the settings navigation
+   * instead of being one more collapsible row inside 通用设置. The code view reads
+   * these preferences directly: gestures cannot live in DSH's shortcut catalog
+   * (that one binds a physical key plus modifiers).
    */
-  ctx.effect(() => ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item',
-    id: `${IDE_NS}:gestures`,
-    order: 17,
+  ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: IDE_NS,
+    order: 70,
+    label: () => translate('settingsNav'),
     registrant: IDE_NS,
     locale: IDE_NS,
     inject: () => ({
@@ -12445,7 +12499,7 @@ function apply(ctx) {
       onRecord: startShortcutRecord,
       onReset: resetShortcut,
     }),
-  }, IdeWorkspaceSettingsItem)), 'dsh-ide-window: workspace settings')
+  }, IdeWorkspaceSettingsSection)), 'dsh-ide-window: workspace settings')
 
   // The conversation header's leading seat: global navigation, left of the title.
   ctx.effect(() => ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({

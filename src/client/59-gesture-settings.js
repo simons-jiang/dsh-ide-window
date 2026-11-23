@@ -111,11 +111,17 @@ function mavenRowHint(tr, state) {
   ])
 }
 
-function IdeWorkspaceSettingsItem(props) {
+/**
+ * The whole 代码工作区 settings page.
+ *
+ * It used to be one collapsible row inside 通用设置, which crowded that page and
+ * hid everything behind an「查看」button. It is now its own section in the settings
+ * navigation (like 归档管理), so the content is always visible.
+ */
+function IdeWorkspaceSettingsSection(props) {
   const { translate, store, platform, runtime, onPick, onRecord, onReset } = props
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
-  const open = state.gestureEditorOpen === true
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
   // The detected repository is only known after the Host answers; ask once if
@@ -197,21 +203,7 @@ function IdeWorkspaceSettingsItem(props) {
 
   return h(React.Fragment, null, [
     h(IdeStyles, { key: 'style' }),
-    h('div', { key: 'row', className: 'iw-gesture-item' }, [
-      h('div', { key: 'text', className: 'iw-gesture-item-text' }, [
-        h('span', { key: 't', className: 'iw-gesture-item-title' }, tr('settingsTitle')),
-        h('span', { key: 'h', className: 'iw-gesture-item-hint' }, tr('settingsHint')),
-      ]),
-      h('button', {
-        key: 'b',
-        type: 'button',
-        className: 'iw-gesture-btn',
-        'aria-expanded': open ? 'true' : 'false',
-        onClick: () => store.setGestureEditor(!open),
-      }, open ? tr('gestureClose') : tr('gestureEdit')),
-    ]),
-    open
-      ? h('div', { key: 'panel', className: 'iw-gesture-panel' }, [
+    h('div', { key: 'panel', className: 'iw-settings-section' }, [
         // Shortcuts: a sub-item, so the section keeps room for more settings.
         h('div', { key: 'sc', className: 'iw-settings-item' }, [
           h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('gestureSection')),
@@ -220,7 +212,7 @@ function IdeWorkspaceSettingsItem(props) {
             type: 'button',
             className: 'iw-gesture-chip',
             onClick: () => setShortcutsOpen(!shortcutsOpen),
-          }, shortcutsOpen ? tr('gestureClose') : `${tr('gestureEdit')} (${rows.length})`),
+          }, shortcutsOpen ? tr('settingsCollapse') : `${tr('gestureEdit')} (${rows.length})`),
         ]),
         shortcutsOpen
           ? h('div', { key: 'sclist', className: 'iw-settings-body' }, [
@@ -247,7 +239,7 @@ function IdeWorkspaceSettingsItem(props) {
             type: 'button',
             className: 'iw-gesture-chip',
             onClick: () => setFontsOpen(!fontsOpen),
-          }, fontsOpen ? tr('gestureClose') : `${codeSize} / ${treeSize} px`),
+          }, fontsOpen ? tr('settingsCollapse') : `${codeSize} / ${treeSize} px`),
         ]),
         fontsOpen
           ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
@@ -276,8 +268,7 @@ function IdeWorkspaceSettingsItem(props) {
           ]),
           mavenRowHint(tr, state),
         ]),
-      ])
-      : null,
+    ]),
   ])
 }
 

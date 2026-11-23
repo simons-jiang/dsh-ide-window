@@ -141,7 +141,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 |---|---|
 | `main`（keyed `dsh-ide-window:code`） | 面板占中栏 |
 | `conversation.header.leading` | 会话表头左侧的入口按钮 |
-| `settings.general.item` | 设置 → 通用设置里的「代码工作区设置」 |
+| `settings.section`（id `dsh-ide-window`，order 70） | 设置左侧导航里的独立一页「代码工作区」（与「归档管理」同级） |
 | `shell.overlay`（list） | 面板内浮层（用法弹层等） |
 | `sidebar.right.pane.tab` | 仅用于文件地址认领（body 不渲染） |
 | `sidebar.footer.action` | 左下角入口 |
@@ -190,7 +190,10 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带），`git commit` 不改内容也能更新
 - **导航历史记住的是「看到哪」而不是「跳到哪」**：条目是 `{path, line, top}`——`line` 只是上一次跳转目标，用户自己滚着读的位置在 `state.scroll[path]`（`top`）。只记 `line` 就会出现「点方法跳走 → 侧键返回 → 回到文件第一行」。`openAt(path, line, {top})` 会先把 `scroll[path]` 种进去、把 `reveal` 清零，让代码视图直接挂到那个偏移；`test/harness.mjs` 有对应用例（点方法前滚到 2400 → 返回后仍是 2400、`reveal` 归零）
 - 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）；切换项目走 `enterProject(root, session)`，**会话与根目录一次 patch、一次 restart**（分两步会让旧标签以新会话作用域重读，闪出 `outside-workspace` 红字）；面板里读 `getState()` 判断而非订阅 `rootPath`，避免手动切换被跟随逻辑回滚
-- DSH 自带的「已编辑 N 个文件」卡片：点**文件行**直接在本插件工作区打开（捕获阶段拦截 + 行内隐藏的绝对路径；卡片头部仍打开官方 review）
+- 对话里的文件卡片点开都走本插件工作区，不再打开右侧预览（捕获阶段拦 `click`，随后 `selectPanel`）：
+  - **「已编辑 N 个文件」卡片**：点**文件行**进工作区（行内隐藏 span 带绝对路径）；**卡片头部仍打开官方 review**——一个列表最有用的事就是看整体差异
+  - **「已编辑 <单个文件名>」卡片**（只有 1 个文件）：整张卡就是那个文件，点它进工作区（路径同样来自隐藏 span）
+  - **交付文件卡**（`[data-presented-file]`，agent 交付的文件）：点卡片进工作区（路径在预览按钮的 `title` 上）；卡片右侧自己的操作按钮**不拦**，仍做它原本的事
 - 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
 - 大文件保护：>60000 行或超字节上限时截断并提示
 
@@ -257,9 +260,13 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 ### 4.4 与对话联动
 - 用 DSH 自带的「已编辑 N 个文件」卡片即可：**点文件行**直接进本插件工作区（见 4.1 的拦截项）；插件不再渲染自己的改动卡片（原 `turnTail` 卡片已删除，`58-turn.js` 随之移除）
 
-### 4.5 设置（设置 → 通用设置 → 代码工作区设置）
-- **快捷键**（8 条，全部可改，点「修改」直接按新键）
+### 4.5 设置（设置 → 左侧导航「代码工作区」）
+
+- **它是设置左侧导航里的独立一页**（`settings.section`，id `dsh-ide-window`，order 70，排在「归档管理」这一层），不再塞进「通用设置」里当一行——那样既挤又得先点「查看」才能看到内容。导航标签来自 `locale` 的 `settingsNav`（代码工作区 / Code workspace），由 `label: () => translate('settingsNav')` 提供
+- **快捷键**（8 条，全部可改，点「修改」直接按新键；「恢复默认」逐条重置）；手势三条是下拉（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，互斥）
 - **基础设置 → 字号**：代码字号（默认 12.5）、文件树字号（默认 14.5），10–24px 步进 0.5，行高按比例联动
+- **Maven 本地仓库**：留空=自动检测，下面一行直接显示当前在用的路径
+- 整页样式走 `.iw-settings-section`（max-width 720px、上下留白），`IdeStyles` 由组件自己渲染（设置弹窗不在 `.iw-root` 里）
 
 ### 4.6 快捷键（唯一登记处 `IDE_SHORTCUTS`）
 

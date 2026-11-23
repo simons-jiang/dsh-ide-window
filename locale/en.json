@@ -93,7 +93,7 @@
   "noSourceInJar": "No sources in that jar",
   "shortcutToggle": "Code workspace: open / close",
   "shortcutBackToChat": "Code workspace: back to conversation",
-  "gestureSection": "Code workspace shortcuts",
+  "gestureSection": "Shortcuts",
   "gestureSectionHint": "Every shortcut of this plugin, viewable and editable here (kept out of DSH's own list)",
   "gestureEdit": "View",
   "gestureClose": "Close",
@@ -247,5 +247,7 @@
   "shotUndo": "Undo",
   "shotTextPlaceholder": "Type, then press Enter",
   "shotCopy": "Capture",
-  "shotJump": "Capture and open chat"
+  "shotJump": "Capture and open chat",
+  "settingsNav": "Code workspace",
+  "settingsCollapse": "Collapse"
 }

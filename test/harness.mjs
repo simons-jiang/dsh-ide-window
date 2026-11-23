@@ -1698,6 +1698,21 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(sequenceLabel({ key: 'Control' }) === '双击 Control', 'a rebound sequence is labelled too', sequenceLabel({ key: 'Control' }))
 }
 
+// ---- conversation file cards open the workspace ----------------------------
+{
+  // 三种卡片都必须在捕获阶段被拦下，并且交付卡的“操作按钮”不能被顺手劫持。
+  const source = readFileSync(new URL('../src/client/90-apply.js', import.meta.url), 'utf8')
+  for (const [needle, label] of [
+    ['[data-changed-files="true"] .vdszpW_row', 'a row of the multi-file card'],
+    ['[data-changed-files="true"][data-single]', 'the single-file card'],
+    ['[data-presented-file]', 'a delivered file card'],
+  ]) {
+    check(source.includes(needle), `${label} is claimed`, needle)
+  }
+  check(source.includes('clicked !== cardButton'), 'a delivered card\'s own action buttons keep their job')
+  check(source.includes("addEventListener('click', onChangedFileClick, true)"), 'the claim runs in the capture phase')
+}
+
 // ---- mouse gestures -------------------------------------------------------
 {
   const choices = grabSource('IDE_GESTURE_CHOICES', '05-shortcut-registry.js')
@@ -1707,11 +1722,12 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(next('alt', 'double') === 'meta', 'the ring wraps around', next('alt', 'double'))
 
   const names = mode.record.registrations.map((entry) => entry.name)
-  check(names.includes('settings.general.item'), 'registers the gesture settings row', names.join(','))
+  check(names.includes('settings.section'), 'registers its own settings section', names.join(','))
   const row = mode.record.registrations
-    .filter((entry) => entry.name === 'settings.general.item')
-    .find((entry) => String(entry.id ?? '').includes(':gestures'))
-  check(row !== undefined, 'the gesture row is namespaced')
+    .filter((entry) => entry.name === 'settings.section')
+    .find((entry) => String(entry.id ?? '') === 'dsh-ide-window')
+  check(row !== undefined, 'the settings section is namespaced')
+  check(typeof row?.label === 'function' || typeof row?.label === 'string', 'the section carries a nav label', String(row?.label))
 
   const injected = row?.inject?.() ?? {}
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
@@ -1821,10 +1837,10 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(mode.record.shortcuts.length === 0, 'no shortcut reaches DSH\'s catalog', String(mode.record.shortcuts.length))
 
   const names = mode.record.registrations.map((entry) => entry.name)
-  check(names.includes('settings.general.item'), 'the shortcuts live in a General-settings row', names.join(','))
+  check(names.includes('settings.section'), 'the shortcuts live in the plugin\'s own settings section', names.join(','))
   const row = mode.record.registrations
-    .filter((entry) => entry.name === 'settings.general.item')
-    .find((entry) => String(entry.id ?? '').includes('dsh-ide-window'))
+    .filter((entry) => entry.name === 'settings.section')
+    .find((entry) => String(entry.id ?? '') === 'dsh-ide-window')
   check(row !== undefined, 'the row is namespaced', String(row?.id))
   const injected = row?.inject?.() ?? {}
   check(typeof injected.onRecord === 'function' && typeof injected.onReset === 'function',
