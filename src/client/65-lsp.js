@@ -189,7 +189,20 @@ function ideLspPayload(store, operation, tabPath, position) {
  *
  * @returns locations `{ path, line, character }`, best first.
  */
-async function ideLspDefinition(store, tabPath, position, symbolName, timeline) {
+/**
+ * Resolve one symbol to its declaration.
+ *
+ * `goToImplementation` is only a fallback for a **method declaration**: an
+ * interface method has no body, so the useful destination is its override. For
+ * any other symbol it answers a different question — on a class name it returns
+ * every subclass, which is how a double click on `ServiceImpl` inside an
+ * `extends` clause used to open a popup with fifty repositories in it, labelled
+ * 「声明」.
+ *
+ * @param options.implementationFallback - whether a bodyless declaration may
+ *   resolve to its implementations (methods only).
+ */
+async function ideLspDefinition(store, tabPath, position, symbolName, timeline, options = {}) {
   const request = async (operation) => {
     const started = ideNow()
     const result = await ideLspQuery(ideLspPayload(store, operation, tabPath, position))
@@ -198,7 +211,7 @@ async function ideLspDefinition(store, tabPath, position, symbolName, timeline) 
   }
 
   let located = await request('goToDefinition')
-  if (located.length === 0) located = await request('goToImplementation')
+  if (located.length === 0 && options.implementationFallback !== false) located = await request('goToImplementation')
 
   const fieldName = ideBeanFieldName(symbolName)
   // Everything below is bean-accessor work: any other symbol is answered by the

@@ -1312,6 +1312,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
       ${sourceFunction('ideDeclarationPattern', '65-lsp.js')}
       ${grabSource('ideMapperLooksLikeMapper', '30-code.js')}
       ${grabSource('ideMapperStatementPattern', '30-code.js')}
+      ${grabSource('ideTypePositionAt', '30-code.js')}
       ${fallback}
       ${mapperJump}
       ${accessor}
@@ -1430,6 +1431,57 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(implementationNotice.includes('OrderClearingServiceImpl.java:332') && implementationNotice.includes('implementationLabel'),
     'a declaration click opens its implementation', implementationNotice)
 
+  // A type name must never ask for implementations: on a class the server
+  // answers with every subclass, which used to fill a 「声明 (50)」 popup when
+  // double clicking `ServiceImpl` inside an `extends` clause.
+  const seenOptions = []
+  const serviceImplClick = build({
+    definition: async (_path, _position, _name, options) => {
+      seenOptions.push(options)
+      return { locations: [], ms: 2 }
+    },
+  }, true, {
+    lines: [
+      'public class FulfillmentOrderRepository',
+      '    extends ServiceImpl<FulfillmentOrderMapper, FulfillmentOrderEntity> {',
+    ],
+    greps: [],
+  })
+  await serviceImplClick.api.jump('ServiceImpl', { line: 1, character: 12 }, { clientX: 10, clientY: 10 })
+  check(seenOptions.at(-1)?.implementationFallback === false,
+    'a type click does not fall back to implementations', JSON.stringify(seenOptions[0]))
+  check(serviceImplClick.popups.length === 0, 'a type click never opens the declaration popup', String(serviceImplClick.popups.length))
+
+  const methodClick = build({
+    definition: async (_path, _position, _name, options) => {
+      seenOptions.push(options)
+      return { locations: [], ms: 2 }
+    },
+    implementations: async () => [{ path: 'service/impl/X.java', line: 9 }],
+  }, true, {
+    lines: ['    PageRespVo<X> selectPage(Query q);'],
+    greps: [],
+  })
+  await methodClick.api.jump('selectPage', { line: 0, character: 20 }, { clientX: 10, clientY: 10 })
+  check(seenOptions.at(-1)?.implementationFallback === true,
+    'a method declaration still falls back to implementations', JSON.stringify(seenOptions[1]))
+
+  const typePosition = new Function(
+    `${sourceFunction('ideRegexEscape', '65-lsp.js')}\n${grabSource('ideTypePositionAt', '30-code.js')}\nreturn ideTypePositionAt`,
+  )()
+  const extendsLine = '    extends ServiceImpl<FulfillmentOrderMapper, FulfillmentOrderEntity> {'
+  check(typePosition(extendsLine, extendsLine.indexOf('ServiceImpl'), 'ServiceImpl') === true,
+    'a name after extends is a type')
+  const implementsLine = 'public class Demo implements Handler {'
+  check(typePosition(implementsLine, implementsLine.indexOf('Handler'), 'Handler') === true,
+    'a name after implements is a type')
+  check(typePosition('public class Demo {', 13, 'Demo') === true, 'the class name is a type')
+  const genericLine = '    List<OrderEntity> rows = find();'
+  check(typePosition(genericLine, genericLine.indexOf('OrderEntity'), 'OrderEntity') === true,
+    'a generic argument is a type')
+  check(typePosition('    public String greet() {', 18, 'greet') === false,
+    'a method declaration is not a type')
+
   // A MyBatis mapper method has no Java body: the click must land on the XML
   // statement, not on the "this is the definition" message.
   const mapperBuild = build(
@@ -1462,6 +1514,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
       ${sourceFunction('ideDeclarationPattern', '65-lsp.js')}
       ${grabSource('ideMapperLooksLikeMapper', '30-code.js')}
       ${grabSource('ideMapperStatementPattern', '30-code.js')}
+      ${grabSource('ideTypePositionAt', '30-code.js')}
       ${fallback}
       ${mapperJump}
       ${implementation}

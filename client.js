@@ -5930,6 +5930,28 @@ function ideVisionRows(root, tab, uncommittedLabel) {
 }
 
 /**
+ * Whether the symbol at this position names a **type**, not a method.
+ *
+ * `ideIsMethodDeclaration` reads `类型 名字(` off the line, and `extends
+ * ServiceImpl<…>` looks exactly like that shape — so a double click on a class
+ * name in an `extends`/`implements`/`class`/generic/new position was treated as a
+ * declaration click, and the "go to its implementation" step then answered with
+ * every subclass in the workspace.
+ */
+function ideTypePositionAt(line, character, name) {
+  if (typeof line !== 'string' || typeof name !== 'string' || name === '') return false
+  const at = typeof character === 'number' && character >= 0 ? character : -1
+  // Only the text before the symbol says what role it plays.
+  const prefix = at >= 0 && at <= line.length ? line.slice(0, at + name.length) : line
+  if (new RegExp(`\\b(?:extends|implements|new)\\s+${ideRegexEscape(name)}\\b`).test(prefix)) return true
+  if (new RegExp(`\\b(?:class|interface|enum|record)\\s+${ideRegexEscape(name)}\\b`).test(prefix)) return true
+  // A generic argument: `ServiceImpl<A, B>` / `List<Entity>`.
+  const before = prefix.slice(0, prefix.length - name.length)
+  if (/[<,]\s*$/.test(before) && /^[A-Z]/.test(name)) return true
+  return false
+}
+
+/**
  * One Git annotate cell per line, banded by commit.
  *
  * @param blames - `line → { author, date, time, uncommitted }` (1-based).
@@ -6197,9 +6219,20 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     // banner is the only signal this read-only view can give without blocking.
     store.setNotice(tr('querying'))
     try {
+      const lineText = lines[position.line] ?? ''
+      // A click that lands on a declaration asks for the implementation; a click
+      // on a call asks for the declaration. The line itself says which one it is
+      // — except in a type position (`extends ServiceImpl<…>`), where "the
+      // declaration" is the class itself and its "implementations" are every
+      // subclass, which is not what the click means.
+      const declaresHere = ideIsMethodDeclaration(lineText, name)
+        && !ideTypePositionAt(lineText, position.character, name)
       let outcome
       try {
-        outcome = await navigate.definition(tab.path, position, name)
+        // Implementation means "the body of this method" only. For a type the
+        // same query returns every subclass, which is not what a double click
+        // on `ServiceImpl` in an `extends` clause is asking for.
+        outcome = await navigate.definition(tab.path, position, name, { implementationFallback: declaresHere })
       } catch (error) {
         // No language server, or it failed: dependency jars are still readable,
         // so fall through instead of stopping at the error.
@@ -6210,10 +6243,6 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       // The query time is only a hint in the banner; a missing value is fine.
       const queryMs = typeof outcome?.ms === 'number' ? outcome.ms : undefined
       store.setNotice('')
-      const lineText = lines[position.line] ?? ''
-      // A click that lands on a declaration asks for the implementation; a click
-      // on a call asks for the declaration. The line itself says which one it is.
-      const declaresHere = ideIsMethodDeclaration(lineText, name)
       // A field's own line is the definition; jumping to another class's
       // same-named member is never what that click means.
       const declaresFieldHere = !declaresHere && ideIsFieldDeclaration(lineText, name)
@@ -8500,7 +8529,20 @@ function ideLspPayload(store, operation, tabPath, position) {
  *
  * @returns locations `{ path, line, character }`, best first.
  */
-async function ideLspDefinition(store, tabPath, position, symbolName, timeline) {
+/**
+ * Resolve one symbol to its declaration.
+ *
+ * `goToImplementation` is only a fallback for a **method declaration**: an
+ * interface method has no body, so the useful destination is its override. For
+ * any other symbol it answers a different question — on a class name it returns
+ * every subclass, which is how a double click on `ServiceImpl` inside an
+ * `extends` clause used to open a popup with fifty repositories in it, labelled
+ * 「声明」.
+ *
+ * @param options.implementationFallback - whether a bodyless declaration may
+ *   resolve to its implementations (methods only).
+ */
+async function ideLspDefinition(store, tabPath, position, symbolName, timeline, options = {}) {
   const request = async (operation) => {
     const started = ideNow()
     const result = await ideLspQuery(ideLspPayload(store, operation, tabPath, position))
@@ -8509,7 +8551,7 @@ async function ideLspDefinition(store, tabPath, position, symbolName, timeline) 
   }
 
   let located = await request('goToDefinition')
-  if (located.length === 0) located = await request('goToImplementation')
+  if (located.length === 0 && options.implementationFallback !== false) located = await request('goToImplementation')
 
   const fieldName = ideBeanFieldName(symbolName)
   // Everything below is bean-accessor work: any other symbol is answered by the
@@ -12045,9 +12087,9 @@ function apply(ctx) {
      * is only needed when several candidates must be shown, so the common jump
      * pays one language-server query and one file read at most.
      */
-    definition: async (tabPath, position, name) => {
+    definition: async (tabPath, position, name, options = {}) => {
       const timeline = ideTimeline()
-      const located = await ideLspDefinition(store, tabPath, position, name, timeline)
+      const located = await ideLspDefinition(store, tabPath, position, name, timeline, options)
       const locations = located.length === 1 ? located : await ideWithSnippets(store, located)
       timeline.report('definition')
       return { locations, ms: timeline.total() }

@@ -577,9 +577,9 @@ function apply(ctx) {
      * is only needed when several candidates must be shown, so the common jump
      * pays one language-server query and one file read at most.
      */
-    definition: async (tabPath, position, name) => {
+    definition: async (tabPath, position, name, options = {}) => {
       const timeline = ideTimeline()
-      const located = await ideLspDefinition(store, tabPath, position, name, timeline)
+      const located = await ideLspDefinition(store, tabPath, position, name, timeline, options)
       const locations = located.length === 1 ? located : await ideWithSnippets(store, located)
       timeline.report('definition')
       return { locations, ms: timeline.total() }
