@@ -688,6 +688,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
+  const bodyRef = useRef(null)
+  // Whether the transcript should follow the newest line.
+  const stickRef = useRef(true)
   const [entries, setEntries] = useState([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -804,6 +807,29 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       globalThis.clearTimeout(timer)
     }
   }, [binding, state.sessionId, entries.length])
+
+  // Coming back into view (conversation → code workspace) shows the newest line
+  // again, even if the user had scrolled up before leaving.
+  useEffect(() => {
+    if (state.floatOpen !== true) return
+    stickRef.current = true
+  }, [state.floatOpen])
+
+  // The transcript shows the newest line: on mount, when it comes back into
+  // view, and after every new message. `stickRef` follows the user, so reading
+  // older content is not yanked back; sending forces the jump.
+  useEffect(() => {
+    const element = bodyRef.current
+    if (element === null || element === undefined || stickRef.current !== true) return undefined
+    const toBottom = () => { element.scrollTop = element.scrollHeight }
+    toBottom()
+    // A picture or a code block grows the transcript after it lays out, which
+    // leaves the earlier position short of the real bottom.
+    const timers = [60, 200, 600].map((delay) => globalThis.setTimeout(toBottom, delay))
+    return () => {
+      for (const timer of timers) globalThis.clearTimeout(timer)
+    }
+  })
 
   const sessionId = state.sessionId ?? ''
   const open = state.floatOpen === true && state.floatEnabled !== false && state.floatClosed !== true
@@ -1050,6 +1076,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const text = draft.trim()
     const parts = ideFloatPromptParts(text, refs, images)
     if (parts.length === 0 || binding === null || sending) return
+    // Sending means the user wants to see their own message, wherever they were.
+    stickRef.current = true
     setSending(true)
     setDraft('')
     const sentRefs = refs
@@ -1389,7 +1417,15 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           h('span', { key: 'g', className: 'iw-float-menu-group' }, option.group),
         ])))
       : null,
-    h('div', { key: 'body', className: 'iw-float-body' }, entries.length === 0
+    h('div', {
+      key: 'body',
+      className: 'iw-float-body',
+      ref: bodyRef,
+      onScroll: (event) => {
+        const element = event.currentTarget
+        stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
+      },
+    }, entries.length === 0
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : entries.map((row) => {
         if (row.role === 'files') {
@@ -1428,6 +1464,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
               src: url,
               alt: image.name ?? '',
               title: tr('floatPreviewImage'),
+              draggable: false,
+              // Right-clicking here offers the app's own "Copy", which pastes the
+              // file name instead of the picture.
+              onContextMenu: (event) => event.preventDefault(),
               onClick: () => setViewing({ url, name: image.name ?? '' }),
             })
           })),
@@ -1474,7 +1514,14 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       }, changeOpen ? tr('floatChangesLess') : `${tr('floatChangesAll')} ${changes.files.length}`),
     ]),
     viewing === null ? null : h('div', { key: 'viewer', className: 'iw-float-viewer' }, [
-      h('img', { key: 'img', className: 'iw-float-viewer-img', src: viewing.url, alt: viewing.name }),
+      h('img', {
+        key: 'img',
+        className: 'iw-float-viewer-img',
+        src: viewing.url,
+        alt: viewing.name,
+        draggable: false,
+        onContextMenu: (event) => event.preventDefault(),
+      }),
       h('div', { key: 'bar', className: 'iw-float-viewer-bar' }, [
         h('span', { key: 'name', className: 'iw-float-viewer-name' }, viewing.name),
         h('button', {
