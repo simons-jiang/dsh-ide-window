@@ -124,6 +124,7 @@ function IdeWorkspaceSettingsSection(props) {
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
   const [fontsOpen, setFontsOpen] = React.useState(false)
+  const [floatSizeOpen, setFloatSizeOpen] = React.useState(false)
   // The detected repository is only known after the Host answers; ask once if
   // the panel was never mounted, so the row can show what is really in use.
   React.useEffect(() => {
@@ -175,6 +176,33 @@ function IdeWorkspaceSettingsSection(props) {
 
   const codeSize = Number.isFinite(state.codeFontSize) ? state.codeFontSize : 12.5
   const treeSize = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  const floatWidth = Number.isFinite(state.floatDefaultWidth) ? state.floatDefaultWidth : IDE_FLOAT_DEFAULT_WIDTH
+  const floatHeight = Number.isFinite(state.floatDefaultHeight) ? state.floatDefaultHeight : IDE_FLOAT_DEFAULT_HEIGHT
+  const floatSizeStepper = (key, label, value, min, max, fallback, set) => h('div', { key, className: 'iw-gesture-row' }, [
+    h('span', { key: 'l', className: 'iw-gesture-label' }, label),
+    h('span', { key: 's', className: 'iw-gesture-right' }, [
+      h('button', {
+        key: 'minus',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        onClick: () => set(Math.max(min, value - 20)),
+      }, '−'),
+      h('span', { key: 'v', className: 'iw-gesture-keys' }, `${value} px`),
+      h('button', {
+        key: 'plus',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        onClick: () => set(Math.min(max, value + 20)),
+      }, '+'),
+      h('button', {
+        key: 'reset',
+        type: 'button',
+        className: 'iw-gesture-chip',
+        disabled: value === fallback,
+        onClick: () => set(fallback),
+      }, tr('ksReset')),
+    ]),
+  ])
   const stepper = (key, label, value, set) => h('div', { key, className: 'iw-gesture-row' }, [
     h('span', { key: 'l', className: 'iw-gesture-label' }, label),
     h('span', { key: 's', className: 'iw-gesture-right' }, [
@@ -232,6 +260,38 @@ function IdeWorkspaceSettingsSection(props) {
           ])
           : null,
         h('div', { key: 'basic', className: 'iw-settings-group' }, tr('settingsBasic')),
+        // The floating card is on by default; this is where it is turned off.
+        h('div', { key: 'float', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloat')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: `iw-gesture-chip${state.floatEnabled !== false ? ' on' : ''}`,
+            title: tr('settingsFloatHint'),
+            onClick: () => store.setFloatEnabled(state.floatEnabled === false),
+          }, state.floatEnabled !== false ? tr('settingsOn') : tr('settingsOff')),
+        ]),
+        h('div', { key: 'floatsize', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatSize')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            title: tr('settingsFloatSizeHint'),
+            onClick: () => setFloatSizeOpen(!floatSizeOpen),
+          }, floatSizeOpen ? tr('settingsCollapse') : `${floatWidth} × ${floatHeight} px`),
+        ]),
+        floatSizeOpen
+          ? h('div', { key: 'floatsizebody', className: 'iw-settings-body' }, [
+            h('div', { key: 'hint', className: 'iw-gesture-hint' }, tr('settingsFloatSizeHint')),
+            floatSizeStepper('floatw', tr('settingsFloatWidth'), floatWidth,
+              IDE_FLOAT_MIN_WIDTH, IDE_FLOAT_MAX_WIDTH, IDE_FLOAT_DEFAULT_WIDTH,
+              (next) => store.setFloatDefaultSize(next, floatHeight)),
+            floatSizeStepper('floath', tr('settingsFloatHeight'), floatHeight,
+              IDE_FLOAT_MIN_HEIGHT, IDE_FLOAT_MAX_HEIGHT, IDE_FLOAT_DEFAULT_HEIGHT,
+              (next) => store.setFloatDefaultSize(floatWidth, next)),
+          ])
+          : null,
         h('div', { key: 'font', className: 'iw-settings-item' }, [
           h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
           h('button', {

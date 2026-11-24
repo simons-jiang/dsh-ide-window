@@ -367,6 +367,15 @@ function apply(ctx) {
   async function referenceToChat(path, isDir, suffix = '') {
     const relative = ideRelativeTo(store.getState().rootPath, path)
     const mention = ideReferenceMention(relative, isDir)
+    // With the card open, the reference belongs in the card's draft: jumping to
+    // the conversation would take the user away from what they were reading.
+    const current = store.getState()
+    const floatVisible = current.floatOpen === true && current.floatEnabled !== false && current.floatClosed !== true
+    if (floatVisible && mention !== '') {
+      store.setFloatInsert({ text: `${mention}${suffix}`, at: Date.now() })
+      store.setNotice(`${translate('referenceInserted')}: ${mention}`)
+      return
+    }
     backToChat()
     const editor = await waitForProbe(() => composerEditor(), 2000)
     if (editor === null) {
@@ -570,11 +579,28 @@ function apply(ctx) {
     try {
       layout.selectPanel(panelId)
       lastSelect = 'ok'
+      // The floating assistant belongs to the code workspace: it appears when
+      // that panel takes the centre column and goes away with it.
+      store.setFloatOpen(panelId === IDE_PANEL_ID)
     } catch (error) {
       // The main seat registers after this row on a cold load; the button then
       // simply does nothing rather than throwing into the click handler.
       lastSelect = `threw: ${error?.message ?? error}`
     }
+  }
+
+  /**
+   * Bind the panel to a Session that was just selected in the app.
+   *
+   * The navigation above moves the app to the Conversation; this puts the
+   * workspace back in front a beat later (giving the navigation one frame to
+   * settle) with the new Session already adopted, so the card rebinds at once.
+   */
+  function adoptSession(rootPath, sessionId) {
+    if (typeof sessionId !== 'string' || sessionId === '') return
+    if (typeof rootPath === 'string' && rootPath !== '') store.enterProject(rootPath, sessionId)
+    else store.rememberSession(sessionId)
+    globalThis.setTimeout(() => selectPanel(IDE_PANEL_ID), 140)
   }
 
   /** Return to the Conversation. */
@@ -842,10 +868,14 @@ function apply(ctx) {
     if (immersive) return () => {}
     immersive = true
     workspaceUsed = true
+    // Switching to the code workspace brings the assistant card with it.
+    store.setFloatOpen(true)
     hideSidebar()
     return () => {
       if (!immersive) return
       immersive = false
+      // Back to the conversation: the assistant card belongs to the workspace.
+      store.setFloatOpen(false)
       restoreSidebar()
     }
   }
@@ -1117,6 +1147,84 @@ function apply(ctx) {
 
   // The screenshot editor lives at shell level: it must cover the window (not
   // the centre panel) and must not be clipped by the panel's overflow.
+  /**
+   * The floating quick-ask card.
+   *
+   * It lives at shell level (the workspace panel clips its own children), sits
+   * above other panes, and talks to the Session the workspace is bound to, so
+   * its workspace and model are the ones already in use.
+   */
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: `${IDE_NS}:float`,
+    order: 60,
+    registrant: IDE_NS,
+    locale: IDE_NS,
+    inject: () => ({
+      store,
+      sessions: ctx.get('sessions'),
+      modelDirectories: ctx.get('modelDirectories'),
+      translate,
+      // Switching a Session is a UI navigation, which lands on the Conversation.
+      // The workspace is where the card lives, so the panel is re-selected right
+      // after: the card then rebinds to the Session the tracker just adopted.
+      openSession: (sessionId) => {
+        const uiWorkspace = ctx.get('uiWorkspace')
+        if (uiWorkspace === undefined) return
+        // Selecting a Session is a UI navigation, and it lands on the
+        // Conversation. The workspace has to follow it, or the card would keep
+        // showing the old conversation: adopting the id here also re-roots the
+        // panel when the two Sessions live in different workspaces.
+        const snapshot = ctx.get('sessions')?.list?.getSnapshot?.()
+        const row = snapshot?.byId?.[sessionId]
+        const root = typeof row?.cwd === 'string' && row.cwd !== '' ? row.cwd : store.getState().rootPath
+        try {
+          uiWorkspace.openSession(sessionId)
+        } catch (error) {
+          store.setNotice(`${translate('floatSessionFailed')}: ${error?.message ?? error}`)
+          return
+        }
+        adoptSession(root, sessionId)
+      },
+      startSession: () => {
+        const uiWorkspace = ctx.get('uiWorkspace')
+        if (uiWorkspace === undefined) return
+        const list = ctx.get('sessions')?.list
+        try {
+          uiWorkspace.startSession()
+        } catch (error) {
+          store.setNotice(`${translate('floatSessionFailed')}: ${error?.message ?? error}`)
+          return
+        }
+        // `startSession` reports no id, and the Host may reuse an existing blank
+        // Session instead of creating one — so the new blank is recognised by
+        // the tracker adopting it, not by diffing the list for a new id.
+        const previous = store.getState().sessionId
+        let tries = 0
+        let reopened = 0
+        const watch = () => {
+          tries += 1
+          const current = store.getState().sessionId
+          if (typeof current === 'string' && current !== previous) {
+            const row = list?.getSnapshot?.()?.byId?.[current]
+            const root = typeof row?.cwd === 'string' && row.cwd !== '' ? row.cwd : store.getState().rootPath
+            adoptSession(root, current)
+            return
+          }
+          // A reused blank keeps its id, and the navigation still lands on the
+          // Conversation: take the column back for the workspace, which is where
+          // this card lives. Bounded, because the breaker counts selections.
+          if (tries >= 2 && reopened < 3 && globalThis.document?.querySelector('.iw-float') === null) {
+            reopened += 1
+            selectPanel(IDE_PANEL_ID)
+          }
+          if (tries < 40) globalThis.setTimeout(watch, 200)
+        }
+        globalThis.setTimeout(watch, 150)
+      },
+    }),
+  }, IdeFloatingAsk)), 'dsh-ide-window: floating assistant')
+
   ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: `${IDE_NS}:screenshot`,

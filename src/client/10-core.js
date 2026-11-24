@@ -105,6 +105,29 @@ function ideWritePrefs(patch) {
   }
 }
 
+/** The floating card's shipped size, and the bounds the settings page accepts. */
+const IDE_FLOAT_DEFAULT_WIDTH = 460
+const IDE_FLOAT_DEFAULT_HEIGHT = 560
+const IDE_FLOAT_MIN_WIDTH = 280
+const IDE_FLOAT_MIN_HEIGHT = 220
+const IDE_FLOAT_MAX_WIDTH = 900
+const IDE_FLOAT_MAX_HEIGHT = 900
+
+/** The card's default size: the preference, clamped, or the shipped size. */
+function ideFloatDefaultSize() {
+  const prefs = ideReadPrefs()
+  const width = Number(prefs.floatWidth)
+  const height = Number(prefs.floatHeight)
+  return {
+    width: Number.isFinite(width)
+      ? ideClamp(Math.round(width), IDE_FLOAT_MIN_WIDTH, IDE_FLOAT_MAX_WIDTH)
+      : IDE_FLOAT_DEFAULT_WIDTH,
+    height: Number.isFinite(height)
+      ? ideClamp(Math.round(height), IDE_FLOAT_MIN_HEIGHT, IDE_FLOAT_MAX_HEIGHT)
+      : IDE_FLOAT_DEFAULT_HEIGHT,
+  }
+}
+
 /** How many navigation positions are remembered in each direction. */
 const IDE_HISTORY_LIMIT = 50
 
@@ -430,8 +453,28 @@ function ideWatch(remote, face, sessionId, absolutePath, onFrame, onError) {
  */
 function ideCreateStore(refs) {
   const prefs = ideReadPrefs()
+  const defaultFloatSize = ideFloatDefaultSize()
   let state = {
     sessionId: null,
+    // The floating quick-ask card: shown whenever the code workspace owns the
+    // centre column, collapsed to a ball on request.
+    floatOpen: false,
+    floatCollapsed: false,
+    // Where the user dragged the card (null = the bottom-right corner).
+    floatX: null,
+    floatY: null,
+    // Card size: the persisted default, replaced when the user drags the grip.
+    floatWidth: defaultFloatSize.width,
+    floatHeight: defaultFloatSize.height,
+    // The default the settings page edits; a manual resize does not move it.
+    floatDefaultWidth: defaultFloatSize.width,
+    floatDefaultHeight: defaultFloatSize.height,
+    // The card's lifetime controls: `floatEnabled` is a preference, `floatClosed`
+    // lasts until DSH restarts (the user asked for "stay closed until restart").
+    floatEnabled: prefs.floatEnabled !== false,
+    floatClosed: false,
+    // One reference waiting to be appended to the card's draft.
+    floatInsert: null,
     rootPath: '',
     /** True once the `workspaceFiles` Remote face is reachable. */
     remoteReady: false,
@@ -876,6 +919,83 @@ function ideCreateStore(refs) {
       watchDir(path)
     }
     return true
+  }
+
+  /** Show or hide the floating assistant card. */
+  function setFloatOpen(open) {
+    const next = open === true
+    if (state.floatOpen === next) return
+    patch({ floatOpen: next })
+  }
+
+  /** Remember where the user put the card. */
+  function setFloatPoint(x, y) {
+    const left = Number(x)
+    const top = Number(y)
+    if (!Number.isFinite(left) || !Number.isFinite(top)) return
+    const state = getState()
+    if (state.floatX === left && state.floatY === top) return
+    patch({ floatX: left, floatY: top })
+  }
+
+  /** Set the card's default size (persisted) and apply it to the open card. */
+  function setFloatDefaultSize(width, height) {
+    const w = Number(width)
+    const h = Number(height)
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return
+    const nextWidth = ideClamp(Math.round(w), IDE_FLOAT_MIN_WIDTH, IDE_FLOAT_MAX_WIDTH)
+    const nextHeight = ideClamp(Math.round(h), IDE_FLOAT_MIN_HEIGHT, IDE_FLOAT_MAX_HEIGHT)
+    ideWritePrefs({ floatWidth: nextWidth, floatHeight: nextHeight })
+    patch({
+      floatDefaultWidth: nextWidth,
+      floatDefaultHeight: nextHeight,
+      floatWidth: nextWidth,
+      floatHeight: nextHeight,
+    })
+  }
+
+  /** Remember the size the user dragged the card to. */
+  function setFloatSize(width, height) {
+    const w = Number(width)
+    const h = Number(height)
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return
+    const state = getState()
+    const nextW = Math.round(w)
+    const nextH = Math.round(h)
+    if (state.floatWidth === nextW && state.floatHeight === nextH) return
+    patch({ floatWidth: nextW, floatHeight: nextH })
+  }
+
+  /** Turn the floating card on or off (persisted). */
+  function setFloatEnabled(floatEnabled) {
+    const next = floatEnabled === true
+    if (state.floatEnabled === next) return
+    ideWritePrefs({ floatEnabled: next })
+    patch({ floatEnabled: next, floatClosed: false })
+  }
+
+  /**
+   * Close the card for the rest of this run.
+   *
+   * Deliberately not persisted: the request was "hidden until DSH restarts", so
+   * a new process shows it again.
+   */
+  function setFloatClosed(floatClosed) {
+    const next = floatClosed === true
+    if (state.floatClosed === next) return
+    patch({ floatClosed: next })
+  }
+
+  /** Hand one reference to the floating card; it appends it to its draft. */
+  function setFloatInsert(floatInsert) {
+    patch({ floatInsert })
+  }
+
+  /** Fold the card into its ball, or unfold it. */
+  function setFloatCollapsed(collapsed) {
+    const next = collapsed === true
+    if (state.floatCollapsed === next) return
+    patch({ floatCollapsed: next })
   }
 
   /**
@@ -1537,6 +1657,14 @@ function ideCreateStore(refs) {
     subscribe,
     getState,
     rememberSession,
+    setFloatOpen,
+    setFloatCollapsed,
+    setFloatPoint,
+    setFloatSize,
+    setFloatDefaultSize,
+    setFloatEnabled,
+    setFloatClosed,
+    setFloatInsert,
     setRoot,
     enterProject,
     layout: () => refs.layout?.current,

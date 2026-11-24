@@ -142,7 +142,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `main`（keyed `dsh-ide-window:code`） | 面板占中栏 |
 | `conversation.header.leading` | 会话表头左侧的入口按钮 |
 | `settings.section`（id `dsh-ide-window`，order 70） | 设置左侧导航里的独立一页「代码工作区」（与「归档管理」同级） |
-| `shell.overlay`（list） | 面板内浮层（用法弹层等） |
+| `shell.overlay`（list） | 面板内浮层（用法弹层等）+ 悬浮助手卡（`dsh-ide-window:float`，order 60） |
 | `sidebar.right.pane.tab` | 仅用于文件地址认领（body 不渲染） |
 | `sidebar.footer.action` | 左下角入口 |
 
@@ -182,7 +182,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 ### 4.1 工作区与代码视图
 - 文件树：按需展开、筛选、拖宽、实时刷新、VCS 改动条；目录顺序按 IDEA：**文件夹在前、文件在后**，组内按名称（不区分大小写、数字自然排序：`file2` < `file10`）
 - 文件树 VCS 着色：**有改动**的文件名蓝绿色（`#2fa79a`）、**新增/未跟踪**棕红色（`#b35f3d`）；数据来自 `/dsh-ide/status`（`state.vcs`，`path → 两位 porcelain 码`），在根目录确定、工作区变更帧（250ms 合并）、窗口聚焦、手动刷新时更新
-- 文件图标：全部是 **1.5px 线性描边**、无填充——文件夹 20px（展开时前片翻开）；`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 的圆环徽标（宿主 `/dsh-ide/kinds` 读文件头，按目录批量、客户端缓存）；其他文件是文档轮廓 + 居中的类型首字母，字母用语言色（`ideTintOf`）；文件图标 21px
+- 文件图标：1.5px 线性描边——文件夹 20px；`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 徽标（宿主 `/dsh-ide/kinds`）；其他文件是文档轮廓 + 语言色首字母；21px
 - 文件树工具栏：**定位到当前文件**（展开祖先目录、滚动并高亮）/ **展开全部**（逐层加载，上限 200 个目录，超限提示）/ **收起全部**
 - 右键菜单定位：统一走 `useMenuPlacement()`——菜单挂在指针处，下方放得下就向下展开，放不下就让**菜单底边贴着指针**向上展开（高度是挂载后实测的，分隔线与分组都算）；超过面板高度才内部滚动。所以既不会被面板边缘裁掉，也不会离鼠标很远
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
@@ -192,8 +192,8 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）；切换项目走 `enterProject(root, session)`，**会话与根目录一次 patch、一次 restart**（分两步会让旧标签以新会话作用域重读，闪出 `outside-workspace` 红字）；面板里读 `getState()` 判断而非订阅 `rootPath`，避免手动切换被跟随逻辑回滚
 - 对话里的文件卡片点开都走本插件工作区，不再打开右侧预览（捕获阶段拦 `click`，随后 `selectPanel`）：
   - **「已编辑 N 个文件」卡片**：点**文件行**进工作区（行内隐藏 span 带绝对路径）；**卡片头部仍打开官方 review**——一个列表最有用的事就是看整体差异
-  - **「已编辑 <单个文件名>」卡片**（只有 1 个文件）：整张卡就是那个文件，点它进工作区（路径同样来自隐藏 span）
-  - **交付文件卡**（`[data-presented-file]`，agent 交付的文件）：点卡片进工作区（路径在预览按钮的 `title` 上）；卡片右侧自己的操作按钮**不拦**，仍做它原本的事
+  - **「已编辑 <文件名>」卡片**（只有 1 个文件）：整张卡点进工作区
+  - **交付文件卡**（`[data-presented-file]`）：点卡片进工作区；卡片自己的操作按钮**不拦**
 - 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
 - 大文件保护：>60000 行或超字节上限时截断并提示
 
@@ -209,33 +209,33 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - 语言服务层的兜底也加了开关：`ideLspDefinition(..., { implementationFallback })`，只有**方法声明**才允许 `goToDefinition` 为空时退到 `goToImplementation`
 - 定义在依赖 jar 内时 → 自动去 sources jar 找源码（含「跳过 javadoc 里的 `{@link #x()}`」判定）
 - 兜底链：LSP → 注解属性 → **工作区内文本声明**（声明形状 `类型 名字(` 的 grep，避免常见名撞上 200 条上限）→ import FQN → jar 源码 → 文本提示。工作区那一步按「接收者声明类型」锁定同名文件（`ideDeclaredType` 容忍 `private final` 修饰符），再按 `ideIsMethodDeclaration` 排除调用行；接收者由 `ideReceiverChain` 解析——返回**点号链的最左段**（`PurchaseOrderStatusEnum.TO_PURCHASE.matches(...)` → 取 `PurchaseOrderStatusEnum`；`field.method(...)` → 取声明类型）；**链式调用换行时（上一行是接收者、本行以 `.` 开头）会往上找 16 行**，这是 `.listByPaymentTradeNos(...)` 这类写法能找到声明的前提；没有接收者时只认本文件里的声明，绝不取工作区里第一个同名方法。它排在 jar 之前，因为工作区文件才是真正的源码
-- **Maven 仓库位置**：发版给别人用的时候**不假设** `~/.m2/repository`——`/dsh-ide/jar` 每次请求按「插件设置 `mavenRepo` → `~/.m2/settings.xml` 的 `<localRepository>`（先剥掉 `<!-- -->` 注释，否则会读到模板里的 `/path/to/local/repo`，且要求路径真实存在）→ `~/.m2/repository`」解析，查找缓存按 `仓库|类路径` 记录；仓库不存在时返回 `{found:false, reason:'missing-repository'}`，界面提示「Maven 本地仓库不存在: <路径>」。设置项在「设置 → 通用设置 → 代码工作区设置 → Maven 本地仓库」，留空=自动检测；**输入框下面一行直接显示实际在用的路径**（`当前使用（自动检测/设置项）：<路径>`，来自 `/dsh-ide/doctor` 的 `mavenRepo` + `mavenRepoExists`），检测到的目录不存在时该行变黄并标「目录不存在」——placeholder 太淡，不能拿它当「检测结果」
+- **Maven 仓库位置**：发版给别人用的时候**不假设** `~/.m2/repository`——`/dsh-ide/jar` 每次请求按「插件设置 `mavenRepo` → `~/.m2/settings.xml` 的 `<localRepository>`（先剥掉 `<!-- -->` 注释，否则会读到模板里的 `/path/to/local/repo`，且要求路径真实存在）→ `~/.m2/repository`」解析，查找缓存按 `仓库|类路径` 记录；仓库不存在时返回 `{found:false, reason:'missing-repository'}`，界面提示「Maven 本地仓库不存在: <路径>」。设置项在插件设置里，留空=自动检测；**下面一行直接显示实际在用的路径**（来自 `/dsh-ide/doctor`），目录不存在时变黄标「目录不存在」——placeholder 太淡，不能当检测结果
 - **Git 追溯注解**：代码左侧（git 变化条 / 行号）右键 →「使用 Git 追溯注解」，逐行显示 `日期 作者`，相邻提交交替底色；同一项可关闭。宿主路由 `/dsh-ide/blame` 一次解析整份文件；缓存按 `root|path|version` 且有 30 秒 TTL，注解开启时在「打开注解」与「窗口聚焦」时强制重读，**不跑定时器**（提交不改内容，不能靠 change 事件）；未提交行（零提交）显示「未提交」。注解开启时隐藏行尾 Code Vision。状态在 store 的 `annotate`（`path → true`）与 `codeMenu`
 - **JetBrains 授权（-32802）**：IntelliJ 语言服务器需要**有效的服务器授权**，没授权时所有查询都会被拒（`-32802: Request refused: no active JetBrains license`）。处理办法在服务器自己的 CLI 里：`~/.dsh/lsp-bin/intellij-server-2027.1/bin/intellij-server license status|login|activate|trial|reset`（也可用 `INTELLIJ_SERVER_LICENSE`/`INTELLIJ_SERVER_LICENSE_FILE`/`JETBRAINS_LICENSE_SERVER` 注入），登录后**必须重启 DSH**（授权状态在服务器进程里缓存）。插件侧：识别到授权拒绝后**自动用系统浏览器打开授权页**——宿主跑 `license login --browser`（这个子命令自己会开浏览器并给 URL，宿主不再重复开）；已登录但无授权时命令只打印提示、不给 URL，此时宿主直接 `open https://account.jetbrains.com/licenses`（macOS `open` / Windows `cmd /c start ""`），不依赖 webview 的 `window.open`（Electron 里常被拒）。同时在本次页面生命周期内不再请求 LSP（调用链/定义/调用方都直接走文本兜底），横幅只给一条授权提示，不给用户刷「未找到定义」
 - **LSP 报错要说清楚**：`LSP_SERVER_ERROR` 这类错误其实是服务器返回的 JSON-RPC 错误，横幅/提示会带上服务器自己的话和操作名（`LSP_SERVER_ERROR — … (-32601) (findReferences)`）；错误的文本里出现 `-32601`/method not found/not supported 时，该操作会被记为「服务器不支持」并在本次会话内跳过，改用文本匹配并提示「当前语言服务不支持这项查询」，不再反复弹错误横幅
 - **调用方列表里不能出现声明行**：`findReferences` 会把声明一起返回（接口自己的签名行、另一个类的 override 签名行），契约合并（点实现方法时顺带问接口）会把它们混进 references；生成调用方前用 `ideReferenceIsDeclaration` 按行判断并剔除（形状同 `类型 名字(`），否则弹出层会出现「接口 selectPage 是实现的调用方」这种明显错误的行
 - **用量兜底（LSP 无结果时）**：调用方只认同名**调用**（排除声明行）、非静态方法只认 `接收者.名字(` 且接收者的**声明类型**必须是本类/本接口（大写类名当接收者的静态/工具类调用 `ReconBillConverter.toDifferenceResp(…)` 也算本类）（`ideContractNames` 把实现类与其接口都算作 owner，所以实现方法也能找到持有接口的调用方），Java 文件限定；实现方按 `implements 接口` 找类，再在类里找该方法的声明。分节标题都带「（文本匹配）」，不冒充语义结果；三条查询全部失败时提示 `lspFailed`，不再谎报「没有已知调用点」
 - **未装 LSP 的引导页**：进入代码工作区时打 `/dsh-ide/doctor`，`ctx.lsp` 没挂载就弹「代码导航未就绪」。页面**直接给可复制的命令**（不再是「去做某件事」的描述）：macOS 第 1 步 `~/dev/dsh-ide-window/enable-navigation.sh`（装包 + 下载服务器 + 写 patch），第 2 步 `~/.dsh/lsp-bin/*/bin/intellij-server license login`，最后「完全退出 DSH 再打开」；Windows 显示 profile 内的 `pnpm add` 两条。按钮是「复制命令 / 重新检测 / 关闭」，命令按 `ideRuntimeContext.platform` 切换，复制走 `ideCopyWithNotice`。授权在服务器进程内，插件只引导不登录
-- **Code Vision**：可见的**方法**声明行尾显示「N 个用法 · M 个实现」和该行最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的方法声明，字段与局部变量都不会出现；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
+- **Code Vision**：可见**方法**声明行尾显示「N 个用法 · M 个实现」+ 最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的声明；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
 - **源码里的符号右键菜单**：在方法名、字段、类名等任意符号上右键 →「复制名称」/「复制引用」/「复制引用回对话」。引用是 DSH 的 `@相对路径` **加行号和符号名**：`@…/FlowService.java#L58 selectPage`（目录带尾斜杠、含空格时加引号，规则与 DSH 的 reference codec 一致）。**只给文件路径是信息缺失**——对方只能知道是哪个类，不知道是哪个方法；行号由符号 span 上的 `data-iw-line`、名字由 `data-iw-sym` 一起进菜单（`anchor = #L{n}`，`lineSuffix = anchor + ' ' + 名字`）。插入对话时 chip 必须保持是 chip，`#L58 selectPage` 在 chip 之后另打字补上；jar 源码标签页只有「复制名称」，因为 jar 内的路径不是工作区路径
-- **两条快捷键（不只是右键菜单）**：`⌘⇧C` = 复制引用回对话，`⌘⌥T` = 在数据窗口打开表；两者都作用在**当前标签页**
+- **两条快捷键**：`⌘⇧C` 复制引用回对话、`⌘⌥T` 在数据窗口打开表，都作用在当前标签页
   - 复制引用的尾部 `#L<行> <符号>` 来自 `state.lastSymbol`——每一次符号手势（双击/⌘+单击/⌥+单击）和符号右键都会写它，所以快捷键与右键菜单产出**同一条引用**；符号属于别的文件时只给文件路径，不瞎带行号（`ideReferenceSuffix` 是纯函数，有用例）
   - 打开表走 `ideDataWindowOpenEntity`，与文件树菜单同一个实现：`@TableName` 解析、数据窗口未安装/无表名等提示都一致；jar 源码标签页给「依赖源码不是工作区文件」的提示
-- **复制引用回对话**：直接回到对话，并把 `@引用` **追加**到草稿末尾——已有文本和附件一律不动，插入的是真正的引用芯片（不是纯文本）。实现方式：对话输入框是 Lexical 编辑器，`@` 触发菜单，只有从菜单里选中候选才会变成芯片，所以按「人打字」的顺序逐段输入（Tab 进入目录、最后一段回车确认），每一步都核对菜单候选；任何一步对不上就退化成纯文本 `@相对路径`，绝不选错文件。目录无法用芯片表达，直接插入 `@目录/` 文本
+- **复制引用回对话**：回对话并把 `@引用` **追加**到草稿末尾（已有文本/附件不动，插的是真芯片）：输入框是 Lexical，`@` 从菜单选候选才变芯片，所以按人打字顺序逐段输入（Tab 进目录、末段回车），每步核对候选；对不上就退化成纯文本 `@相对路径`，绝不选错文件
 
 ### 4.2.1 截图编辑器
 
 - 快捷键 `⌘⇧S`（Windows `Ctrl+Shift+S`），设置里可改；Search Everywhere 的「操作」里也有
 - **桌面端与浏览器端同一套流程**：抓屏由**宿主**完成（宿主就跑在拥有屏幕的那台机器上），页面里的 `getDisplayMedia` 被 DSH 关掉不影响它。所以浏览器 tab 里按快捷键同样能截，不区分运行时
-- **一次抓整屏，再在图上框选**：`screencapture -x` / Windows `CopyFromScreen` 抓完整屏 → 编辑器里拖出选框 → 只导出选框内那块（+ 标注）
-- **按设备像素抓屏，不限 1080p**：`optimizeScreenshot(target, null)`（`IDE_SCREENSHOT_EDIT_EDGE = null`）——`sips` 不带 `-Z`、Windows 脚本不缩放，抓到多少像素就是多少像素。2560×1440 的屏就存 2560×1440 的 JPEG（q80 约 400 KB），原 PNG 用完即删
-- **导出同样保原始像素**：不再强制 1920 长边，先按质量阶梯压到 ≤1 MB，只有实在压不下去才按 `1 → 1/1.25 → 1/1.5 → 1/2` 逐级缩小
-- **为什么不在抓屏前用系统十字光标（`screencapture -i`）**：试过，跨平台不一致（Windows 没有等价 CLI），而且框选完就没有可标注的画布了。现在统一成「先截、后框、再标注」
+- **一次抓整屏，再在图上框选**：宿主抓整屏 → 拖选框 → 只导出选框内那块
+- **按设备像素抓屏**（`IDE_SCREENSHOT_EDIT_EDGE = null`）：`sips` 不带 `-Z`，抓多少存多少，原 PNG 用完即删
+- **导出保原始像素**：先压质量到 ≤1 MB，压不下去才按 `1 → 1/1.25 → 1/1.5 → 1/2` 缩
+- **不用系统十字光标**（`-i`）：跨平台不一致，且框完没画布可标注。统一「先截、后框、再标注」
 - **交互**（客户端 Canvas，两个平台同一套代码）：编辑器挂在 `shell.overlay` 上，覆盖整个窗口、不被面板 overflow 裁剪
-  - **画面按屏幕坐标 1:1 贴上去**：`scale = 1 / devicePixelRatio`，画布用 `position: absolute` + `left/top = -(window.screenX / window.screenY)`。截图是整屏，而浮层只盖住这个窗口——不减去窗口在屏幕上的偏移，画面就会在窗口里居中，于是**窗口自己的菜单栏/标题栏在画面里又出现一次**，看起来就是「重影/重叠」（用户实测截图里两条标题栏叠在一起）。减掉偏移后，冻结的画面正好落在原来屏幕的位置上，窗口外的部分被浮层裁掉
+  - **画面按屏幕坐标 1:1 贴上去**：`scale = 1/dpr`，画布 `left/top = -(screenX/screenY)`。不减去窗口偏移，画面会在窗口里居中，**窗口自己的标题栏又出现一次**（重影）；减掉后画面正好落在原屏幕位置
   - **指针换算以画布为准**：`ideShotPoint(event, canvas, scale, bounds)` 用 `canvas.getBoundingClientRect()`，不要再按 stage 居中算（画布可能超出 stage）
-  - **不显示任何提示文案**：拖框去选范围这件事用的人一眼就懂，屏幕边缘那行字只会挡内容
+  - **不显示提示文案**：屏幕边缘的字只会挡内容
   - **没有预设选框**：打开时整屏压暗，用户按下左键并拖动 → 选框实时扩张 → 松开左键完成并固定
   - **Esc 随时退出整个操作**：没开始拉框、正在拉框（拖到一半）、已经拉完 —— 三种状态下按 Esc 都直接关掉编辑器，并把拖动状态清空（随后那次 `pointerup` 不会再把它救回来）。监听挂在 **window 的捕获阶段**：浮层自己永远拿不到焦点，挂在浮层上的 `onKeyDown` 基本不会触发
   - 操作条**只在松开左键之后出现**（`dragging` 为 true 时不渲染），拉框过程中界面上没有任何多余元素
@@ -259,7 +259,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **macOS 屏幕录制权限**：没授权时 `screencapture` 报 `could not create image from display`，宿主归类 `403 no-screen-permission`，编辑器位置的卡片给系统化指引 + 「打开系统设置」（`x-apple.systempreferences:…Privacy_ScreenCapture`），授权后必须**完全退出应用重开**。Windows 无此权限
 
 ### 4.3 搜索
-- **Search Everywhere**：双击 Shift、工具栏放大镜、或快捷键（桌面 `⌘I` 类默认由设置里的绑定决定；Web 默认 `⌥⌘I`）打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
+- **Search Everywhere**：双击 Shift / 工具栏放大镜 / 快捷键打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
 
 ### 4.4.1 与数据窗口联动
@@ -274,6 +274,30 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 
 ### 4.4 与对话联动
 - 用 DSH 自带的「已编辑 N 个文件」卡片即可：**点文件行**直接进本插件工作区（见 4.1 的拦截项）；插件不再渲染自己的改动卡片（原 `turnTail` 卡片已删除，`58-turn.js` 随之移除）
+
+### 4.4.2 悬浮助手卡（豆包式）
+
+`src/client/74-float.js`：浮在代码工作区上的小聊天卡，**进代码工作区自动出现、回对话自动消失**；**可拖动**（表头按下拖，位置存 `floatX/floatY`，渲染时按视口夹取，永不出屏）。
+
+- 挂 `shell.overlay`；可见性跟 **`selectPanel()`**（只有代码工作区那页开卡）
+- **可拖动/可缩放**：表头拖动、四条边 + 右下角缩放（西/北边拖时卡片跟着移动，`ideFloatResizeStep` 纯函数，最小 280×220）；手势在 **window 上监听 pointermove/up**，绑元素上会「掉手」
+- 盒模型：`.iw-float *` 一律 `box-sizing: border-box`（否则 100% 宽 textarea 会从右边戳出去）
+- **UI 跟随工作区**：卡片带 `data-dsh-theme` 与 `treeFontSize` 字号
+- **跟随面板的会话**：消息进 `state.sessionId`，所以模型就是该会话的模型
+- **模型 chip**：Client `modelDirectories`（同 composer）：`directoryFor(id).store` 出目录，`select({...})` 切换
+- **权限 chip**：发 `/permission <preset>`（`read-only` / `workspace-write` / `danger-full-access`）；**显示当前值**读 Host 投影 `session.projections.get('permissions').currentValue`（`faceOf('permissions').subscribe` 跟随），不靠猜
+- **输入区**：引用是**蓝色 chip**（`+ → 引用当前文件`、右键「复制引用回对话」都进 chips，可 ×）；**粘贴图片**读剪贴板 `image/*` 成 data URL 预览（≤4 张、单张 8 MB）；发送时 `prompt([image…, {type:'text', text: refs + 正文}])`
+- **表头**：`▾` 标题（`max-width:46%` 截断）、`＋` 新建、模型 chip、**思考等级 chip**（选项来自模型目录 `reasoning.efforts`，`select({...,reasoningEffort})`）、`–`/`×` 包在 `.iw-float-actions`（`margin-left:auto`）里——分开摆会在宽卡片上被拉开
+- **菜单**：`width:100%` + `min-height:30px`（原来只有文字可点，整行点不到）
+- **收起/关闭/开关**：`–` 收球、`×` 关闭（`floatClosed`，只本次进程内有效，重启才恢复）、设置页开关 `floatEnabled`（默认开，持久化）；渲染处统一 `open = floatOpen && enabled && !closed`
+- **归档不列**：用 `WorkspaceSnapshot.archivedSessionIds`（`useWorkspaces` 标准 hook）过滤
+- **引用优先给悬浮卡**：`referenceToChat` 命中上面 `open` 就把 `@引用` 走 `store.setFloatInsert` 追加进卡片草稿并聚焦（不跳转），否则回对话插芯片
+- **切换/新建会话**：按 `cwd` 分组、当前组置顶带「当前」标、打开滚到该组（`offsetTop` 相对卡片算不准，用 rect 差）；「新建会话」行吸顶。切换 = `openSession(id)` + `enterProject(cwd,id)` + 140ms 重选面板；新建 = `startSession()`（可能复用空白会话，只能按 store 的 sessionId 变化判定）
+- **终止**：`session.getSnapshot().running` 为真时，发送键变「停止」→ `session.cancel()`
+- **默认大小 460×560**；设置页「悬浮框默认大小」用 ±20 步进调宽/高（280–900 px），写 `dsh-ide-window:v1` 的 `floatWidth/floatHeight`；拖动卡片只改**当前** `floatWidth/Height`，不改默认值
+- **正文按对话同一套排版渲染**（`IdeFloatMarkdown`）：标题、段落、列表、引用、链接、行内代码、图片；代码块复用 `ideTokenize` 着色，带语言标签和「复制」；assistant 的 image 块和 `deliverables/presented` 文件也会显示（文件 chip 点击直接用 IDE 打开），不再把 Markdown 原文当纯文本铺出来；代码块在窄卡里 **`pre-wrap` + `overflow-wrap:anywhere` 自动换行**，不横向滚动
+- 只保留最近 6 行（消息/文件行）；Enter 发送、Shift+Enter 换行
+- `IdeStyles` 渲染成卡片的**兄弟节点**（否则样式文本会进正文）
 
 ### 4.5 设置（设置 → 左侧导航「代码工作区」）
 
@@ -401,6 +425,9 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
 | 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 质量阶梯 80→40 直到 ≤1 MB；仍超标才降分辨率（1 → 1/1.25 → 1/1.5 → 1/2）。**不预设 1080p**：抓屏与导出都保持设备像素 |
 | 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |
+| 悬浮卡切回对话还浮着 | 可见性只写在 `enter()`，面板切对话时并不卸载 | 跟 `selectPanel(panelId)` |
+| 悬浮卡里出现一堆 CSS 文本 | `<style>` 被渲染进卡片节点 | `IdeStyles` 作为兄弟节点渲染 |
+| 悬浮卡输入区凸出卡片边框 | flex 子项自动最小高度 = 内容高度，正文不肯缩，把输入区顶出去 | `.iw-float-body` 设 `min-height: 0`，卡片 `overflow: hidden` |
 | 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
 
 ---
@@ -409,10 +436,7 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 
 1. **DSH 重启后历史轮次没有改动摘要**（Host 内存态，官方卡片同样消失）——这是 DSH 自身行为，插件不做补偿。
 2. **「添加到智能体上下文」是降级实现**：复制 `@相对路径` 并提示粘贴；DSH 未开放插件的对话草稿插入 API。
-3. **分享前待办**（用户已知，尚未做）：
-   - ~~包名改为可发布的名字~~（已改为 `dsh-ide-window` 并发布到 npm）
-   - ~~补 `LICENSE`~~（已补 MIT）
-   - ~~加 `engines.dsh` 版本约束~~（已加，锁 `0.2.2-rc.3`）
+3. **分享前待办**：包名/License/`engines.dsh` 约束都已完成（MIT、`dsh-ide-window`、锁 `0.2.2-rc.3`）。
 4. **每次改 `src/` 都要重新构建并提交 `client.js`**，否则别人装上跑的是旧代码。主题的调色板不在 bundle 里（`themes/*.css`），改颜色不需要重建。
 5. 插件需要 `webServer` 服务：在没有 web 服务的 profile 里会显示 `pending (waiting for service: webServer)`，属正常。
 6. **截图的临时文件不主动删除**：抓屏结果与「复制到剪贴板」的导出图都落在系统临时目录（`os.tmpdir()/dsh-ide-shot-<ts>.jpg`，中间 PNG 用完即删），由操作系统按自己的节奏清理。

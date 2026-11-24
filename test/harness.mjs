@@ -1773,6 +1773,209 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(sequenceLabel({ key: 'Control' }) === '双击 Control', 'a rebound sequence is labelled too', sequenceLabel({ key: 'Control' }))
 }
 
+// ---- the floating assistant card -------------------------------------------
+{
+  const textOf = new Function(`${grabSource('ideFloatTextOf', '74-float.js')}\nreturn ideFloatTextOf`)()
+  const transcriptOf = new Function(
+    `${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`,
+  )()
+
+  check(textOf([{ type: 'text', text: 'a' }, { type: 'reasoning', text: 'x' }, { type: 'text', text: 'b' }]) === 'a\nb',
+    'only text blocks reach the card')
+  const log = [
+    { type: 'event', event: { type: 'user/message', seq: 1, data: { source: { kind: 'runtime-context' }, content: [{ type: 'text', text: 'ctx' }] } } },
+    { type: 'event', event: { type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '问题' }] } } },
+    { type: 'event', event: { type: 'tool/call', seq: 3, data: {} } },
+    { type: 'event', event: { type: 'assistant/message', seq: 4, data: { message: { content: [{ type: 'reasoning', text: '想' }, { type: 'text', text: '答案' }] } } } },
+  ]
+  const rows = transcriptOf(log)
+  check(rows.length === 2, 'context injections and tool calls are not conversation rows', JSON.stringify(rows))
+  check(rows[0]?.role === 'user' && rows[0]?.text === '问题', 'the prompt becomes a user row', JSON.stringify(rows[0]))
+  check(rows[1]?.role === 'assistant' && rows[1]?.text === '答案', 'the reply becomes an assistant row', JSON.stringify(rows[1]))
+  check(transcriptOf(log, 1).length === 1, 'the card keeps only the newest rows', String(transcriptOf(log, 1).length))
+  check(transcriptOf(undefined).length === 0, 'an empty log renders no rows')
+
+  // The session switcher lists conversations, newest first, without subagents.
+  const sessionsOf = new Function(`${grabSource('ideFloatSessions', '74-float.js')}\nreturn ideFloatSessions`)()
+  const listing = sessionsOf({
+    ids: ['a', 'b', 'c', 'd'],
+    byId: {
+      a: { displayTitle: '旧会话', updatedAt: 10, running: false, cwd: '/w' },
+      b: { displayTitle: '最新会话', updatedAt: 30, running: true, cwd: '/w' },
+      c: { origin: 'subagent', displayTitle: '子代理', updatedAt: 50 },
+      d: { title: '只有标题', updatedAt: 20 },
+    },
+  })
+  check(listing.length === 3, 'subagent sessions stay out of the switcher', JSON.stringify(listing.map((row) => row.title)))
+  check(listing[0]?.title === '最新会话' && listing[0]?.running === true, 'the newest conversation comes first', JSON.stringify(listing[0]))
+  check(listing[1]?.title === '只有标题', 'a bare title is still a switchable row', JSON.stringify(listing[1]))
+  check(sessionsOf({}).length === 0, 'an empty session list renders no rows')
+  // Archived conversations are still rows in the list, but not in the switcher.
+  const withArchived = sessionsOf({
+    ids: ['a', 'b', 'c'],
+    byId: {
+      a: { displayTitle: '活的', updatedAt: 30, cwd: '/w' },
+      b: { displayTitle: '已归档', updatedAt: 20, cwd: '/w' },
+      c: { displayTitle: '也归档', updatedAt: 10, cwd: '/w' },
+    },
+  }, new Set(['b', 'c']))
+  check(withArchived.length === 1 && withArchived[0].title === '活的',
+    'archived sessions stay out of the switcher', JSON.stringify(withArchived.map((row) => row.title)))
+
+  // A prompt with an image carries it into the card.
+  const pictureTranscript = new Function(`${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`)()
+  const pictureLog = [
+    { event: { type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [
+      { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 2, height: 2 } },
+      { type: 'text', text: '看这张图' },
+    ] } } },
+    { event: { type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [
+      { type: 'image', attachment: { attachmentId: 'att-2', mediaType: 'image/jpeg' } },
+    ] } } },
+    { event: { type: 'assistant/message', seq: 3, data: { message: { content: [{ type: 'text', text: '收到' }] } } } },
+  ]
+  const pictureRows = pictureTranscript(pictureLog)
+  check(pictureRows.length === 3, 'a picture prompt is still a row', String(pictureRows.length))
+  check(pictureRows[0].images.length === 1 && pictureRows[0].images[0].attachmentId === 'att-1',
+    'an image part keeps its attachment reference', JSON.stringify(pictureRows[0].images))
+  check(pictureRows[0].text === '看这张图', 'the text beside an image is kept', pictureRows[0].text)
+  check(pictureRows[1].text === '' && pictureRows[1].images.length === 1,
+    'an image-only prompt has no text but keeps its picture', JSON.stringify(pictureRows[1]))
+  check(pictureRows[2].images.length === 0, 'assistant rows carry no pictures')
+
+  // Markdown: every construct the card claims to render.
+  const markdownOf = new Function(`${grabSource('ideFloatSafeUrl', '74-float.js')}\n${grabSource('ideFloatTableCells', '74-float.js')}\n${grabSource('ideFloatTableAlign', '74-float.js')}\n${grabSource('ideFloatMarkdownBlocks', '74-float.js')}\nreturn ideFloatMarkdownBlocks`)()
+  const tableSource = ['| 项 | 内容 | 右对齐 |', '| --- | :---: | ---: |', '| 分支 | `feature/v1.1-bill` | 3 |', '| 提交 | 6212b6e5 **feat** | 4 |'].join('\n')
+  const tableBlock = markdownOf(tableSource)[0]
+  check(tableBlock.type === 'table', 'a pipe table becomes a table', tableBlock.type)
+  check(tableBlock.align.join(',') === ',center,right', 'alignment markers are kept', tableBlock.align.join(','))
+  check(tableBlock.head.join('|') === '项|内容|右对齐', 'the header row is split', tableBlock.head.join('|'))
+  check(tableBlock.rows.length === 2 && tableBlock.rows[1][2] === '4', 'body rows are split', JSON.stringify(tableBlock.rows))
+  const escaped = markdownOf('| a | b |\n| --- | --- |\n| x \\| y | z |')[0]
+  check(escaped.rows[0][0] === 'x \\| y', 'an escaped pipe stays in its cell', JSON.stringify(escaped.rows[0]))
+  const taskBlock = markdownOf('- [ ] 未完成\n- [x] 已完成').at(0)
+  check(taskBlock.items[0].task === false && taskBlock.items[1].task === true, 'task list markers are read', JSON.stringify(taskBlock.items))
+  const nested = markdownOf('- 一级\n  - 二级\n    - 三级').at(0)
+  check(nested.items.map((item) => item.depth).join(',') === '0,1,2', 'nested items keep their depth', JSON.stringify(nested.items.map((item) => item.depth)))
+  const ordered = markdownOf('1. 甲\n2. 乙').at(0)
+  check(ordered.type === 'ol' && ordered.items.length === 2, 'ordered lists stay ordered', ordered.type)
+  const setext = markdownOf('标题\n===').at(0)
+  check(setext.type === 'heading' && setext.level === 1, 'a setext underline makes a heading', JSON.stringify(setext))
+  const quoteBlock = markdownOf('> 引用\n> 第二行').at(0)
+  check(quoteBlock.type === 'quote' && quoteBlock.text === '引用\n第二行', 'a quote keeps its lines', JSON.stringify(quoteBlock))
+  const hardBreak = markdownOf('第一行  \n第二行').at(0)
+  check(hardBreak.text === '第一行\n第二行', 'two trailing spaces keep a line break', JSON.stringify(hardBreak.text))
+  const softBreak = markdownOf('第一行\n第二行').at(0)
+  check(softBreak.text === '第一行 第二行', 'a soft break becomes a space', JSON.stringify(softBreak.text))
+  const fence = markdownOf('```java\nint a = 1;\n```').at(0)
+  check(fence.type === 'code' && fence.lang === 'java' && fence.text === 'int a = 1;', 'a fence keeps its language', JSON.stringify(fence))
+  const heading6 = markdownOf('###### 小标题').at(0)
+  check(heading6.level === 6, 'a level 6 heading is recognised', JSON.stringify(heading6))
+  check(markdownOf('---').at(0).type === 'hr', 'a rule is a rule')
+  const paragraphInTable = markdownOf('| **a** | b |\n| --- | --- |')[0]
+  check(paragraphInTable.head[0] === '**a**', 'inline markers inside a cell survive parsing', paragraphInTable.head[0])
+
+  // Reasoning efforts come from the model's own catalog entry.
+  const effortsOf = new Function(`${grabSource('ideFloatModelEfforts', '74-float.js')}\nreturn ideFloatModelEfforts`)()
+  const catalog = {
+    current: { provider: 'deepseek', model: 'v4-flash' },
+    groups: [{ id: 'deepseek', models: [
+      { id: 'v4-flash', name: 'Flash', reasoning: { defaultEffort: 'low', efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }] } },
+      { id: 'plain', name: 'Plain' },
+    ] }],
+  }
+  const efforts = effortsOf(catalog)
+  check(efforts.length === 2 && efforts[1].label === 'High', 'the selected model lists its efforts', JSON.stringify(efforts))
+  check(effortsOf({ current: { provider: 'deepseek', model: 'plain' }, groups: catalog.groups }).length === 0,
+    'a model without reasoning metadata offers no efforts')
+  check(effortsOf({ current: { provider: 'other', model: 'x' }, groups: catalog.groups }).length === 0,
+    'a foreign provider offers no efforts')
+
+  // Permission label and prompt parts: the two pieces the card composes itself.
+  const permOf = new Function(`${grabSource('IDE_FLOAT_PERMISSIONS', '74-float.js')}\n${grabSource('ideFloatPermissionLabel', '74-float.js')}\nreturn ideFloatPermissionLabel`)()
+  const label = (preset) => permOf(preset, (key) => key)
+  check(label('read-only') === 'floatPermissionReadOnly', 'a known preset keeps its label key', label('read-only'))
+  check(label('danger-full-access') === 'floatPermissionFull', 'the full-access preset is labelled', label('danger-full-access'))
+  check(label('weird-mode') === 'weird-mode', 'an unknown preset is shown verbatim', label('weird-mode'))
+  check(label('') === 'floatPermission', 'no preset yet falls back to the plain label', label(''))
+
+  const presetOf = new Function(`${grabSource('ideFloatPermissionOf', '74-float.js')}\nreturn ideFloatPermissionOf`)()
+  const presetLog = [
+    { type: 'event', event: { type: 'permission/preset', seq: 1, data: { preset: 'workspace-write' } } },
+    { type: 'event', event: { type: 'turn/start', seq: 2, data: {} } },
+    { type: 'event', event: { type: 'permission/preset', seq: 3, data: { preset: 'danger-full-access' } } },
+  ]
+  check(presetOf(presetLog) === 'danger-full-access', 'the newest preset event wins', presetOf(presetLog))
+  check(presetOf([]) === '', 'a log without a switch has no preset', presetOf([]))
+
+  const partsOf = new Function(`${grabSource('ideFloatPromptParts', '74-float.js')}\nreturn ideFloatPromptParts`)()
+  const parts = partsOf('看看这个', ['@a.md', '@b/c.java'], [{ mediaType: 'image/png', data: 'AAA', name: 'p.png' }])
+  check(parts.length === 2 && parts[0].type === 'image' && parts[0].data === 'AAA', 'a pasted image becomes an image part', JSON.stringify(parts[0]))
+  check(parts[1].type === 'text' && parts[1].text === '@a.md @b/c.java 看看这个', 'references lead the text', JSON.stringify(parts[1]))
+  const refsOnly = partsOf('', ['@a.md'], [])
+  check(refsOnly.length === 1 && refsOnly[0].text === '@a.md', 'references alone are still a prompt', JSON.stringify(refsOnly))
+  check(partsOf('', [], []).length === 0, 'an empty composer sends nothing')
+
+  // The switcher groups by workspace and opens on the current one.
+  const groupsOf = new Function(`${grabSource('ideBasename', '10-core.js')}\n${grabSource('ideFloatSessionGroups', '74-float.js')}\nreturn ideFloatSessionGroups`)()
+  const groups = groupsOf([
+    { sessionId: 'a', title: '工作区B-旧', cwd: '/work/b', updatedAt: 10 },
+    { sessionId: 'b', title: '工作区A-新', cwd: '/work/a', updatedAt: 40 },
+    { sessionId: 'c', title: '工作区A-旧', cwd: '/work/a', updatedAt: 20 },
+    { sessionId: 'd', title: '工作区B-新', cwd: '/work/b/', updatedAt: 30 },
+  ], '/work/a')
+  check(groups.length === 2, 'sessions group per workspace', JSON.stringify(groups.map((group) => group.title)))
+  check(groups[0].current === true && groups[0].cwd === '/work/a', 'the current workspace comes first', JSON.stringify(groups[0].title))
+  check(groups[0].sessions.length === 2, 'a trailing slash does not split a workspace', String(groups[0].sessions.length))
+  check(groups[1].title === 'b' && groups[1].current === false, 'other workspaces follow', JSON.stringify(groups[1]))
+  const noCwd = groupsOf([{ sessionId: 'x', title: '无目录', cwd: '', updatedAt: 1 }], '/work/a')
+  check(noCwd.length === 1 && noCwd[0].current === false, 'a session without a workspace stays out of the current group')
+
+  // The model menu is the composer's own catalog, flattened for a narrow card.
+  const optionsOf = new Function(`${grabSource('ideFloatModelOptions', '74-float.js')}\nreturn ideFloatModelOptions`)()
+  const models = optionsOf({ groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-flash', name: 'V4 Flash', reasoning: { defaultEffort: 'max' } }] }] })
+  check(models.length === 1 && models[0].provider === 'deepseek' && models[0].model === 'v4-flash',
+    'the model menu lists provider models', JSON.stringify(models[0]))
+  check(models[0]?.effort === 'max', 'the reasoning default travels with the option', String(models[0]?.effort))
+  check(optionsOf({}).length === 0, 'an unloaded catalog renders no options')
+
+  // Dragging: the shipped corner, a remembered point, and the viewport clamp.
+  const pointOf = new Function(`${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatPoint', '74-float.js')}\nreturn ideFloatPoint`)()
+  const corner = pointOf({ floatX: null, floatY: null }, 1200, 800, 340, 430)
+  check(corner.left === 848 && corner.top === 358, 'an untouched card sits in the bottom-right corner', JSON.stringify(corner))
+  const dragged = pointOf({ floatX: 40, floatY: 60 }, 1200, 800, 340, 430)
+  check(dragged.left === 40 && dragged.top === 60, 'a dragged card keeps its point', JSON.stringify(dragged))
+  const offscreen = pointOf({ floatX: -500, floatY: 5000 }, 1200, 800, 340, 430)
+  check(offscreen.left === 12 && offscreen.top === 358, 'a point outside the viewport is pulled back in', JSON.stringify(offscreen))
+
+  // The corner grip: shipped size, remembered size, and both directions of the cap.
+  const sizeOf = new Function(`const IDE_FLOAT_DEFAULT_WIDTH = 460;\nconst IDE_FLOAT_DEFAULT_HEIGHT = 560;\nconst IDE_FLOAT_MIN_WIDTH = 280;\nconst IDE_FLOAT_MIN_HEIGHT = 220;\nconst IDE_FLOAT_MAX_WIDTH = 900;\nconst IDE_FLOAT_MAX_HEIGHT = 900;\n${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatSize', '74-float.js')}\nreturn ideFloatSize`)()
+  const shipped = sizeOf({ floatWidth: null, floatHeight: null }, 1200, 800)
+  check(shipped.width === 460 && shipped.height === 560, 'an untouched card has the shipped size', JSON.stringify(shipped))
+  const resized = sizeOf({ floatWidth: 520, floatHeight: 360 }, 1200, 800)
+  check(resized.width === 520 && resized.height === 360, 'a resized card keeps its size', JSON.stringify(resized))
+  const tiny = sizeOf({ floatWidth: 40, floatHeight: 10 }, 1200, 800)
+  check(tiny.width === 280 && tiny.height === 220, 'the card cannot shrink under its controls', JSON.stringify(tiny))
+  const huge = sizeOf({ floatWidth: 9999, floatHeight: 9999 }, 1200, 800)
+  check(huge.width === 1176 && huge.height === 776, 'the card cannot grow past the viewport', JSON.stringify(huge))
+
+  // Each edge drags the side it names, and the opposite side stays put.
+  const stepOf = new Function(`const IDE_FLOAT_DEFAULT_WIDTH = 460;\nconst IDE_FLOAT_DEFAULT_HEIGHT = 560;\nconst IDE_FLOAT_MIN_WIDTH = 280;\nconst IDE_FLOAT_MIN_HEIGHT = 220;\nconst IDE_FLOAT_MAX_WIDTH = 900;\nconst IDE_FLOAT_MAX_HEIGHT = 900;\n${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatResizeStep', '74-float.js')}\nreturn ideFloatResizeStep`)()
+  const base = { left: 400, top: 300, width: 340, height: 430, x: 500, y: 400 }
+  const east = stepOf(base, 'e', 560, 400, 1200, 800)
+  check(east.width === 400 && east.left === 400, 'the east edge grows rightwards only', JSON.stringify(east))
+  const west = stepOf(base, 'w', 440, 400, 1200, 800)
+  check(west.width === 400 && west.left === 340, 'the west edge grows leftwards and moves the card', JSON.stringify(west))
+  const south = stepOf(base, 's', 500, 430, 1200, 800)
+  check(south.height === 460 && south.top === 300, 'the south edge grows downwards only', JSON.stringify(south))
+  const north = stepOf(base, 'n', 500, 320, 1200, 800)
+  check(north.height === 510 && north.top === 220, 'the north edge grows upwards and moves the card', JSON.stringify(north))
+  const cornerStep = stepOf(base, 'se', 560, 470, 1200, 800)
+  check(cornerStep.width === 400 && cornerStep.height === 500, 'the corner grows both ways', JSON.stringify(cornerStep))
+  const floored = stepOf(base, 'w', 900, 400, 1200, 800)
+  check(floored.width === 280 && floored.left === 460, 'a collapse stops at the minimum and keeps the right edge', JSON.stringify(floored))
+}
+
 // ---- conversation file cards open the workspace ----------------------------
 {
   // 三种卡片都必须在捕获阶段被拦下，并且交付卡的“操作按钮”不能被顺手劫持。
