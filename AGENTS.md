@@ -180,29 +180,30 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 ## 四、功能清单（都已实现并自测）
 
 ### 4.1 工作区与代码视图
-- 文件树：按需展开、筛选、拖宽、实时刷新、VCS 改动条；目录顺序按 IDEA：**文件夹在前、文件在后**，组内按名称（不区分大小写、数字自然排序：`file2` < `file10`）
+- 文件树：按需展开/筛选/拖宽/实时刷新/VCS 条；IDEA 序（文件夹在前，组内不区分大小写、自然排序 `file2` < `file10`）
 - 文件树 VCS 着色：**有改动**的文件名蓝绿色（`#2fa79a`）、**新增/未跟踪**棕红色（`#b35f3d`）；数据来自 `/dsh-ide/status`（`state.vcs`，`path → 两位 porcelain 码`），在根目录确定、工作区变更帧（250ms 合并）、窗口聚焦、手动刷新时更新
-- 文件图标：1.5px 线性描边——文件夹 20px；`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 徽标（宿主 `/dsh-ide/kinds`）；其他文件是文档轮廓 + 语言色首字母；21px
-- 文件树工具栏：**定位到当前文件**（展开祖先目录、滚动并高亮）/ **展开全部**（逐层加载，上限 200 个目录，超限提示）/ **收起全部**
+- 文件图标：文件夹 20px；`.java` 按声明类型显示 `C`/`I`/`E`/`@`/`R` 徽标（`/dsh-ide/kinds`）；其他文件是文档轮廓 + 语言色首字母
+- 文件树工具栏：定位当前文件 / 展开全部（逐层，≤200 目录）/ 收起全部
 - 右键菜单定位：统一走 `useMenuPlacement()`——菜单挂在指针处，下方放得下就向下展开，放不下就让**菜单底边贴着指针**向上展开（高度是挂载后实测的，分隔线与分组都算）；超过面板高度才内部滚动。所以既不会被面板边缘裁掉，也不会离鼠标很远
 - 标签页：多标签、中间键关闭、**右键菜单**（关闭 / 其他 / 全部 / 未修改 / 左侧 / 右侧 / 只读 / 添加到上下文 / 复制路径）
 - **文件树右键菜单**：在代码工作区打开 / 复制文件内容、**复制引用回对话**、绝对路径、仓库相对路径、限定类名；**Git 分组**：使用 Git 追溯注解、显示差异（叠加层展示 unified diff）、显示历史记录、与修订比较…（最近提交列表）、与分支或标签比较…（分支/标签列表）；差异弹层与选择器用 `iw-overlay`，Esc 关闭
-- 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带），`git commit` 不改内容也能更新
-- **导航历史记住的是「看到哪」而不是「跳到哪」**：条目是 `{path, line, top}`——`line` 只是上一次跳转目标，用户自己滚着读的位置在 `state.scroll[path]`（`top`）。只记 `line` 就会出现「点方法跳走 → 侧键返回 → 回到文件第一行」。`openAt(path, line, {top})` 会先把 `scroll[path]` 种进去、把 `reveal` 清零，让代码视图直接挂到那个偏移；`test/harness.mjs` 有对应用例（点方法前滚到 2400 → 返回后仍是 2400、`reveal` 归零）
+- 窗口聚焦：重读当前标签（`reloadActive`，内容 + git 色带）
+- **导航历史记「看到哪」**：条目 `{path, line, top}`，`top` 来自 `state.scroll[path]`；`openAt(path,line,{top})` 先种 `scroll` 再清 `reveal`，否则返回会跳回第一行（有用例）
 - 项目跟随会话：面板根目录**永远由当前会话决定**（`45-tracker` 解析会话 → 工作区）；项目下拉只做「切到该工作区的会话」，不再持久化手动选择（原 `preferredRoot` 已删除）；切换项目走 `enterProject(root, session)`，**会话与根目录一次 patch、一次 restart**（分两步会让旧标签以新会话作用域重读，闪出 `outside-workspace` 红字）；面板里读 `getState()` 判断而非订阅 `rootPath`，避免手动切换被跟随逻辑回滚
 - 对话里的文件卡片点开都走本插件工作区，不再打开右侧预览（捕获阶段拦 `click`，随后 `selectPanel`）：
   - **「已编辑 N 个文件」卡片**：点**文件行**进工作区（行内隐藏 span 带绝对路径）；**卡片头部仍打开官方 review**——一个列表最有用的事就是看整体差异
   - **「已编辑 <文件名>」卡片**（只有 1 个文件）：整张卡点进工作区
   - **交付文件卡**（`[data-presented-file]`）：点卡片进工作区；卡片自己的操作按钮**不拦**
-- 视图持久化：每个工作区记住标签、激活项、展开目录、树宽、树可见性（最多保留 3 个工作区）
-- 大文件保护：>60000 行或超字节上限时截断并提示
+- 视图持久化：每个工作区记标签/激活项/展开目录/树宽/树可见性（≤3 个）
+- 大文件保护：>60000 行或超字节上限时截断提示
+- **Markdown 文件预览**：`.md/.markdown/.mdx` 打开即渲染（`IdeFloatMarkdown` 复用），顶部「预览 / 源码」切换；判定是纯函数 `ideIsMarkdownPath`（有用例）
 
 ### 4.2 语义导航（IntelliJ LSP）
 - **双击**判定「是不是声明」的关键**不是**看有没有 `(`，而是看名字前面是不是一个**返回类型**：`private void foo(` / `Resp detail(` 算声明；本类里的裸调用 `        foo();`（前面只有缩进）、`page = service.foo(`、`service.foo(` 都不算——之前的正则在裸调用上误判为声明，导致双击本类方法只提示「当前位置就是定义」而不跳转
-- **双击**的三种语义：① 属性访问器（`getX`/`setX`/`isX`，接收者类型在本文件可见）→ 跳该类的**字段**（Lombok 没有源码 getter）；② 接口/抽象类里的方法**声明** → 跳**实现**（`goToImplementation`，没有就按 `implements`/`extends` 文本扫，多个实现弹选择，没有实现提示「当前位置就是定义」）；③ 方法**调用**或具体方法 → 跳声明（工作区文本兜底 / jar 源码）。字段声明、具体方法声明原地不动，**绝不会**因为同名就跳到别的类。**⌘+单击** → 实现 / 调用方弹层；**⌥+单击方法名** → 调用链（向上递归「谁调用了它」，思维导图浮层，点节点跳转）；`findReferences` 返回的声明位置会被丢弃（否则会把上一层自己的签名行误当成调用点），浮层把入口放在最上面、被点的方法放在最下面（上方调用下方），← 后是它调用下方方法的位置；每个节点都带类名；**实现方法会顺着 `implements` 找到接口里的同名方法，把接口调用方一并纳入调用链、用法计数和 ⌘+单击的调用方列表**（否则实现方法永远显示 0 用法）；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，三个动作互斥）
+- **双击**三义：① 访问器 → 跳字段（Lombok 无源码 getter）；② 接口/抽象方法声明 → 跳实现（没有就文本扫，多个弹选择）；③ 调用/具体方法 → 跳声明（文本兜底 / jar）。字段与具体方法声明原地不动，绝不因同名跳别处。**⌘+单击** → 实现 / 调用方弹层；**⌥+单击方法名** → 调用链（向上递归「谁调用了它」，思维导图浮层，点节点跳转）；`findReferences` 返回的声明位置会被丢弃（否则会把上一层自己的签名行误当成调用点），浮层把入口放在最上面、被点的方法放在最下面（上方调用下方），← 后是它调用下方方法的位置；每个节点都带类名；**实现方法会顺着 `implements` 找到接口里的同名方法，把接口调用方一并纳入调用链、用法计数和 ⌘+单击的调用方列表**（否则实现方法永远显示 0 用法）；手势在设置里用**下拉**选择（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，三个动作互斥）
 - 跳转成功后横幅显示 `→ 文件:行 · 查询 xms · 载入 yms`
 - **Mapper 方法 → XML 语句**：MyBatis 接口方法在 Java 里没有方法体，声明点击原先只会说「当前位置就是定义」。现在双击（或声明跳转）`@Mapper` / `*Mapper.java` 接口里的方法时，会去工作区找对应 mapper XML——**先按 `namespace="<包名.类名>"` 精确匹配**，找不到再按同名 `XMapper.xml`——然后跳到 `id="方法名"` 那一行（`<select>`/`<update>`/`<insert>`/`<delete>`/`<sql>` 都算）。找不到语句才退回原来的提示，绝不会跳到别的方法。判定是纯函数 `ideMapperLooksLikeMapper`（要求 `interface` 且带 `@Mapper` 或以 `Mapper` 结尾），正则由 `ideMapperStatementPattern` 生成，两者在 `test/harness.mjs` 里有用例
-- **调用链（⌥+单击）有文本兜底**：某一层 `findReferences` 失败或返回空时，改用「查看调用方」同一套文本搜索（同名调用、接收者声明类型必须是本类/本接口）逐层展开，浮层顶部注明「语言服务不可用，调用链按文本匹配展开」；语言服务正常时不出现这行，仍走语义结果
+- **调用链文本兜底**：某层 `findReferences` 失败/为空就改用「查看调用方」同款文本搜索逐层展开，浮层顶注明「语言服务不可用」；正常时不出现
 - 注解类型名（`@OperateLog`）可点击；注解属性（`@Log(name=…)`）跳到注解类型里的 `name()` 声明——**先在工作区找同名注解文件**，找不到才去 jar 源码（工作区里被编辑的注解才是真身，jar 副本是被 `mvn install` 出来的）
 - **类型名双击**（类/接口/枚举/record/注解）→ 工作区里 `class|interface|enum|record|@interface <名字>` 的声明文件，其次才是依赖 jar 源码；jar 没有 `-sources` 时提示「该 jar 没有源码」（不反编译）。工作区里的类绝不能再被同模块的 sources jar 副本抢走
   - **类型位置不会被当成「方法声明」**：`extends ServiceImpl<…>` 这种行在 `ideIsMethodDeclaration` 眼里长得像「返回类型 + 名字」，于是双击类名会走「跳实现」分支——而对一个类来说 `goToImplementation` 返回的是**所有子类**（踩过：弹出「声明 (50)」一屏 Repository）。所以跳转前先过 `ideTypePositionAt`（`extends`/`implements`/`class`/`interface`/`enum`/`record` 之后、泛型参数位置、`new X` 之后都算类型位置），类型位置直接跳过实现兜底，走「类型 → 工作区文件 → jar 源码」那条链
@@ -218,7 +219,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **未装 LSP 的引导页**：进入代码工作区时打 `/dsh-ide/doctor`，`ctx.lsp` 没挂载就弹「代码导航未就绪」。页面**直接给可复制的命令**（不再是「去做某件事」的描述）：macOS 第 1 步 `~/dev/dsh-ide-window/enable-navigation.sh`（装包 + 下载服务器 + 写 patch），第 2 步 `~/.dsh/lsp-bin/*/bin/intellij-server license login`，最后「完全退出 DSH 再打开」；Windows 显示 profile 内的 `pnpm add` 两条。按钮是「复制命令 / 重新检测 / 关闭」，命令按 `ideRuntimeContext.platform` 切换，复制走 `ideCopyWithNotice`。授权在服务器进程内，插件只引导不登录
 - **Code Vision**：可见**方法**声明行尾显示「N 个用法 · M 个实现」+ 最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的声明；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
-- **源码里的符号右键菜单**：在方法名、字段、类名等任意符号上右键 →「复制名称」/「复制引用」/「复制引用回对话」。引用是 DSH 的 `@相对路径` **加行号和符号名**：`@…/FlowService.java#L58 selectPage`（目录带尾斜杠、含空格时加引号，规则与 DSH 的 reference codec 一致）。**只给文件路径是信息缺失**——对方只能知道是哪个类，不知道是哪个方法；行号由符号 span 上的 `data-iw-line`、名字由 `data-iw-sym` 一起进菜单（`anchor = #L{n}`，`lineSuffix = anchor + ' ' + 名字`）。插入对话时 chip 必须保持是 chip，`#L58 selectPage` 在 chip 之后另打字补上；jar 源码标签页只有「复制名称」，因为 jar 内的路径不是工作区路径
+- **符号右键菜单**：复制名称 / 复制引用 / 复制引用回对话。引用 = `@相对路径` + `#L{n} 名字`（来自 span 的 `data-iw-line`/`data-iw-sym`）；只给路径是信息缺失。chip 要保持是 chip，行号另打字补上；jar 标签页只有「复制名称」
 - **两条快捷键**：`⌘⇧C` 复制引用回对话、`⌘⌥T` 在数据窗口打开表，都作用在当前标签页
   - 复制引用的尾部 `#L<行> <符号>` 来自 `state.lastSymbol`——每一次符号手势（双击/⌘+单击/⌥+单击）和符号右键都会写它，所以快捷键与右键菜单产出**同一条引用**；符号属于别的文件时只给文件路径，不瞎带行号（`ideReferenceSuffix` 是纯函数，有用例）
   - 打开表走 `ideDataWindowOpenEntity`，与文件树菜单同一个实现：`@TableName` 解析、数据窗口未安装/无表名等提示都一致；jar 源码标签页给「依赖源码不是工作区文件」的提示
@@ -279,24 +280,28 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 
 `src/client/74-float.js`：浮在代码工作区上的小聊天卡，**进代码工作区自动出现、回对话自动消失**；**可拖动**（表头按下拖，位置存 `floatX/floatY`，渲染时按视口夹取，永不出屏）。
 
-- 挂 `shell.overlay`；可见性跟 **`selectPanel()`**（只有代码工作区那页开卡）
-- **可拖动/可缩放**：表头拖动、四条边 + 右下角缩放（西/北边拖时卡片跟着移动，`ideFloatResizeStep` 纯函数，最小 280×220）；手势在 **window 上监听 pointermove/up**，绑元素上会「掉手」
-- 盒模型：`.iw-float *` 一律 `box-sizing: border-box`（否则 100% 宽 textarea 会从右边戳出去）
-- **UI 跟随工作区**：卡片带 `data-dsh-theme` 与 `treeFontSize` 字号
+- 挂 `shell.overlay`；可见性跟 **`selectPanel()`**
+- **可拖可缩**：表头拖动、四边+右下角缩放（西/北边拖时卡片移动，`ideFloatResizeStep`，最小 280×220）；手势挂 window，绑元素会「掉手」
+- 盒模型：`.iw-float *` 一律 `border-box`
+- **UI 跟随工作区**：带 `data-dsh-theme` 与 `treeFontSize`
 - **跟随面板的会话**：消息进 `state.sessionId`，所以模型就是该会话的模型
 - **模型 chip**：Client `modelDirectories`（同 composer）：`directoryFor(id).store` 出目录，`select({...})` 切换
 - **权限 chip**：发 `/permission <preset>`（`read-only` / `workspace-write` / `danger-full-access`）；**显示当前值**读 Host 投影 `session.projections.get('permissions').currentValue`（`faceOf('permissions').subscribe` 跟随），不靠猜
+- **文件 chip 可点**：文件行与「已编辑 N 个文件」行都走对话卡片同一入口 `openInWorkspace(path)`
+- **改动卡片**：宿主路由 `/dsh-ide/changes`（`sessionQuery.readSession` 找最新 `workspace/changes` 的 seq → `workspaceChanges.summary`）→ 标题 + `+N -M` + 前 3 个文件（可展开）。**只代表本轮**：摘要随进程消失，重启后卡片必须跟着消失，**绝不回落 git 工作区**（那样会把历史改动当成本轮常驻）；客户端永不读事件窗口（retained window 只留消息），空答案是「本轮没改动」，仅在刚结束一轮时重试两次（1200/3000ms）等摘要写入
+- **图片点开预览**：点缩略图开卡内全屏层（`Esc` 关、`复制图片` 走 canvas→PNG→`ClipboardItem`）；不再一点就复制
+- **能选中**：`html.iw-select-code` 会把整页禁选，卡片与 `.iw-md` 必须列进白名单，否则悬浮卡里选不了字
 - **输入区**：引用是**蓝色 chip**（`+ → 引用当前文件`、右键「复制引用回对话」都进 chips，可 ×）；**粘贴图片**读剪贴板 `image/*` 成 data URL 预览（≤4 张、单张 8 MB）；发送时 `prompt([image…, {type:'text', text: refs + 正文}])`
 - **表头**：`▾` 标题（`max-width:46%` 截断）、`＋` 新建、模型 chip、**思考等级 chip**（选项来自模型目录 `reasoning.efforts`，`select({...,reasoningEffort})`）、`–`/`×` 包在 `.iw-float-actions`（`margin-left:auto`）里——分开摆会在宽卡片上被拉开
 - **菜单**：`width:100%` + `min-height:30px`（原来只有文字可点，整行点不到）
 - **收起/关闭/开关**：`–` 收球、`×` 关闭（`floatClosed`，只本次进程内有效，重启才恢复）、设置页开关 `floatEnabled`（默认开，持久化）；渲染处统一 `open = floatOpen && enabled && !closed`
 - **归档不列**：用 `WorkspaceSnapshot.archivedSessionIds`（`useWorkspaces` 标准 hook）过滤
 - **引用优先给悬浮卡**：`referenceToChat` 命中上面 `open` 就把 `@引用` 走 `store.setFloatInsert` 追加进卡片草稿并聚焦（不跳转），否则回对话插芯片
-- **切换/新建会话**：按 `cwd` 分组、当前组置顶带「当前」标、打开滚到该组（`offsetTop` 相对卡片算不准，用 rect 差）；「新建会话」行吸顶。切换 = `openSession(id)` + `enterProject(cwd,id)` + 140ms 重选面板；新建 = `startSession()`（可能复用空白会话，只能按 store 的 sessionId 变化判定）
+- **切换/新建会话**：按 `cwd` 分组、当前组置顶、打开滚到该组（rect 差）；切换 = `openSession` + `enterProject` + 140ms 重选面板；新建 = `startSession()`（可能复用空白会话，只能按 store 的 sessionId 变化判定）
 - **终止**：`session.getSnapshot().running` 为真时，发送键变「停止」→ `session.cancel()`
 - **默认大小 460×560**；设置页「悬浮框默认大小」用 ±20 步进调宽/高（280–900 px），写 `dsh-ide-window:v1` 的 `floatWidth/floatHeight`；拖动卡片只改**当前** `floatWidth/Height`，不改默认值
-- **正文按对话同一套排版渲染**（`IdeFloatMarkdown`）：标题、段落、列表、引用、链接、行内代码、图片；代码块复用 `ideTokenize` 着色，带语言标签和「复制」；assistant 的 image 块和 `deliverables/presented` 文件也会显示（文件 chip 点击直接用 IDE 打开），不再把 Markdown 原文当纯文本铺出来；代码块在窄卡里 **`pre-wrap` + `overflow-wrap:anywhere` 自动换行**，不横向滚动
-- 只保留最近 6 行（消息/文件行）；Enter 发送、Shift+Enter 换行
+- **正文按对话排版渲染**（`IdeFloatMarkdown`）：标题/段落/列表/引用/链接/行内代码/图片/代码块（`ideTokenize` 着色 + 语言标签 + 复制），窄卡里 `pre-wrap` 自动换行不横向滚动；assistant 的 image 块和 `deliverables/presented` 文件也显示
+- 只保留最近 6 条；Enter 发送、Shift+Enter 换行
 - `IdeStyles` 渲染成卡片的**兄弟节点**（否则样式文本会进正文）
 
 ### 4.5 设置（设置 → 左侧导航「代码工作区」）

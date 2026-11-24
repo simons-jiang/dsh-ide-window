@@ -317,5 +317,19 @@
   "settingsFloatSize": "悬浮框默认大小",
   "settingsFloatSizeHint": "打开代码工作区时悬浮框的初始大小；拖动卡片只改当前大小，不改这里。",
   "settingsFloatWidth": "宽度",
-  "settingsFloatHeight": "高度"
+  "settingsFloatHeight": "高度",
+  "floatOpenFailed": "无法在工作区打开",
+  "floatCopyImage": "复制图片",
+  "floatImageCopied": "图片已复制",
+  "floatCopyImageFailed": "复制图片失败",
+  "floatCopyImageUnsupported": "当前环境不支持复制图片",
+  "mdPreview": "预览",
+  "mdSource": "源码",
+  "floatPreviewImage": "点击预览图片",
+  "floatCloseViewer": "关闭",
+  "floatChangesTitle": "已编辑",
+  "floatChangesUnit": "个文件",
+  "floatChangesBinary": "二进制",
+  "floatChangesAll": "全部",
+  "floatChangesLess": "收起"
 }

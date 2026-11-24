@@ -324,6 +324,20 @@ window.__ModuleLoader__.load({
     "settingsFloatSizeHint": "Initial size of the floating card; dragging the card changes only the current size.",
     "settingsFloatWidth": "Width",
     "settingsFloatHeight": "Height",
+    "floatOpenFailed": "Cannot open in the workspace",
+    "floatCopyImage": "Copy image",
+    "floatImageCopied": "Image copied",
+    "floatCopyImageFailed": "Copying the image failed",
+    "floatCopyImageUnsupported": "Copying images is not supported here",
+    "mdPreview": "Preview",
+    "mdSource": "Source",
+    "floatPreviewImage": "Click to view the image",
+    "floatCloseViewer": "Close",
+    "floatChangesTitle": "Edited",
+    "floatChangesUnit": "files",
+    "floatChangesBinary": "binary",
+    "floatChangesAll": "All",
+    "floatChangesLess": "Collapse",
   }
   const IDE_TEXT_ZH = {
     "title": "代码工作区",
@@ -641,6 +655,20 @@ window.__ModuleLoader__.load({
     "settingsFloatSizeHint": "打开代码工作区时悬浮框的初始大小；拖动卡片只改当前大小，不改这里。",
     "settingsFloatWidth": "宽度",
     "settingsFloatHeight": "高度",
+    "floatOpenFailed": "无法在工作区打开",
+    "floatCopyImage": "复制图片",
+    "floatImageCopied": "图片已复制",
+    "floatCopyImageFailed": "复制图片失败",
+    "floatCopyImageUnsupported": "当前环境不支持复制图片",
+    "mdPreview": "预览",
+    "mdSource": "源码",
+    "floatPreviewImage": "点击预览图片",
+    "floatCloseViewer": "关闭",
+    "floatChangesTitle": "已编辑",
+    "floatChangesUnit": "个文件",
+    "floatChangesBinary": "二进制",
+    "floatChangesAll": "全部",
+    "floatChangesLess": "收起",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1102,6 +1130,12 @@ html.iw-select-code body * {
 }
 html.iw-select-code .iw-code,
 html.iw-select-code .iw-code *,
+/* The floating card is a reading surface too: without this, the code view's
+   global "no selection" class made its transcript unselectable. */
+html.iw-select-code .iw-float,
+html.iw-select-code .iw-float *,
+html.iw-select-code .iw-md,
+html.iw-select-code .iw-md *,
 html.iw-select-code input,
 html.iw-select-code textarea,
 html.iw-select-code [contenteditable="true"] {
@@ -1894,6 +1928,7 @@ html.iw-select-code .iw-code .iw-vision {
 /* Images inside a message: a row of thumbnails, click nothing, just look. */
 .iw-float-pics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .iw-float-pic {
+  cursor: copy;
   max-width: 132px;
   max-height: 132px;
   border-radius: 6px;
@@ -2186,9 +2221,9 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-filelist { display: flex; flex-direction: column; gap: 4px; }
 .iw-float-file {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   padding: 5px 8px;
   border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
@@ -2199,8 +2234,32 @@ html.iw-select-code .iw-code .iw-vision {
   cursor: pointer;
 }
 .iw-float-file:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.09)); }
-.iw-float-file-name { font-size: 11.5px; font-weight: 600; }
-.iw-float-file-desc { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+/* One line per file: the name takes the room, the counts sit at the right edge
+   where the eye scans for them. */
+.iw-float-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.iw-float-file-desc {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+.iw-float-add { color: var(--dsw-alias-state-success-primary, #3fa55a); }
+.iw-float-del { color: var(--dsw-alias-state-danger-primary, #e5534b); }
 .iw-float-running { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-float-input {
   display: flex;
@@ -2782,6 +2841,88 @@ html.iw-select-code .iw-code .iw-vision {
   font-weight: 400;
 }
 
+/* The turn's changed files, right under the transcript. */
+.iw-float-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  background: var(--dsw-alias-card-fill, rgba(255, 255, 255, 0.05));
+}
+.iw-float-changes-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.iw-float-changes-icon { opacity: 0.6; }
+.iw-float-changes-title { flex: 1 1 auto; }
+.iw-float-changes-add { color: var(--dsw-alias-state-success-primary, #3fa55a); font-variant-numeric: tabular-nums; }
+.iw-float-changes-del { color: var(--dsw-alias-state-danger-primary, #e5534b); font-variant-numeric: tabular-nums; }
+.iw-float-changes-list { display: flex; flex-direction: column; }
+.iw-float-changes-more {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-link, #6ea8ff);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 0 0;
+  cursor: pointer;
+  text-align: left;
+}
+/* Full-size picture viewer over the card. */
+.iw-float-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: inherit;
+  background: var(--dsw-alias-bg-layer-1, rgba(20, 21, 24, 0.97));
+}
+.iw-float-viewer-img {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.iw-float-viewer-bar { display: flex; align-items: center; gap: 8px; }
+.iw-float-viewer-name { flex: 1 1 auto; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Markdown files render as a document in the code view. */
+.iw-md { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 6px 18px 24px; }
+.iw-md-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+.iw-md-bar-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-md-body { max-width: 860px; width: 100%; }
+.iw-md-body .iw-float-md { font-size: 14px; line-height: 1.7; }
+.iw-md-body .iw-float-md-h1 { font-size: 22px; margin: 18px 0 10px; }
+.iw-md-body .iw-float-md-h2 { font-size: 18px; margin: 16px 0 8px; }
+.iw-md-body .iw-float-md-h3 { font-size: 16px; margin: 14px 0 6px; }
+.iw-md-body .iw-float-md-p { margin: 8px 0; }
+.iw-md-body .iw-float-md-list { margin: 6px 0; padding-left: 22px; }
+.iw-md-body .iw-float-md-table { font-size: 13px; }
+.iw-md-body .iw-float-md-pre { font-size: 12.5px; }
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -6903,6 +7044,11 @@ function ideRequestBlame(store, tab, done, options = {}) {
 }
 
 /** The source view. */
+/** Markdown files get a rendered view instead of the raw source. */
+function ideIsMarkdownPath(path) {
+  return /\.(?:md|markdown|mdx)$/i.test(String(path ?? ''))
+}
+
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
   // While this view is on screen, the page outside it is not selectable, so
@@ -6974,6 +7120,9 @@ function IdeCodeView({ tab, tr, store, navigate }) {
 
   // ---- symbol navigation --------------------------------------------------
   const [popup, setPopup] = useState(undefined)
+  // Markdown files open rendered; the source stays one click away.
+  const [mdSource, setMdSource] = useState(false)
+  useEffect(() => { setMdSource(false) }, [tab.path])
 
   const pick = useCallback((path, line) => {
     setPopup(undefined)
@@ -7755,7 +7904,31 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     : popup.kind === 'chain'
       ? h(IdeChainPopup, { key: 'popup', popup, tr, onPick: pick, onClose: closePopup })
       : h(IdeUsagePopup, { key: 'popup', popup, onPick: pick, onClose: closePopup })
-  return h(React.Fragment, null, [code, popupView])
+  const isMarkdown = tab.kind !== 'jar' && ideIsMarkdownPath(tab.path)
+  const markdownBar = isMarkdown && tab.status === 'ready'
+    ? h('div', { key: 'mdbar', className: 'iw-md-bar' }, [
+      h('span', { key: 'name', className: 'iw-md-bar-name' }, tab.name),
+      h('button', {
+        key: 'preview',
+        type: 'button',
+        className: `iw-btn${mdSource ? '' : ' on'}`,
+        onClick: () => setMdSource(false),
+      }, tr('mdPreview')),
+      h('button', {
+        key: 'source',
+        type: 'button',
+        className: `iw-btn${mdSource ? ' on' : ''}`,
+        onClick: () => setMdSource(true),
+      }, tr('mdSource')),
+    ])
+    : null
+  const markdownView = isMarkdown && tab.status === 'ready' && mdSource !== true
+    ? h('div', { key: 'md', className: 'iw-md', ref: scrollRef, tabIndex: 0 }, h('div', {
+      key: 'body',
+      className: 'iw-md-body',
+    }, h(IdeFloatMarkdown, { text: tab.text, tr })))
+    : null
+  return h(React.Fragment, null, [markdownBar, markdownView === null ? code : markdownView, popupView])
 }
 
 /** The bottom status bar. */
@@ -12831,6 +13004,8 @@ async function ideDataWindowOpenMapper(store, tr, root, path, symbol, line) {
 
 /** How many messages the card keeps on screen. */
 const IDE_FLOAT_MESSAGES = 6
+/** Re-ask delays after a turn, while its summary is still being recorded. */
+const IDE_FLOAT_CHANGES_RETRIES = [1200, 3000]
 
 /** Permission presets the workspace switch offers, in DSH's own order. */
 const IDE_FLOAT_PERMISSIONS = [
@@ -12942,6 +13117,29 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * (`read-only` / `workspace-write` / `danger-full-access`). Unknown ids are shown
  * verbatim rather than guessed.
  */
+/** One changed-file row from the Host's summary, or null when unusable. */
+function ideFloatChangedFile(entry) {
+  if (entry === null || typeof entry !== 'object') return null
+  if (typeof entry.path !== 'string' || entry.path === '') return null
+  return {
+    path: entry.path,
+    added: Number.isFinite(entry.added) ? entry.added : 0,
+    deleted: Number.isFinite(entry.deleted) ? entry.deleted : 0,
+    binary: entry.binary === true,
+  }
+}
+
+/** The rows of one changes summary, tolerant of a partial answer. */
+function ideFloatChangedFiles(summary) {
+  const files = Array.isArray(summary?.files) ? summary.files : []
+  const rows = []
+  for (const entry of files) {
+    const row = ideFloatChangedFile(entry)
+    if (row !== null) rows.push(row)
+  }
+  return rows
+}
+
 function ideFloatPermissionLabel(preset, translate) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const known = IDE_FLOAT_PERMISSIONS.find((entry) => entry.id === preset)
@@ -13476,7 +13674,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -13494,6 +13692,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const [effort, setEffort] = useState(null)
   // Attachment bytes are fetched on demand: the log only carries references.
   const [pictures, setPictures] = useState({})
+  // The turn's changed files, and the picture the user is looking at.
+  const [changes, setChanges] = useState(null)
+  const [changeOpen, setChangeOpen] = useState(false)
+  const [viewing, setViewing] = useState(null)
   const picturesRef = useRef({})
   picturesRef.current = pictures
   const [projectedPreset, setProjectedPreset] = useState('')
@@ -13544,6 +13746,55 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return () => { alive = false }
   }, [binding, entries])
 
+  // The changed-files card of the latest turn.
+  //
+  // The Host announces `workspace/changes` on the session log, but that event
+  // never reaches a plugin (the retained window keeps messages), and the Host's
+  // own summary route sits behind its authenticated fence. So the plugin's host
+  // answers instead, and the answer only exists while the turn's summary lives
+  // in memory — exactly like the conversation's card.
+  useEffect(() => {
+    // `sessionId` is declared below; read it from the snapshot so the effect
+    // can stay next to the other data effects without a temporal-dead-zone crash.
+    const owner = state.sessionId ?? ''
+    if (binding === null || owner === '') {
+      setChanges(null)
+      return undefined
+    }
+    let alive = true
+    let timer
+    const ask = (attempt) => {
+      fetch(`/dsh-ide/changes?session=${encodeURIComponent(owner)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session: owner }),
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((answer) => {
+          if (alive !== true || answer === null || answer.ok !== true) return
+          const files = ideFloatChangedFiles(answer.value)
+          if (files.length > 0) {
+            setChanges({ files, added: files.reduce((sum, row) => sum + row.added, 0), deleted: files.reduce((sum, row) => sum + row.deleted, 0) })
+            return
+          }
+          // The Host records the announcement after the reply lands, so the
+          // first ask of a fresh turn can arrive early; a couple of retries
+          // cover it without polling.
+          if (attempt >= IDE_FLOAT_CHANGES_RETRIES.length) {
+            setChanges(null)
+            return
+          }
+          timer = globalThis.setTimeout(() => ask(attempt + 1), IDE_FLOAT_CHANGES_RETRIES[attempt])
+        })
+        .catch(() => {})
+    }
+    ask(0)
+    return () => {
+      alive = false
+      globalThis.clearTimeout(timer)
+    }
+  }, [binding, state.sessionId, entries.length])
+
   const sessionId = state.sessionId ?? ''
   const open = state.floatOpen === true && state.floatEnabled !== false && state.floatClosed !== true
   const collapsed = state.floatCollapsed === true
@@ -13579,7 +13830,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       return undefined
     }
     const source = binding.eventSource
-    const read = () => setEntries(ideFloatTranscript(source.getSnapshot()?.entries))
+    const read = () => {
+      setEntries(ideFloatTranscript(source.getSnapshot()?.entries))
+    }
     read()
     return source.subscribe(read)
   }, [binding])
@@ -13683,6 +13936,19 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const reserved = head === null ? 0 : head.getBoundingClientRect().height + 4
     menuEl.scrollTop = Math.max(0, menuEl.scrollTop + delta - reserved)
   }, [menu])
+
+  // Esc leaves the picture viewer before anything else.
+  useEffect(() => {
+    if (viewing === null || typeof globalThis.addEventListener !== 'function') return undefined
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setViewing(null)
+      }
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [viewing])
 
   // A click outside the card closes its little menus.
   useEffect(() => {
@@ -13870,6 +14136,43 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       await binding.session.cancel()
     } catch (error) {
       store.setNotice(`${tr('floatStopFailed')}: ${error?.message ?? String(error)}`)
+    }
+  }
+
+  /**
+   * Copy one picture to the clipboard.
+   *
+   * The image may be a JPEG/WebP, but `ClipboardItem` is only portable for PNG,
+   * so the loaded bitmap is redrawn on a canvas and exported as PNG first.
+   */
+  const copyPicture = async (source) => {
+    try {
+      const img = typeof source === 'string'
+        ? await new Promise((resolve) => {
+          const loader = new Image()
+          loader.onload = () => resolve(loader)
+          loader.onerror = () => resolve(null)
+          loader.src = source
+        })
+        : source
+      if (img === null || img === undefined) return
+      const canvas = globalThis.document?.createElement('canvas')
+      if (canvas === null || canvas === undefined) return
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const context = canvas.getContext('2d')
+      if (context === null) return
+      context.drawImage(img, 0, 0)
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (blob === null || blob === undefined) return
+      if (typeof ClipboardItem !== 'function' || navigator.clipboard?.write === undefined) {
+        store.setNotice(tr('floatCopyImageUnsupported'))
+        return
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      store.setNotice(tr('floatImageCopied'))
+    } catch (error) {
+      store.setNotice(`${tr('floatCopyImageFailed')}: ${error?.message ?? String(error)}`)
     }
   }
 
@@ -14088,7 +14391,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
               className: 'iw-float-file',
               title: file.path,
               onClick: () => {
-                if (typeof store.openFile === 'function') store.openFile(file.path)
+                // Same entry point as the conversation's file cards: open the
+                // file in the workspace and switch the panel to it.
+                const opened = typeof openInWorkspace === 'function'
+                  ? openInWorkspace(file.path) === true
+                  : store.openAt(file.path) === true
+                if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
               },
             }, [
               h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
@@ -14104,11 +14412,75 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
             const url = pictures[image.attachmentId] ?? ''
             if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
-            return h('img', { key: `pic${index}`, className: 'iw-float-pic', src: url, alt: image.name ?? '' })
+            return h('img', {
+              key: `pic${index}`,
+              className: 'iw-float-pic',
+              src: url,
+              alt: image.name ?? '',
+              title: tr('floatPreviewImage'),
+              onClick: () => setViewing({ url, name: image.name ?? '' }),
+            })
           })),
         ])
       })),
     running ? h('div', { key: 'run', className: 'iw-float-running' }, tr('floatRunning')) : null,
+    changes === null ? null : h('div', { key: 'changes', className: 'iw-float-changes' }, [
+      h('button', {
+        key: 'head',
+        type: 'button',
+        className: 'iw-float-changes-head',
+        onClick: () => setChangeOpen(!changeOpen),
+      }, [
+        h('span', { key: 'icon', className: 'iw-float-changes-icon', 'aria-hidden': 'true' }, '⌗'),
+        h('span', { key: 'title', className: 'iw-float-changes-title' }, `${tr('floatChangesTitle')} ${changes.files.length} ${tr('floatChangesUnit')}`),
+        h('span', { key: 'added', className: 'iw-float-changes-add' }, `+${changes.added}`),
+        h('span', { key: 'deleted', className: 'iw-float-changes-del' }, `-${changes.deleted}`),
+      ]),
+      h('div', { key: 'list', className: 'iw-float-changes-list' }, (changeOpen ? changes.files : changes.files.slice(0, 3)).map((file) => h('button', {
+        key: file.path,
+        type: 'button',
+        className: 'iw-float-file',
+        title: file.path,
+        onClick: () => {
+          const opened = typeof openInWorkspace === 'function'
+            ? openInWorkspace(file.path) === true
+            : store.openAt(file.path) === true
+          if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
+        },
+      }, [
+        h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
+        file.binary
+          ? h('span', { key: 'd', className: 'iw-float-file-desc' }, tr('floatChangesBinary'))
+          : h('span', { key: 'd', className: 'iw-float-file-desc' }, [
+            h('span', { key: 'a', className: 'iw-float-add' }, `+${file.added}`),
+            h('span', { key: 'r', className: 'iw-float-del' }, `-${file.deleted}`),
+          ]),
+      ]))),
+      changes.files.length <= 3 ? null : h('button', {
+        key: 'more',
+        type: 'button',
+        className: 'iw-float-changes-more',
+        onClick: () => setChangeOpen(!changeOpen),
+      }, changeOpen ? tr('floatChangesLess') : `${tr('floatChangesAll')} ${changes.files.length}`),
+    ]),
+    viewing === null ? null : h('div', { key: 'viewer', className: 'iw-float-viewer' }, [
+      h('img', { key: 'img', className: 'iw-float-viewer-img', src: viewing.url, alt: viewing.name }),
+      h('div', { key: 'bar', className: 'iw-float-viewer-bar' }, [
+        h('span', { key: 'name', className: 'iw-float-viewer-name' }, viewing.name),
+        h('button', {
+          key: 'copy',
+          type: 'button',
+          className: 'iw-btn',
+          onClick: () => { void copyPicture(viewing.url) },
+        }, tr('floatCopyImage')),
+        h('button', {
+          key: 'close',
+          type: 'button',
+          className: 'iw-btn',
+          onClick: () => setViewing(null),
+        }, tr('floatCloseViewer')),
+      ]),
+    ]),
     h('div', { key: 'input', className: 'iw-float-input' }, [
       refs.length === 0 && images.length === 0 ? null : h('div', { key: 'chips', className: 'iw-float-chips' }, [
         ...refs.map((ref, index) => h('span', { key: `ref:${ref}`, className: 'iw-float-chip-ref' }, [
@@ -15392,6 +15764,15 @@ function apply(ctx) {
       sessions: ctx.get('sessions'),
       modelDirectories: ctx.get('modelDirectories'),
       translate,
+      // The card's file chips open files exactly like the conversation's file
+      // cards do: one workspace tab, one panel selection, no preview pane.
+      openInWorkspace: (path) => {
+        if (typeof path !== 'string' || path === '') return false
+        if (store.openAt(path, undefined) !== true) return false
+        store.setNotice('')
+        selectPanel(IDE_PANEL_ID)
+        return true
+      },
       // Switching a Session is a UI navigation, which lands on the Conversation.
       // The workspace is where the card lives, so the panel is re-selected right
       // after: the card then rebinds to the Session the tracker just adopted.

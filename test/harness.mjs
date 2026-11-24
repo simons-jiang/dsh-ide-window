@@ -1843,6 +1843,29 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'an image-only prompt has no text but keeps its picture', JSON.stringify(pictureRows[1]))
   check(pictureRows[2].images.length === 0, 'assistant rows carry no pictures')
 
+  // The card's file chips use the same opener as the conversation's cards.
+  const bundle = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  check(bundle.includes('openInWorkspace(file.path)') && bundle.includes('openInWorkspace: (path) =>'),
+    'the floating card opens files through the workspace opener')
+
+  const filesOf = new Function(`${grabSource('ideFloatChangedFile', '74-float.js')}\n${grabSource('ideFloatChangedFiles', '74-float.js')}\nreturn ideFloatChangedFiles`)()
+  const changed = filesOf({ files: [
+    { path: 'src/a.js', added: 12, deleted: 3 },
+    { path: '', added: 1, deleted: 1 },
+    null,
+    { path: 'README.md', binary: true },
+  ] })
+  check(changed.length === 2, 'unusable rows are dropped', String(changed.length))
+  check(changed[0].added === 12 && changed[0].deleted === 3, 'counts survive', JSON.stringify(changed[0]))
+  check(changed[1].binary === true && changed[1].added === 0, 'a binary row has no line counts', JSON.stringify(changed[1]))
+  check(filesOf(undefined).length === 0 && filesOf({}).length === 0, 'a missing summary lists nothing')
+
+  // Markdown files are recognised by extension, whatever the caller's case.
+  const isMd = new Function(`${grabSource('ideIsMarkdownPath', '30-code.js')}\nreturn ideIsMarkdownPath`)()
+  check(isMd('docs/AGENTS.md') && isMd('README.MD') && isMd('a/b.markdown'), 'markdown paths are detected')
+  check(isMd('x.mdx') === true, 'mdx counts as markdown too')
+  check(isMd('a/Main.java') === false && isMd('') === false && isMd(undefined) === false, 'other paths are not markdown')
+
   // Markdown: every construct the card claims to render.
   const markdownOf = new Function(`${grabSource('ideFloatSafeUrl', '74-float.js')}\n${grabSource('ideFloatTableCells', '74-float.js')}\n${grabSource('ideFloatTableAlign', '74-float.js')}\n${grabSource('ideFloatMarkdownBlocks', '74-float.js')}\nreturn ideFloatMarkdownBlocks`)()
   const tableSource = ['| 项 | 内容 | 右对齐 |', '| --- | :---: | ---: |', '| 分支 | `feature/v1.1-bill` | 3 |', '| 提交 | 6212b6e5 **feat** | 4 |'].join('\n')

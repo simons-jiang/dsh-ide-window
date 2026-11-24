@@ -317,5 +317,19 @@
   "settingsFloatSize": "Floating card size",
   "settingsFloatSizeHint": "Initial size of the floating card; dragging the card changes only the current size.",
   "settingsFloatWidth": "Width",
-  "settingsFloatHeight": "Height"
+  "settingsFloatHeight": "Height",
+  "floatOpenFailed": "Cannot open in the workspace",
+  "floatCopyImage": "Copy image",
+  "floatImageCopied": "Image copied",
+  "floatCopyImageFailed": "Copying the image failed",
+  "floatCopyImageUnsupported": "Copying images is not supported here",
+  "mdPreview": "Preview",
+  "mdSource": "Source",
+  "floatPreviewImage": "Click to view the image",
+  "floatCloseViewer": "Close",
+  "floatChangesTitle": "Edited",
+  "floatChangesUnit": "files",
+  "floatChangesBinary": "binary",
+  "floatChangesAll": "All",
+  "floatChangesLess": "Collapse"
 }

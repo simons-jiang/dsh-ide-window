@@ -456,6 +456,12 @@ html.iw-select-code body * {
 }
 html.iw-select-code .iw-code,
 html.iw-select-code .iw-code *,
+/* The floating card is a reading surface too: without this, the code view's
+   global "no selection" class made its transcript unselectable. */
+html.iw-select-code .iw-float,
+html.iw-select-code .iw-float *,
+html.iw-select-code .iw-md,
+html.iw-select-code .iw-md *,
 html.iw-select-code input,
 html.iw-select-code textarea,
 html.iw-select-code [contenteditable="true"] {
@@ -1248,6 +1254,7 @@ html.iw-select-code .iw-code .iw-vision {
 /* Images inside a message: a row of thumbnails, click nothing, just look. */
 .iw-float-pics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .iw-float-pic {
+  cursor: copy;
   max-width: 132px;
   max-height: 132px;
   border-radius: 6px;
@@ -1540,9 +1547,9 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-filelist { display: flex; flex-direction: column; gap: 4px; }
 .iw-float-file {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   padding: 5px 8px;
   border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
@@ -1553,8 +1560,32 @@ html.iw-select-code .iw-code .iw-vision {
   cursor: pointer;
 }
 .iw-float-file:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.09)); }
-.iw-float-file-name { font-size: 11.5px; font-weight: 600; }
-.iw-float-file-desc { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+/* One line per file: the name takes the room, the counts sit at the right edge
+   where the eye scans for them. */
+.iw-float-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.iw-float-file-desc {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+.iw-float-add { color: var(--dsw-alias-state-success-primary, #3fa55a); }
+.iw-float-del { color: var(--dsw-alias-state-danger-primary, #e5534b); }
 .iw-float-running { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-float-input {
   display: flex;
@@ -2136,6 +2167,88 @@ html.iw-select-code .iw-code .iw-vision {
   font-weight: 400;
 }
 
+/* The turn's changed files, right under the transcript. */
+.iw-float-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  background: var(--dsw-alias-card-fill, rgba(255, 255, 255, 0.05));
+}
+.iw-float-changes-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.iw-float-changes-icon { opacity: 0.6; }
+.iw-float-changes-title { flex: 1 1 auto; }
+.iw-float-changes-add { color: var(--dsw-alias-state-success-primary, #3fa55a); font-variant-numeric: tabular-nums; }
+.iw-float-changes-del { color: var(--dsw-alias-state-danger-primary, #e5534b); font-variant-numeric: tabular-nums; }
+.iw-float-changes-list { display: flex; flex-direction: column; }
+.iw-float-changes-more {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-link, #6ea8ff);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 0 0;
+  cursor: pointer;
+  text-align: left;
+}
+/* Full-size picture viewer over the card. */
+.iw-float-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: inherit;
+  background: var(--dsw-alias-bg-layer-1, rgba(20, 21, 24, 0.97));
+}
+.iw-float-viewer-img {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.iw-float-viewer-bar { display: flex; align-items: center; gap: 8px; }
+.iw-float-viewer-name { flex: 1 1 auto; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Markdown files render as a document in the code view. */
+.iw-md { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 6px 18px 24px; }
+.iw-md-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.1));
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+.iw-md-bar-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-md-body { max-width: 860px; width: 100%; }
+.iw-md-body .iw-float-md { font-size: 14px; line-height: 1.7; }
+.iw-md-body .iw-float-md-h1 { font-size: 22px; margin: 18px 0 10px; }
+.iw-md-body .iw-float-md-h2 { font-size: 18px; margin: 16px 0 8px; }
+.iw-md-body .iw-float-md-h3 { font-size: 16px; margin: 14px 0 6px; }
+.iw-md-body .iw-float-md-p { margin: 8px 0; }
+.iw-md-body .iw-float-md-list { margin: 6px 0; padding-left: 22px; }
+.iw-md-body .iw-float-md-table { font-size: 13px; }
+.iw-md-body .iw-float-md-pre { font-size: 12.5px; }
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */

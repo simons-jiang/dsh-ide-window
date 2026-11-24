@@ -1165,6 +1165,15 @@ function apply(ctx) {
       sessions: ctx.get('sessions'),
       modelDirectories: ctx.get('modelDirectories'),
       translate,
+      // The card's file chips open files exactly like the conversation's file
+      // cards do: one workspace tab, one panel selection, no preview pane.
+      openInWorkspace: (path) => {
+        if (typeof path !== 'string' || path === '') return false
+        if (store.openAt(path, undefined) !== true) return false
+        store.setNotice('')
+        selectPanel(IDE_PANEL_ID)
+        return true
+      },
       // Switching a Session is a UI navigation, which lands on the Conversation.
       // The workspace is where the card lives, so the panel is re-selected right
       // after: the card then rebinds to the Session the tracker just adopted.

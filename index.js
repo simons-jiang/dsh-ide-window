@@ -47,6 +47,7 @@ const ROUTE_DIAG = '/dsh-ide/diagnostics'
 const ROUTE_THEME = '/dsh-ide/theme'
 const ROUTE_SCREENSHOT = '/dsh-ide/screenshot'
 const ROUTE_SCREEN_PERMISSION = '/dsh-ide/screen-permission'
+const ROUTE_CHANGES = '/dsh-ide/changes'
 
 /** Where this file lives: the themes sit next to it, not in the profile. */
 const PLUGIN_ROOT = fileURLToPath(new URL('.', import.meta.url))
@@ -1474,7 +1475,7 @@ function createHandler(ctx) {
         return
       }
       pathname = new URL(request.url ?? '/', 'http://dsh-ide.internal').pathname
-      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE && pathname !== ROUTE_DIAG && pathname !== ROUTE_SCREENSHOT && pathname !== ROUTE_SCREEN_PERMISSION) {
+      if (pathname !== ROUTE_LSP && pathname !== ROUTE_GREP && pathname !== ROUTE_DIFF && pathname !== ROUTE_JAR && pathname !== ROUTE_STATUS && pathname !== ROUTE_BLAME && pathname !== ROUTE_DOCTOR && pathname !== ROUTE_KINDS && pathname !== ROUTE_LOG && pathname !== ROUTE_REFS && pathname !== ROUTE_PATCH && pathname !== ROUTE_TEXT && pathname !== ROUTE_LICENSE && pathname !== ROUTE_DIAG && pathname !== ROUTE_SCREENSHOT && pathname !== ROUTE_SCREEN_PERMISSION && pathname !== ROUTE_CHANGES) {
         writeJson(response, 404, { ok: false, error: { code: 'not-found', message: 'unknown route' } })
         return
       }
@@ -1514,6 +1515,8 @@ function createHandler(ctx) {
                 ? await captureScreen(payload)
               : pathname === ROUTE_SCREEN_PERMISSION
                 ? await openScreenPermission()
+              : pathname === ROUTE_CHANGES
+                ? await changesOfSession(ctx, payload)
             : await query(ctx, payload)
       writeJson(response, 200, { ok: true, value })
     } catch (error) {
@@ -1522,6 +1525,60 @@ function createHandler(ctx) {
       logEvent(status >= 500 ? 'error' : 'warn', 'route', `${pathname} → ${status} ${code}`, error?.message ?? String(error))
       writeJson(response, status, { ok: false, error: { code, message: error?.message ?? String(error) } })
     }
+  }
+}
+
+/**
+ * The changed files of one Session's newest turn.
+ *
+ * The client never sees `workspace/changes` (the retained event window keeps
+ * messages only) and the Host's summary route sits behind its own authenticated
+ * fence, so this plugin answers from the same source the conversation card
+ * uses: `sessionQuery.readSession` finds the announcement's sequence, and
+ * `workspaceChanges.summary` turns it into files with line counts.
+ *
+ * @param ctx - host context carrying the session and change services.
+ * @param payload - `{session}`: the Session whose last turn is asked about.
+ * @returns `{turn, files, added, deleted, total}`; empty when nothing changed.
+ */
+async function changesOfSession(ctx, payload) {
+  const sessionId = typeof payload?.session === 'string' ? payload.session : ''
+  if (sessionId === '') throw new RouteError(400, 'invalid-session', 'session is required')
+  const sessionQuery = ctx.get('sessionQuery')
+  const workspaceChanges = ctx.get('workspaceChanges')
+  if (sessionQuery === undefined || workspaceChanges === undefined) return { turn: 0, files: [], added: 0, deleted: 0, total: 0 }
+  let snapshot
+  try {
+    snapshot = await sessionQuery.readSession(sessionId)
+  } catch (error) {
+    logEvent('warn', 'changes', 'session read failed', error?.message ?? String(error))
+    snapshot = undefined
+  }
+  let seq
+  for (const event of snapshot?.events ?? []) {
+    if (event?.type !== 'workspace/changes') continue
+    if (typeof event.seq !== 'number') continue
+    seq = event.seq
+  }
+  const empty = { turn: 0, files: [], added: 0, deleted: 0, total: 0 }
+  // A summary only exists for a live turn of this Host process. Once it is gone
+  // (restart, cold Session) the card must vanish with it: it describes one turn,
+  // not whatever is uncommitted in the working tree.
+  if (seq === undefined) return empty
+  const summary = workspaceChanges.summary(sessionId, seq)
+  if (summary === undefined) return empty
+  const files = (summary.files ?? []).map((file) => ({
+    path: file.path,
+    added: Number.isFinite(file.added) ? file.added : 0,
+    deleted: Number.isFinite(file.deleted) ? file.deleted : 0,
+    binary: file.binary === true,
+  }))
+  return {
+    turn: summary.turn ?? 0,
+    files,
+    added: Number.isFinite(summary.added) ? summary.added : 0,
+    deleted: Number.isFinite(summary.deleted) ? summary.deleted : 0,
+    total: Number.isFinite(summary.total) ? summary.total : files.length,
   }
 }
 
@@ -1593,6 +1650,11 @@ export function apply(ctx) {
     path: ROUTE_LICENSE,
     handler,
   }), 'dsh-ide-window: language server licence route')
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: ROUTE_CHANGES,
+    handler,
+  }), 'dsh-ide-window: changed files route')
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: ROUTE_DIAG,

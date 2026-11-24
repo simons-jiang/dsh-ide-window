@@ -14,6 +14,8 @@
 
 /** How many messages the card keeps on screen. */
 const IDE_FLOAT_MESSAGES = 6
+/** Re-ask delays after a turn, while its summary is still being recorded. */
+const IDE_FLOAT_CHANGES_RETRIES = [1200, 3000]
 
 /** Permission presets the workspace switch offers, in DSH's own order. */
 const IDE_FLOAT_PERMISSIONS = [
@@ -125,6 +127,29 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * (`read-only` / `workspace-write` / `danger-full-access`). Unknown ids are shown
  * verbatim rather than guessed.
  */
+/** One changed-file row from the Host's summary, or null when unusable. */
+function ideFloatChangedFile(entry) {
+  if (entry === null || typeof entry !== 'object') return null
+  if (typeof entry.path !== 'string' || entry.path === '') return null
+  return {
+    path: entry.path,
+    added: Number.isFinite(entry.added) ? entry.added : 0,
+    deleted: Number.isFinite(entry.deleted) ? entry.deleted : 0,
+    binary: entry.binary === true,
+  }
+}
+
+/** The rows of one changes summary, tolerant of a partial answer. */
+function ideFloatChangedFiles(summary) {
+  const files = Array.isArray(summary?.files) ? summary.files : []
+  const rows = []
+  for (const entry of files) {
+    const row = ideFloatChangedFile(entry)
+    if (row !== null) rows.push(row)
+  }
+  return rows
+}
+
 function ideFloatPermissionLabel(preset, translate) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const known = IDE_FLOAT_PERMISSIONS.find((entry) => entry.id === preset)
@@ -659,7 +684,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -677,6 +702,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const [effort, setEffort] = useState(null)
   // Attachment bytes are fetched on demand: the log only carries references.
   const [pictures, setPictures] = useState({})
+  // The turn's changed files, and the picture the user is looking at.
+  const [changes, setChanges] = useState(null)
+  const [changeOpen, setChangeOpen] = useState(false)
+  const [viewing, setViewing] = useState(null)
   const picturesRef = useRef({})
   picturesRef.current = pictures
   const [projectedPreset, setProjectedPreset] = useState('')
@@ -727,6 +756,55 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return () => { alive = false }
   }, [binding, entries])
 
+  // The changed-files card of the latest turn.
+  //
+  // The Host announces `workspace/changes` on the session log, but that event
+  // never reaches a plugin (the retained window keeps messages), and the Host's
+  // own summary route sits behind its authenticated fence. So the plugin's host
+  // answers instead, and the answer only exists while the turn's summary lives
+  // in memory — exactly like the conversation's card.
+  useEffect(() => {
+    // `sessionId` is declared below; read it from the snapshot so the effect
+    // can stay next to the other data effects without a temporal-dead-zone crash.
+    const owner = state.sessionId ?? ''
+    if (binding === null || owner === '') {
+      setChanges(null)
+      return undefined
+    }
+    let alive = true
+    let timer
+    const ask = (attempt) => {
+      fetch(`/dsh-ide/changes?session=${encodeURIComponent(owner)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session: owner }),
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((answer) => {
+          if (alive !== true || answer === null || answer.ok !== true) return
+          const files = ideFloatChangedFiles(answer.value)
+          if (files.length > 0) {
+            setChanges({ files, added: files.reduce((sum, row) => sum + row.added, 0), deleted: files.reduce((sum, row) => sum + row.deleted, 0) })
+            return
+          }
+          // The Host records the announcement after the reply lands, so the
+          // first ask of a fresh turn can arrive early; a couple of retries
+          // cover it without polling.
+          if (attempt >= IDE_FLOAT_CHANGES_RETRIES.length) {
+            setChanges(null)
+            return
+          }
+          timer = globalThis.setTimeout(() => ask(attempt + 1), IDE_FLOAT_CHANGES_RETRIES[attempt])
+        })
+        .catch(() => {})
+    }
+    ask(0)
+    return () => {
+      alive = false
+      globalThis.clearTimeout(timer)
+    }
+  }, [binding, state.sessionId, entries.length])
+
   const sessionId = state.sessionId ?? ''
   const open = state.floatOpen === true && state.floatEnabled !== false && state.floatClosed !== true
   const collapsed = state.floatCollapsed === true
@@ -762,7 +840,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       return undefined
     }
     const source = binding.eventSource
-    const read = () => setEntries(ideFloatTranscript(source.getSnapshot()?.entries))
+    const read = () => {
+      setEntries(ideFloatTranscript(source.getSnapshot()?.entries))
+    }
     read()
     return source.subscribe(read)
   }, [binding])
@@ -866,6 +946,19 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const reserved = head === null ? 0 : head.getBoundingClientRect().height + 4
     menuEl.scrollTop = Math.max(0, menuEl.scrollTop + delta - reserved)
   }, [menu])
+
+  // Esc leaves the picture viewer before anything else.
+  useEffect(() => {
+    if (viewing === null || typeof globalThis.addEventListener !== 'function') return undefined
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setViewing(null)
+      }
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [viewing])
 
   // A click outside the card closes its little menus.
   useEffect(() => {
@@ -1053,6 +1146,43 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       await binding.session.cancel()
     } catch (error) {
       store.setNotice(`${tr('floatStopFailed')}: ${error?.message ?? String(error)}`)
+    }
+  }
+
+  /**
+   * Copy one picture to the clipboard.
+   *
+   * The image may be a JPEG/WebP, but `ClipboardItem` is only portable for PNG,
+   * so the loaded bitmap is redrawn on a canvas and exported as PNG first.
+   */
+  const copyPicture = async (source) => {
+    try {
+      const img = typeof source === 'string'
+        ? await new Promise((resolve) => {
+          const loader = new Image()
+          loader.onload = () => resolve(loader)
+          loader.onerror = () => resolve(null)
+          loader.src = source
+        })
+        : source
+      if (img === null || img === undefined) return
+      const canvas = globalThis.document?.createElement('canvas')
+      if (canvas === null || canvas === undefined) return
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const context = canvas.getContext('2d')
+      if (context === null) return
+      context.drawImage(img, 0, 0)
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (blob === null || blob === undefined) return
+      if (typeof ClipboardItem !== 'function' || navigator.clipboard?.write === undefined) {
+        store.setNotice(tr('floatCopyImageUnsupported'))
+        return
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      store.setNotice(tr('floatImageCopied'))
+    } catch (error) {
+      store.setNotice(`${tr('floatCopyImageFailed')}: ${error?.message ?? String(error)}`)
     }
   }
 
@@ -1271,7 +1401,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
               className: 'iw-float-file',
               title: file.path,
               onClick: () => {
-                if (typeof store.openFile === 'function') store.openFile(file.path)
+                // Same entry point as the conversation's file cards: open the
+                // file in the workspace and switch the panel to it.
+                const opened = typeof openInWorkspace === 'function'
+                  ? openInWorkspace(file.path) === true
+                  : store.openAt(file.path) === true
+                if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
               },
             }, [
               h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
@@ -1287,11 +1422,75 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
             const url = pictures[image.attachmentId] ?? ''
             if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
-            return h('img', { key: `pic${index}`, className: 'iw-float-pic', src: url, alt: image.name ?? '' })
+            return h('img', {
+              key: `pic${index}`,
+              className: 'iw-float-pic',
+              src: url,
+              alt: image.name ?? '',
+              title: tr('floatPreviewImage'),
+              onClick: () => setViewing({ url, name: image.name ?? '' }),
+            })
           })),
         ])
       })),
     running ? h('div', { key: 'run', className: 'iw-float-running' }, tr('floatRunning')) : null,
+    changes === null ? null : h('div', { key: 'changes', className: 'iw-float-changes' }, [
+      h('button', {
+        key: 'head',
+        type: 'button',
+        className: 'iw-float-changes-head',
+        onClick: () => setChangeOpen(!changeOpen),
+      }, [
+        h('span', { key: 'icon', className: 'iw-float-changes-icon', 'aria-hidden': 'true' }, '⌗'),
+        h('span', { key: 'title', className: 'iw-float-changes-title' }, `${tr('floatChangesTitle')} ${changes.files.length} ${tr('floatChangesUnit')}`),
+        h('span', { key: 'added', className: 'iw-float-changes-add' }, `+${changes.added}`),
+        h('span', { key: 'deleted', className: 'iw-float-changes-del' }, `-${changes.deleted}`),
+      ]),
+      h('div', { key: 'list', className: 'iw-float-changes-list' }, (changeOpen ? changes.files : changes.files.slice(0, 3)).map((file) => h('button', {
+        key: file.path,
+        type: 'button',
+        className: 'iw-float-file',
+        title: file.path,
+        onClick: () => {
+          const opened = typeof openInWorkspace === 'function'
+            ? openInWorkspace(file.path) === true
+            : store.openAt(file.path) === true
+          if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
+        },
+      }, [
+        h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
+        file.binary
+          ? h('span', { key: 'd', className: 'iw-float-file-desc' }, tr('floatChangesBinary'))
+          : h('span', { key: 'd', className: 'iw-float-file-desc' }, [
+            h('span', { key: 'a', className: 'iw-float-add' }, `+${file.added}`),
+            h('span', { key: 'r', className: 'iw-float-del' }, `-${file.deleted}`),
+          ]),
+      ]))),
+      changes.files.length <= 3 ? null : h('button', {
+        key: 'more',
+        type: 'button',
+        className: 'iw-float-changes-more',
+        onClick: () => setChangeOpen(!changeOpen),
+      }, changeOpen ? tr('floatChangesLess') : `${tr('floatChangesAll')} ${changes.files.length}`),
+    ]),
+    viewing === null ? null : h('div', { key: 'viewer', className: 'iw-float-viewer' }, [
+      h('img', { key: 'img', className: 'iw-float-viewer-img', src: viewing.url, alt: viewing.name }),
+      h('div', { key: 'bar', className: 'iw-float-viewer-bar' }, [
+        h('span', { key: 'name', className: 'iw-float-viewer-name' }, viewing.name),
+        h('button', {
+          key: 'copy',
+          type: 'button',
+          className: 'iw-btn',
+          onClick: () => { void copyPicture(viewing.url) },
+        }, tr('floatCopyImage')),
+        h('button', {
+          key: 'close',
+          type: 'button',
+          className: 'iw-btn',
+          onClick: () => setViewing(null),
+        }, tr('floatCloseViewer')),
+      ]),
+    ]),
     h('div', { key: 'input', className: 'iw-float-input' }, [
       refs.length === 0 && images.length === 0 ? null : h('div', { key: 'chips', className: 'iw-float-chips' }, [
         ...refs.map((ref, index) => h('span', { key: `ref:${ref}`, className: 'iw-float-chip-ref' }, [

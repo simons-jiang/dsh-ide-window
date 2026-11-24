@@ -627,6 +627,11 @@ function ideRequestBlame(store, tab, done, options = {}) {
 }
 
 /** The source view. */
+/** Markdown files get a rendered view instead of the raw source. */
+function ideIsMarkdownPath(path) {
+  return /\.(?:md|markdown|mdx)$/i.test(String(path ?? ''))
+}
+
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
   // While this view is on screen, the page outside it is not selectable, so
@@ -698,6 +703,9 @@ function IdeCodeView({ tab, tr, store, navigate }) {
 
   // ---- symbol navigation --------------------------------------------------
   const [popup, setPopup] = useState(undefined)
+  // Markdown files open rendered; the source stays one click away.
+  const [mdSource, setMdSource] = useState(false)
+  useEffect(() => { setMdSource(false) }, [tab.path])
 
   const pick = useCallback((path, line) => {
     setPopup(undefined)
@@ -1479,7 +1487,31 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     : popup.kind === 'chain'
       ? h(IdeChainPopup, { key: 'popup', popup, tr, onPick: pick, onClose: closePopup })
       : h(IdeUsagePopup, { key: 'popup', popup, onPick: pick, onClose: closePopup })
-  return h(React.Fragment, null, [code, popupView])
+  const isMarkdown = tab.kind !== 'jar' && ideIsMarkdownPath(tab.path)
+  const markdownBar = isMarkdown && tab.status === 'ready'
+    ? h('div', { key: 'mdbar', className: 'iw-md-bar' }, [
+      h('span', { key: 'name', className: 'iw-md-bar-name' }, tab.name),
+      h('button', {
+        key: 'preview',
+        type: 'button',
+        className: `iw-btn${mdSource ? '' : ' on'}`,
+        onClick: () => setMdSource(false),
+      }, tr('mdPreview')),
+      h('button', {
+        key: 'source',
+        type: 'button',
+        className: `iw-btn${mdSource ? ' on' : ''}`,
+        onClick: () => setMdSource(true),
+      }, tr('mdSource')),
+    ])
+    : null
+  const markdownView = isMarkdown && tab.status === 'ready' && mdSource !== true
+    ? h('div', { key: 'md', className: 'iw-md', ref: scrollRef, tabIndex: 0 }, h('div', {
+      key: 'body',
+      className: 'iw-md-body',
+    }, h(IdeFloatMarkdown, { text: tab.text, tr })))
+    : null
+  return h(React.Fragment, null, [markdownBar, markdownView === null ? code : markdownView, popupView])
 }
 
 /** The bottom status bar. */
