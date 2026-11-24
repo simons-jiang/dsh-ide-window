@@ -19,6 +19,23 @@ function ideSvg(size, children, strokeWidth = 1.3) {
   }, children)
 }
 
+/** Terminal prompt (`>_`): marks a Tool step in the conversation. */
+function IdeTerminalIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'r', x: 1.4, y: 2.6, width: 13.2, height: 10.8, rx: 3 }),
+    h('path', { key: 'p', d: 'M4.6 6.4 6.6 8 4.6 9.6' }),
+    h('path', { key: 'u', d: 'M8.4 10h3' }),
+  ])
+}
+
+/** Sparkle: the conversation's 「深度求索中」 marker. */
+function IdeSparkleIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M8 2.2l1.15 3.05L12.2 6.4 9.15 7.55 8 10.6 6.85 7.55 3.8 6.4 6.85 5.25z' }),
+    h('path', { key: 'b', d: 'M12.4 10.6l.55 1.45 1.45.55-1.45.55-.55 1.45-.55-1.45-1.45-.55 1.45-.55z' }),
+  ])
+}
+
 /** Chevron used by the tree rows. */
 function IdeChevron({ open, size = 12 }) {
   return ideSvg(size, [

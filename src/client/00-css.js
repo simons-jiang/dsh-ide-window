@@ -1200,6 +1200,28 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-chip:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 /* The command and mention lists sit above the composer, the way the
    conversation's own popup does: one row per candidate, description right. */
+/* Tool steps and the running line, measured like the conversation's own. */
+.iw-float-step { display: flex; gap: 6px; padding: 2px 0; }
+.iw-float-step-icon,
+.iw-float-thinking-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-step-text {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-float-step.live .iw-float-step-text { color: var(--dsw-alias-label-primary, #1a1a1a); }
+.iw-float-thinking { display: flex; gap: 6px; padding: 2px 0; }
+.iw-float-thinking-text { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary, #61666b); }
+
 /* While the Session works, the card says what it is doing and for how long. */
 .iw-float-running {
   display: flex;
@@ -1232,7 +1254,15 @@ html.iw-select-code .iw-code .iw-vision {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.iw-float-running-labels { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-running-step { display: flex; align-items: baseline; gap: 6px; }
+.iw-float-running-step-text {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .iw-float-suggest {
   position: absolute;
   left: 8px;
@@ -1263,6 +1293,13 @@ html.iw-select-code .iw-code .iw-vision {
   cursor: pointer;
 }
 .iw-float-suggest-item.on { background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.08)); }
+.iw-float-suggest-section {
+  padding: 8px 8px 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-suggest-alias { flex: 0 0 auto; font-size: 12.5px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-suggest-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iw-float-suggest-hint { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-suggest-desc {

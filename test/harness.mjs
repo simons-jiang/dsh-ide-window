@@ -1781,7 +1781,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 {
   const textOf = new Function(`${grabSource('ideFloatTextOf', '74-float.js')}\nreturn ideFloatTextOf`)()
   const transcriptOf = new Function(
-    `${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\nconst ideLogRecord = () => {};\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`,
+    `${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\nconst ideLogRecord = () => {};\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatStepKind', '74-float.js')}\n${grabSource('ideFloatCallDetail', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`,
   )()
 
   check(textOf([{ type: 'text', text: 'a' }, { type: 'reasoning', text: 'x' }, { type: 'text', text: 'b' }]) === 'a\nb',
@@ -1821,6 +1821,45 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   const unanswered = transcriptOf(askLog.slice(0, 1))
   check(unanswered[0]?.role === 'question' && unanswered[0]?.answers?.length === 0, 'an unanswered question is still a card', JSON.stringify(unanswered[0]))
 
+  // Tool calls collapse into one 「执行了命令」 line per batch, like the conversation.
+  const stepKind = new Function(`${grabSource('ideFloatStepKind', '74-float.js')}\nreturn ideFloatStepKind`)()
+  check(stepKind('bash') === 'commands' && stepKind('grep') === 'search' && stepKind('mystery') === 'tools',
+    'tool names map to step kinds', [stepKind('bash'), stepKind('grep'), stepKind('mystery')].join(','))
+  const stepTitle = new Function(`${grabSource('ideFloatStepTitle', '74-float.js')}\nreturn ideFloatStepTitle`)()
+  const stepTr = (key) => ({
+    'floatStepDone.commands': '执行了命令', 'floatStepDone.search': '已搜索代码', 'floatStepDone.tools': '已调用工具', 'floatStepDone.read': '已读取文件', 'floatStepDone.write': '修改了文件',
+    floatStepJoinTwo: '{first}并{second}', floatStepComma: '，', floatStepSharedPrefix: '已', floatStepMore: '{title}等',
+  })[key] ?? key
+  check(stepTitle(['commands'], stepTr) === '执行了命令', 'one kind reads as its done label', stepTitle(['commands'], stepTr))
+  check(stepTitle(['commands', 'search'], stepTr) === '执行了命令并搜索代码', 'two kinds join with 并', stepTitle(['commands', 'search'], stepTr))
+  check(stepTitle(['read', 'search', 'write'], stepTr) === '已读取文件，搜索代码，修改了文件', 'three kinds join with a comma', stepTitle(['read', 'search', 'write'], stepTr))
+  check(stepTitle(['read', 'search', 'write', 'web'], stepTr).endsWith('等'), 'a fourth kind is summarised', stepTitle(['read', 'search', 'write', 'web'], stepTr))
+  const batchLog = [
+    { event: { type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '跑一下' }] } } },
+    { event: { type: 'tool/call', seq: 2, data: { name: 'bash', arguments: JSON.stringify({ command: 'ls' }) } } },
+    { event: { type: 'tool/call', seq: 3, data: { name: 'grep', arguments: JSON.stringify({ pattern: 'x' }) } } },
+    { event: { type: 'tool/result', seq: 4, data: {} } },
+    { event: { type: 'assistant/message', seq: 5, data: { message: { content: [{ type: 'text', text: '好了' }] } } } },
+  ]
+  const batchRows = transcriptOf(batchLog)
+  check(batchRows.map((row) => row.role).join(',') === 'user,step,assistant', 'the batch sits between prompt and reply', batchRows.map((row) => row.role).join(','))
+  check(batchRows[1].kinds.join(',') === 'commands,search', 'the batch keeps both kinds', batchRows[1].kinds.join(','))
+  check(batchRows[1].open === false, 'a closed batch is rendered as done', String(batchRows[1].open))
+  const liveRows = transcriptOf([{ event: { type: 'tool/call', seq: 1, data: { name: 'bash', arguments: JSON.stringify({ command: 'sleep 9' }) } } }])
+  check(liveRows[0].open === true && liveRows[0].detail === 'sleep 9', 'the trailing batch stays open with its detail', JSON.stringify(liveRows[0].detail))
+
+  // The `/` menu keeps the conversation's order and sections.
+  const slashItems = new Function(`${grabSource('IDE_FLOAT_SLASH', '74-float.js')}\n${grabSource('ideFloatSlashItems', '74-float.js')}\nreturn ideFloatSlashItems`)()
+  const trSlash = (key) => ({ floatCmdFile: '文件', floatCmdGoal: '目标', floatCmdModel: '模型', floatCmdCompact: '压缩', floatCmdGoalDesc: 'g', floatCmdModelDesc: 'm', floatCmdCompactDesc: 'c' })[key] ?? key
+  const slashCatalog = [{ name: 'compact', description: 'Compact' }, { name: 'goal', description: 'Goal' }, { name: 'export', description: 'Export' }, { name: 'extra', description: 'Extra' }]
+  const slash = slashItems(slashCatalog, [{ name: 'office', description: 'Office' }], '', trSlash)
+  check(slash[0].kind === 'mention' && slash[0].id === 'file', 'the file row opens the @ list', JSON.stringify(slash[0]))
+  check(slash.map((item) => item.id).join(',') === 'file,goal,compact,model,export,extra,office', 'builtins keep the conversation order, then extras and skills', slash.map((item) => item.id).join(','))
+  check(slash.find((item) => item.id === 'model').kind === 'model', 'the model row is a composer action', JSON.stringify(slash.find((item) => item.id === 'model')))
+  check(slash.find((item) => item.id === 'office').section === 'skill', 'skills live in their own section', JSON.stringify(slash.find((item) => item.id === 'office')))
+  check(slashItems(slashCatalog, [], '压缩', trSlash).length === 1, 'filtering matches the localized label too', String(slashItems(slashCatalog, [], '压缩', trSlash).length))
+  check(slashItems([], [], '', trSlash).map((item) => item.id).join(',') === 'file,model', 'a command missing from the catalog is not offered', JSON.stringify(slashItems([], [], '', trSlash).map((item) => item.id)))
+
   // The progress line reads the current turn's Tool calls, not the whole log.
   const activityOf = new Function(`${grabSource('IDE_FLOAT_ACTIVITY', '74-float.js')}\n${grabSource('ideFloatCallDetail', '74-float.js')}\n${grabSource('ideFloatActivityOf', '74-float.js')}\nreturn ideFloatActivityOf`)()
   const turnLog = [
@@ -1835,6 +1874,13 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(activity.detail === 'floatRunning', 'the newest call names its detail', JSON.stringify(activity.detail))
   const bashOnly = activityOf([{ event: { type: 'tool/call', seq: 1, data: { name: 'bash', arguments: JSON.stringify({ command: 'npm test' }) } } }])
   check(bashOnly.detail === 'npm test', 'a bash call shows its command', JSON.stringify(bashOnly.detail))
+  // A bash call's own description is what the conversation shows ("Push to origin main").
+  const described = activityOf([{ event: { type: 'tool/call', seq: 1, data: { name: 'bash', arguments: JSON.stringify({ command: 'git push origin main', description: 'Push to origin main' }) } } }])
+  check(described.detail === 'Push to origin main', 'the tool description wins over the raw command', JSON.stringify(described.detail))
+  check(described.current === 'bash', 'the current step names its tool', JSON.stringify(described.current))
+  const progressKey = new Function(`${grabSource('IDE_FLOAT_ACTIVITY', '74-float.js')}\n${grabSource('ideFloatProgressKey', '74-float.js')}\nreturn ideFloatProgressKey`)()
+  check(progressKey('bash') === 'floatProgressCommand', 'bash reads as a running command', progressKey('bash'))
+  check(progressKey('unknown_tool') === 'floatProgressTool', 'an unknown tool falls back', progressKey('unknown_tool'))
   check(activityOf([]).names.length === 0 && activityOf([]).detail === '', 'no calls means no progress detail', 'empty')
   const elapsedOf = new Function(`${grabSource('ideFloatElapsed', '74-float.js')}\nreturn ideFloatElapsed`)()
   const fakeTr = (key) => ({ floatElapsedMin: '用时 {m} 分 {s} 秒', floatElapsedSec: '用时 {s} 秒' })[key] ?? key
@@ -1889,7 +1935,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'archived sessions stay out of the switcher', JSON.stringify(withArchived.map((row) => row.title)))
 
   // A prompt with an image carries it into the card.
-  const pictureTranscript = new Function(`${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`)()
+  const pictureTranscript = new Function(`${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatStepKind', '74-float.js')}\n${grabSource('ideFloatCallDetail', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`)()
   const pictureLog = [
     { event: { type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [
       { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 2, height: 2 } },

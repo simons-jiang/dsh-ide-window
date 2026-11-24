@@ -47,7 +47,7 @@ ${fragments.join('\n')}
     // 'shortcuts' is read directly at apply time (the plugin contributes two
     // rebindable commands), and the client runtime refuses any service that is
     // not declared here: cannot get property "shortcuts" without inject.
-    return { inject: ['slots', 'locale', 'shortcuts', 'sessions', 'remote', 'remote.commands', 'remote.workspaceFiles'], apply }
+    return { inject: ['slots', 'locale', 'shortcuts', 'sessions', 'remote', 'remote.commands', 'remote.workspaceFiles', 'remote.skills'], apply }
   },
 })
 `

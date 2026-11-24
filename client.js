@@ -9,6 +9,47 @@ window.__ModuleLoader__.load({
     const { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } = React
     const h = React.createElement
   const IDE_TEXT_EN = {
+    "floatStepMore": "{title} and more",
+    "floatStepSharedPrefix": "",
+    "floatStepComma": ", ",
+    "floatStepJoinTwo": "{first} and {second}",
+    "floatStepDone.thinking": "finished thinking",
+    "floatStepDone.tools": "called tools",
+    "floatStepDone.plan": "updated the plan",
+    "floatStepDone.questions": "asked you a question",
+    "floatStepDone.web": "searched the web",
+    "floatStepDone.search": "searched the code",
+    "floatStepDone.write": "edited a file",
+    "floatStepDone.read": "read a file",
+    "floatStepDone.commands": "ran a command",
+    "floatMenuChats": "Conversations",
+    "floatMenuFiles": "Files and folders",
+    "floatMenuSkills": "Skills",
+    "floatMenuCommands": "Commands",
+    "floatMenuAdd": "Add",
+    "floatCmdExportDesc": "Download this conversation as a ZIP",
+    "floatCmdExport": "Export log",
+    "floatCmdModelDesc": "Pick the model for this conversation",
+    "floatCmdModel": "Model",
+    "floatCmdPermissionDesc": "Switch the permission preset",
+    "floatCmdPermission": "Permission",
+    "floatCmdCompactDesc": "Compact the conversation so far",
+    "floatCmdCompact": "Compact",
+    "floatCmdFeedbackDesc": "Send feedback about this conversation",
+    "floatCmdFeedback": "Feedback",
+    "floatCmdPlanDesc": "Enter or leave plan mode",
+    "floatCmdPlan": "Plan",
+    "floatCmdGoalDesc": "Set or review the long-running goal",
+    "floatCmdGoal": "Goal",
+    "floatCmdFile": "File",
+    "floatProgressTool": "Using a tool",
+    "floatProgressTask": "Updating tasks",
+    "floatProgressAsk": "Asking you",
+    "floatProgressWeb": "Searching the web",
+    "floatProgressWrite": "Editing a file",
+    "floatProgressRead": "Reading a file",
+    "floatProgressSearch": "Searching",
+    "floatProgressCommand": "Running a command",
     "floatActivityTask": "updated tasks",
     "floatActivityAsk": "asked you a question",
     "floatActivityWeb": "searched the web",
@@ -355,6 +396,47 @@ window.__ModuleLoader__.load({
     "floatWrap": "Wrap lines",
   }
   const IDE_TEXT_ZH = {
+    "floatStepMore": "{title}等",
+    "floatStepSharedPrefix": "已",
+    "floatStepComma": "，",
+    "floatStepJoinTwo": "{first}并{second}",
+    "floatStepDone.thinking": "已完成分析",
+    "floatStepDone.tools": "已调用工具",
+    "floatStepDone.plan": "更新了计划",
+    "floatStepDone.questions": "向用户提出了问题",
+    "floatStepDone.web": "已搜索网页",
+    "floatStepDone.search": "已搜索代码",
+    "floatStepDone.write": "修改了文件",
+    "floatStepDone.read": "已读取文件",
+    "floatStepDone.commands": "执行了命令",
+    "floatMenuChats": "对话",
+    "floatMenuFiles": "文件与文件夹",
+    "floatMenuSkills": "技能",
+    "floatMenuCommands": "指令",
+    "floatMenuAdd": "添加",
+    "floatCmdExportDesc": "将当前会话内容导出为 ZIP",
+    "floatCmdExport": "下载日志",
+    "floatCmdModelDesc": "选择本会话使用的模型",
+    "floatCmdModel": "模型",
+    "floatCmdPermissionDesc": "切换权限预设（沙箱模式与审批策略）",
+    "floatCmdPermission": "权限",
+    "floatCmdCompactDesc": "压缩以上对话内容",
+    "floatCmdCompact": "压缩",
+    "floatCmdFeedbackDesc": "发送关于当前会话的反馈",
+    "floatCmdFeedback": "反馈",
+    "floatCmdPlanDesc": "进入或退出计划模式",
+    "floatCmdPlan": "计划",
+    "floatCmdGoalDesc": "设置或查看长期任务目标",
+    "floatCmdGoal": "目标",
+    "floatCmdFile": "文件",
+    "floatProgressTool": "正在使用工具",
+    "floatProgressTask": "正在更新任务",
+    "floatProgressAsk": "正在向你提问",
+    "floatProgressWeb": "正在联网搜索",
+    "floatProgressWrite": "正在修改文件",
+    "floatProgressRead": "正在读取文件",
+    "floatProgressSearch": "正在搜索",
+    "floatProgressCommand": "正在运行命令",
     "floatActivityTask": "已更新任务",
     "floatActivityAsk": "已向你提问",
     "floatActivityWeb": "已联网搜索",
@@ -1904,6 +1986,28 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-chip:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 /* The command and mention lists sit above the composer, the way the
    conversation's own popup does: one row per candidate, description right. */
+/* Tool steps and the running line, measured like the conversation's own. */
+.iw-float-step { display: flex; gap: 6px; padding: 2px 0; }
+.iw-float-step-icon,
+.iw-float-thinking-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-step-text {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-float-step.live .iw-float-step-text { color: var(--dsw-alias-label-primary, #1a1a1a); }
+.iw-float-thinking { display: flex; gap: 6px; padding: 2px 0; }
+.iw-float-thinking-text { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary, #61666b); }
+
 /* While the Session works, the card says what it is doing and for how long. */
 .iw-float-running {
   display: flex;
@@ -1936,7 +2040,15 @@ html.iw-select-code .iw-code .iw-vision {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.iw-float-running-labels { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-running-step { display: flex; align-items: baseline; gap: 6px; }
+.iw-float-running-step-text {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .iw-float-suggest {
   position: absolute;
   left: 8px;
@@ -1967,6 +2079,13 @@ html.iw-select-code .iw-code .iw-vision {
   cursor: pointer;
 }
 .iw-float-suggest-item.on { background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.08)); }
+.iw-float-suggest-section {
+  padding: 8px 8px 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-suggest-alias { flex: 0 0 auto; font-size: 12.5px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-suggest-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iw-float-suggest-hint { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-suggest-desc {
@@ -3218,6 +3337,23 @@ function ideSvg(size, children, strokeWidth = 1.3) {
     'aria-hidden': 'true',
     focusable: 'false',
   }, children)
+}
+
+/** Terminal prompt (`>_`): marks a Tool step in the conversation. */
+function IdeTerminalIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('rect', { key: 'r', x: 1.4, y: 2.6, width: 13.2, height: 10.8, rx: 3 }),
+    h('path', { key: 'p', d: 'M4.6 6.4 6.6 8 4.6 9.6' }),
+    h('path', { key: 'u', d: 'M8.4 10h3' }),
+  ])
+}
+
+/** Sparkle: the conversation's 「深度求索中」 marker. */
+function IdeSparkleIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M8 2.2l1.15 3.05L12.2 6.4 9.15 7.55 8 10.6 6.85 7.55 3.8 6.4 6.85 5.25z' }),
+    h('path', { key: 'b', d: 'M12.4 10.6l.55 1.45 1.45.55-1.45.55-.55 1.45-.55-1.45-1.45-.55 1.45-.55z' }),
+  ])
 }
 
 /** Chevron used by the tree rows. */
@@ -13443,6 +13579,17 @@ function ideFloatClock(time) {
  */
 function ideFloatRow(row, tr, io) {
   const { setViewing, store, pictures } = io
+  // A Tool batch: 「执行了命令」, or 「正在运行命令 · <描述>」 while it is the open one.
+  if (row.role === 'step') {
+    const live = row.open === true && io.running === true
+    const last = row.names === undefined || row.names.length === 0 ? '' : row.names[row.names.length - 1]
+    const running = last === '' ? '' : `${tr(ideFloatProgressKey(last))}${row.detail === '' ? '' : ` · ${row.detail}`}`
+    const text = live && running !== '' ? running : ideFloatStepTitle(row.kinds ?? [], tr)
+    return h('div', { key: row.key, className: `iw-float-step${live ? ' live' : ''}` }, [
+      h('span', { key: 'i', className: 'iw-float-step-icon' }, h(IdeTerminalIcon, { size: 15 })),
+      h('span', { key: 't', className: 'iw-float-step-text', title: text }, text),
+    ])
+  }
   // Questions cannot be answered here: DSH only accepts the answer in the
   // Conversation, so the card's button navigates there instead.
   const goToChat = typeof io.goToChat === 'function' ? io.goToChat : () => {}
@@ -13605,9 +13752,47 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
   if (!Array.isArray(entries)) return []
   const answers = ideFloatAnswers(entries)
   const rows = []
+  // Tool calls collapse into one 「执行了命令」 line per batch, in the order they
+  // ran — the same shape the conversation uses. The last batch stays `open`
+  // until the Session stops, so the card can word it as 「正在运行命令」.
+  let batch = { names: [], detail: '', seq: 0, ids: new Set() }
+  const flushBatch = () => {
+    if (batch.names.length === 0) return
+    const kinds = []
+    for (const name of batch.names) {
+      const kind = ideFloatStepKind(name)
+      if (!kinds.includes(kind)) kinds.push(kind)
+    }
+    rows.push({ key: `s${batch.seq}`, role: 'step', text: '', images: [], kinds, names: batch.names, detail: batch.detail, open: true })
+    batch = { names: [], detail: '', seq: 0, ids: new Set() }
+  }
   for (const entry of entries) {
     const event = entry?.event
     if (event === null || typeof event !== 'object') continue
+    if (event.type === 'tool/call') {
+      const name = String(event.data?.name ?? '')
+      // The question card is its own row, so it never joins a Tool batch.
+      if (name !== '' && name !== 'ask_user_question') {
+        // A replayed call can appear twice in the stream; one row per call.
+        const callId = String(event.data?.callId ?? '')
+        if (callId !== '' && batch.ids.has(callId)) continue
+        if (callId !== '') batch.ids.add(callId)
+        if (batch.seq === 0) batch.seq = event.seq
+        batch.names.push(name)
+        const detail = ideFloatCallDetail(name, event.data?.arguments)
+        if (detail !== '') batch.detail = detail
+        continue
+      }
+    }
+    // Only a row that actually renders closes the batch: step boundaries emit
+    // empty assistant messages, and flushing on those would split one batch
+    // into a line per call.
+    const renders = event.type === 'user/message'
+      ? true
+      : event.type === 'assistant/message'
+        ? event.data?.message?.content?.some?.((part) => part?.type === 'text' ? String(part.text ?? '') !== '' : part?.type === 'image') === true
+        : event.type === 'deliverables/presented' || (event.type === 'tool/call' && event.data?.name === 'ask_user_question')
+    if (renders) flushBatch()
     if (event.type === 'user/message') {
       // Context injections share the event type; only a human prompt is a row.
       if (event.data?.source?.kind !== 'user') continue
@@ -13656,6 +13841,8 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
       if (files.length > 0) rows.push({ key: `p${event.seq}`, role: 'files', text: '', images: [], files })
     }
   }
+  flushBatch()
+  for (const row of rows) if (row.role === 'step') row.open = row === rows[rows.length - 1]
   return rows.slice(-limit)
 }
 
@@ -13668,14 +13855,20 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  */
 /** How a Tool call reads in the card's progress line. */
 const IDE_FLOAT_ACTIVITY = [
-  { pattern: /^(bash|shell|terminal)$/u, key: 'floatActivityCommand' },
-  { pattern: /^grep$/u, key: 'floatActivitySearch' },
-  { pattern: /^read$/u, key: 'floatActivityRead' },
-  { pattern: /^(write|edit|patch)$/u, key: 'floatActivityWrite' },
-  { pattern: /^(web_search|web_fetch)$/u, key: 'floatActivityWeb' },
-  { pattern: /^ask_user_question$/u, key: 'floatActivityAsk' },
-  { pattern: /^(todo_write|task|workflow)$/u, key: 'floatActivityTask' },
+  { pattern: /^(bash|shell|terminal)$/u, key: 'floatActivityCommand', progressKey: 'floatProgressCommand' },
+  { pattern: /^grep$/u, key: 'floatActivitySearch', progressKey: 'floatProgressSearch' },
+  { pattern: /^read$/u, key: 'floatActivityRead', progressKey: 'floatProgressRead' },
+  { pattern: /^(write|edit|patch)$/u, key: 'floatActivityWrite', progressKey: 'floatProgressWrite' },
+  { pattern: /^(web_search|web_fetch)$/u, key: 'floatActivityWeb', progressKey: 'floatProgressWeb' },
+  { pattern: /^ask_user_question$/u, key: 'floatActivityAsk', progressKey: 'floatProgressAsk' },
+  { pattern: /^(todo_write|task|workflow)$/u, key: 'floatActivityTask', progressKey: 'floatProgressTask' },
 ]
+
+/** The progress wording for a Tool name, falling back to the generic line. */
+function ideFloatProgressKey(name) {
+  const entry = IDE_FLOAT_ACTIVITY.find((item) => item.pattern.test(String(name ?? '')))
+  return entry === undefined ? 'floatProgressTool' : entry.progressKey
+}
 
 /**
  * What the current turn has done so far: the Tool calls since the newest human
@@ -13685,17 +13878,21 @@ const IDE_FLOAT_ACTIVITY = [
 function ideFloatActivityOf(entries) {
   const names = new Set()
   let detail = ''
-  if (!Array.isArray(entries)) return { names: [], detail }
+  let current = ''
+  if (!Array.isArray(entries)) return { names: [], detail, current }
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const event = entries[index]?.event
     if (event?.type === 'user/message' && event.data?.source?.kind === 'user') break
     if (event?.type !== 'tool/call') continue
     const name = String(event.data?.name ?? '')
     if (name === '') continue
-    if (detail === '') detail = ideFloatCallDetail(name, event.data?.arguments)
+    if (detail === '') {
+      detail = ideFloatCallDetail(name, event.data?.arguments)
+      current = name
+    }
     names.add(name)
   }
-  return { names: [...names].reverse(), detail }
+  return { names: [...names].reverse(), detail, current }
 }
 
 /** The one line under the progress label: what the newest call is doing. */
@@ -13707,7 +13904,9 @@ function ideFloatCallDetail(name, argumentText) {
     return ''
   }
   const text = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim().replace(/\s+/gu, ' ') : '')
-  if (/^(bash|shell|terminal)$/u.test(name)) return text(args?.command)
+  // bash carries a human `description` ("Push to origin main"); the raw command
+  // is the fallback when the model wrote none.
+  if (/^(bash|shell|terminal)$/u.test(name)) return text(args?.description) || text(args?.command)
   if (/^(read|write|edit|patch)$/u.test(name)) return text(args?.file_path ?? args?.path)
   if (name === 'grep') return text(args?.pattern ?? args?.query)
   if (name === 'web_search') return Array.isArray(args?.queries) ? text(args.queries[0]) : ''
@@ -13765,6 +13964,104 @@ function ideFloatEntryOf(raw, dir) {
   const prefix = String(dir ?? '').replace(/\/+$/, '')
   const path = prefix === '' ? name : `${prefix}/${name}`
   return { path, name, isDir }
+}
+
+/**
+ * The `/` menu, in the conversation's own order. `action` rows are composer
+ * features (insert an `@`, open the model picker); the rest are Host commands.
+ */
+const IDE_FLOAT_SLASH = [
+  { name: 'file', labelKey: 'floatCmdFile', section: 'add', action: 'mention' },
+  { name: 'goal', labelKey: 'floatCmdGoal', descKey: 'floatCmdGoalDesc', section: 'add' },
+  { name: 'plan', labelKey: 'floatCmdPlan', descKey: 'floatCmdPlanDesc', section: 'add' },
+  { name: 'feedback', labelKey: 'floatCmdFeedback', descKey: 'floatCmdFeedbackDesc', section: 'add' },
+  { name: 'compact', labelKey: 'floatCmdCompact', descKey: 'floatCmdCompactDesc', section: 'command' },
+  { name: 'permission', labelKey: 'floatCmdPermission', descKey: 'floatCmdPermissionDesc', section: 'command' },
+  { name: 'model', labelKey: 'floatCmdModel', descKey: 'floatCmdModelDesc', section: 'command', action: 'model' },
+  { name: 'export', labelKey: 'floatCmdExport', descKey: 'floatCmdExportDesc', section: 'command' },
+]
+
+/**
+ * The `/` menu rows: the fixed builtins (localized the way the conversation
+ * shows them), then anything else the Host registered, then the Skills. Pure so
+ * ordering and filtering are testable.
+ */
+function ideFloatSlashItems(catalog, skills, query, translate) {
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const needle = String(query ?? '').toLowerCase()
+  const names = new Set((Array.isArray(catalog) ? catalog : []).map((raw) => String(raw?.name ?? '')))
+  const items = []
+  for (const entry of IDE_FLOAT_SLASH) {
+    if (entry.action === undefined && !names.has(entry.name)) continue
+    const label = tr(entry.labelKey)
+    const description = entry.descKey === undefined ? '' : tr(entry.descKey)
+    if (needle !== '' && !`${entry.name} ${label}`.toLowerCase().includes(needle)) continue
+    items.push({
+      kind: entry.action === undefined ? 'command' : entry.action,
+      id: entry.name,
+      label,
+      alias: entry.name,
+      description,
+      section: entry.section,
+    })
+  }
+  const builtin = new Set(IDE_FLOAT_SLASH.map((entry) => entry.name))
+  for (const raw of Array.isArray(catalog) ? catalog : []) {
+    const name = String(raw?.name ?? '')
+    if (name === '' || builtin.has(name)) continue
+    if (needle !== '' && !name.toLowerCase().includes(needle)) continue
+    items.push({ kind: 'command', id: name, label: name, alias: '', description: String(raw?.description ?? ''), section: 'command' })
+  }
+  for (const raw of Array.isArray(skills) ? skills : []) {
+    const name = String(raw?.name ?? '')
+    if (name === '' || (needle !== '' && !name.toLowerCase().includes(needle))) continue
+    items.push({ kind: 'skill', id: name, label: name, alias: '', description: String(raw?.description ?? ''), section: 'skill' })
+  }
+  return items
+}
+
+/** The section title key for a row's section, or '' when it has none. */
+function ideFloatSectionKey(section) {
+  if (section === 'add') return 'floatMenuAdd'
+  if (section === 'command') return 'floatMenuCommands'
+  if (section === 'skill') return 'floatMenuSkills'
+  if (section === 'file') return 'floatMenuFiles'
+  if (section === 'chat') return 'floatMenuChats'
+  return ''
+}
+
+/** Which step kind a Tool belongs to; drives the 「执行了命令」 wording. */
+function ideFloatStepKind(name) {
+  const tool = String(name ?? '')
+  if (/^(bash|shell|terminal)$/u.test(tool)) return 'commands'
+  if (tool === 'read') return 'read'
+  if (/^(write|edit|patch)$/u.test(tool)) return 'write'
+  if (tool === 'grep') return 'search'
+  if (/^(web_search|web_fetch)$/u.test(tool)) return 'web'
+  if (tool === 'ask_user_question') return 'questions'
+  if (/^(todo_write|task|workflow)$/u.test(tool)) return 'plan'
+  return 'tools'
+}
+
+/**
+ * One finished tool batch, worded the way the conversation words it:
+ * 「执行了命令」 / 「执行了命令并搜索了代码」 / 「执行了命令，搜索了代码等」.
+ * Labels come from this plugin's locale because the Host's catalogue only
+ * carries names and descriptions.
+ */
+function ideFloatStepTitle(kinds, translate) {
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const list = Array.isArray(kinds) ? kinds : []
+  const labels = list.slice(0, 3).map((kind) => tr(`floatStepDone.${kind}`))
+  const first = labels[0]
+  if (first === undefined) return tr('floatStepDone.tools')
+  const shared = tr('floatStepSharedPrefix')
+  const strip = (label) => (shared !== '' && label.startsWith(shared) ? label.slice(shared.length) : label)
+  const second = labels[1]
+  if (second === undefined) return first
+  if (labels.length === 2) return tr('floatStepJoinTwo').replace('{first}', first).replace('{second}', strip(second))
+  const title = [first, ...labels.slice(1).map(strip)].join(tr('floatStepComma'))
+  return list.length > 3 ? tr('floatStepMore').replace('{title}', title) : title
 }
 
 function ideFloatPermissionLabel(preset, translate) {
@@ -14329,7 +14626,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, commandList, workspaceList }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, commandList, workspaceList, skillList }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -14355,6 +14652,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const rawEntries = useRef([])
   const suggestSeq = useRef(0)
   const commandCache = useRef(null)
+  const skillCache = useRef(null)
   const directoryCache = useRef(new Map())
   const [pictures, setPictures] = useState({})
   // The picture the user is looking at.
@@ -14575,12 +14873,13 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     if (token === null) { setSuggest(null); return }
     const seq = suggestSeq.current + 1
     suggestSeq.current = seq
+    const fresh = () => suggestSeq.current === seq
     if (token.sign === '/') {
       const run = async () => {
         let catalog = commandCache.current
         if (catalog === null) {
           const result = typeof commandList === 'function' ? await commandList(sessionId) : { value: [] }
-          if (suggestSeq.current !== seq) return
+          if (!fresh()) return
           if (result?.error !== undefined) {
             store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
             setSuggest(null)
@@ -14589,17 +14888,16 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           catalog = Array.isArray(result?.value) ? result.value : []
           commandCache.current = catalog
         }
-        if (suggestSeq.current !== seq) return
-        const query = token.body.toLowerCase()
-        const items = catalog.map((raw) => ({
-          id: String(raw?.name ?? ''),
-          label: String(raw?.name ?? ''),
-          description: String(raw?.description ?? ''),
-          group: String(raw?.category ?? raw?.group ?? ''),
-          kind: 'command',
-        })).filter((item) => item.id !== ''
-          && (query === '' || item.id.toLowerCase().includes(query) || item.label.toLowerCase().includes(query)))
-        setSuggest({ sign: '/', token, items: items.slice(0, 12), index: 0, dir: '' })
+        let skills = skillCache.current
+        if (skills === null) {
+          const result = typeof skillList === 'function' ? await skillList(sessionId) : { value: [] }
+          if (!fresh()) return
+          skills = result?.error === undefined && Array.isArray(result?.value) ? result.value : []
+          skillCache.current = skills
+        }
+        if (!fresh()) return
+        const items = ideFloatSlashItems(catalog, skills, token.body, tr)
+        setSuggest({ sign: '/', token, items, index: 0, dir: '' })
       }
       void run()
       return
@@ -14608,12 +14906,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const run = async () => {
       let entries = directoryCache.current.get(dir)
       if (entries === undefined) {
-        // Paths are relative to the Session's workspace root, and `'.'` is that
+        // Paths are relative to the Session's workspace root, and `.` is that
         // root: an empty string is refused with "path is required".
         const result = typeof workspaceList === 'function'
           ? await workspaceList(sessionId, dir === '' ? '.' : dir)
           : { value: [] }
-        if (suggestSeq.current !== seq) return
+        if (!fresh()) return
         if (result?.error !== undefined) {
           store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
           setSuggest(null)
@@ -14624,17 +14922,23 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           .filter((entry) => entry !== null)
         directoryCache.current.set(dir, entries)
       }
-      if (suggestSeq.current !== seq) return
+      if (!fresh()) return
       const needle = query.toLowerCase()
-      const items = entries
+      const files = entries
         .filter((entry) => needle === '' || entry.name.toLowerCase().includes(needle))
         .sort((left, right) => (left.isDir === right.isDir ? left.name.localeCompare(right.name) : left.isDir ? -1 : 1))
         .slice(0, 40)
-        .map((entry) => ({ id: entry.path, label: entry.name, description: '', group: '', kind: entry.isDir ? 'dir' : 'file' }))
-      setSuggest({ sign: '@', token, items, index: 0, dir })
+        .map((entry) => ({ kind: entry.isDir ? 'dir' : 'file', id: entry.path, label: entry.name, alias: '', description: '', section: 'file' }))
+      // The conversation's `@` list also offers other conversations.
+      const chats = sessionRows
+        .filter((row) => row.sessionId !== sessionId)
+        .filter((row) => needle === '' || String(row.title ?? '').toLowerCase().includes(needle))
+        .slice(0, 8)
+        .map((row) => ({ kind: 'session', id: row.sessionId, label: row.title, alias: '', description: '', section: 'chat' }))
+      setSuggest({ sign: '@', token, items: [...files, ...chats], index: 0, dir })
     }
     void run()
-  }, [draft, binding, sessionId, commandList, workspaceList])
+  }, [draft, binding, sessionId, commandList, workspaceList, skillList, sessionRows])
 
   // Pick one suggestion: a command runs through the Session's own command line,
   // a file becomes a reference chip — both exactly what the conversation does.
@@ -14644,6 +14948,15 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const cut = token === null ? draft : `${draft.slice(0, token.start)}${draft.slice(token.end)}`
     setDraft(cut)
     setSuggest(null)
+    if (item.kind === 'mention') {
+      // The conversation's 「文件」 row opens the `@` list rather than sending.
+      setDraft(`${cut}@`)
+      return
+    }
+    if (item.kind === 'model') {
+      setMenu('model')
+      return
+    }
     if (item.kind === 'dir') {
       // Drill in: keep the trigger, append the directory and a slash.
       setDraft(`${cut}@${item.id}/`)
@@ -14652,6 +14965,17 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     if (item.kind === 'file') {
       const ref = `@${item.id}`
       setRefs((current) => (current.includes(ref) ? current : [...current, ref]))
+      return
+    }
+    if (item.kind === 'session') {
+      // A conversation reference is a navigation, not text: switch this card to
+      // that Session the same way the header switcher does.
+      if (typeof openSession === 'function') openSession(item.id)
+      return
+    }
+    if (item.kind === 'skill') {
+      // A Skill is invoked by name in the prompt; leave the caret after it.
+      setDraft(`${cut}/${item.id} `)
       return
     }
     const command = binding?.session?.command
@@ -14708,16 +15032,24 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const running = binding !== null && binding.session.getSnapshot()?.running === true
   // The elapsed clock only runs while the Session is working; a fresh turn
   // starts it again, so `用时` always means this turn.
-  const [runningSince, setRunningSince] = useState(0)
   const [, setClockTick] = useState(0)
   useEffect(() => {
-    if (running !== true) { setRunningSince(0); return undefined }
-    setRunningSince((current) => (current === 0 ? Date.now() : current))
+    if (running !== true) return undefined
     // Bumping a counter is what re-renders once a second; setting the same
     // timestamp again would be a no-op React bails out of.
     const timer = globalThis.setInterval(() => setClockTick((tick) => tick + 1), 1000)
     return () => globalThis.clearInterval(timer)
   }, [running])
+  // The timer counts this turn, so it starts at the prompt — not at the moment
+  // the card happened to notice the Session became busy.
+  const turnStart = (() => {
+    const raw = rawEntries.current
+    for (let index = raw.length - 1; index >= 0; index -= 1) {
+      const event = raw[index]?.event
+      if (event?.type === 'user/message' && event.data?.source?.kind === 'user') return Number(event.time ?? 0)
+    }
+    return 0
+  })()
 
   if (!open) return null
 
@@ -15154,32 +15486,17 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         // One malformed event must not take the whole card down: a throw inside
         // this map unmounts the overlay, and the user just sees the card vanish.
         try {
-          return ideFloatRow(row, tr, { setViewing, store, pictures, goToChat })
+          return ideFloatRow(row, tr, { setViewing, store, pictures, goToChat, running })
         } catch (error) {
           ideLogRecord('warn', 'float', 'row render failed', { key: row.key, error: String(error) })
           return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
       })),
     running
-      ? (() => {
-        const activity = ideFloatActivityOf(rawEntries.current)
-        const labels = [tr('floatRunningTools')]
-        for (const name of activity.names) {
-          const entry = IDE_FLOAT_ACTIVITY.find((item) => item.pattern.test(name))
-          const label = entry === undefined ? '' : tr(entry.key)
-          if (label !== '' && !labels.includes(label)) labels.push(label)
-        }
-        return h('div', { key: 'run', className: 'iw-float-running' }, [
-          h('div', { key: 'head', className: 'iw-float-running-head' }, [
-            h('span', { key: 'd', className: 'iw-float-running-dot', 'aria-hidden': 'true' }),
-            h('span', { key: 't', className: 'iw-float-running-text' }, `${tr('floatRunning')}，${ideFloatElapsed(runningSince === 0 ? 0 : Date.now() - runningSince, tr)}`),
-          ]),
-          activity.detail === ''
-            ? null
-            : h('div', { key: 'detail', className: 'iw-float-running-detail', title: activity.detail }, activity.detail),
-          h('div', { key: 'labels', className: 'iw-float-running-labels' }, labels.join('，')),
-        ])
-      })()
+      ? h('div', { key: 'think', className: 'iw-float-thinking' }, [
+        h('span', { key: 'i', className: 'iw-float-thinking-icon' }, h(IdeSparkleIcon, { size: 15 })),
+        h('span', { key: 't', className: 'iw-float-thinking-text' }, `${tr('floatRunning')}，${ideFloatElapsed(turnStart === 0 ? 0 : Date.now() - turnStart, tr)} ···`),
+      ])
       : null,
     viewing === null ? null : h('div', { key: 'viewer', className: 'iw-float-viewer' }, [
       h('img', {
@@ -15261,18 +15578,28 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       suggest === null || suggest.items.length === 0
         ? null
         : h('div', { key: 'suggest', className: 'iw-float-suggest', role: 'listbox' },
-          suggest.items.map((item, index) => h('button', {
-            key: `${item.kind}:${item.id}`,
-            type: 'button',
-            role: 'option',
-            'aria-selected': index === suggest.index,
-            className: `iw-float-suggest-item${index === suggest.index ? ' on' : ''}`,
-            onMouseDown: (event) => { event.preventDefault(); pickSuggest(item) },
-          }, [
-            h('span', { key: 'n', className: 'iw-float-suggest-name' }, suggest.sign === '/' && item.kind === 'command' ? `/${item.label}` : item.label),
-            item.kind === 'dir' ? h('span', { key: 'd', className: 'iw-float-suggest-hint' }, tr('floatSuggestEnterDir')) : null,
-            item.description === '' ? null : h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
-          ]))),
+          suggest.items.map((item, index) => {
+            const previous = index === 0 ? '' : (suggest.items[index - 1]?.section ?? '')
+            const titleKey = item.section !== previous ? ideFloatSectionKey(item.section) : ''
+            return h(React.Fragment, { key: `${item.kind}:${item.id}` }, [
+              titleKey === ''
+                ? null
+                : h('div', { key: 'section', className: 'iw-float-suggest-section', role: 'presentation' }, tr(titleKey)),
+              h('button', {
+                key: 'row',
+                type: 'button',
+                role: 'option',
+                'aria-selected': index === suggest.index,
+                className: `iw-float-suggest-item${index === suggest.index ? ' on' : ''}`,
+                onMouseDown: (event) => { event.preventDefault(); pickSuggest(item) },
+              }, [
+                h('span', { key: 'n', className: 'iw-float-suggest-name' }, item.label),
+                item.alias === '' ? null : h('span', { key: 'a', className: 'iw-float-suggest-alias' }, item.alias),
+                item.kind === 'dir' ? h('span', { key: 'd', className: 'iw-float-suggest-hint' }, tr('floatSuggestEnterDir')) : null,
+                item.description === '' ? null : h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
+              ]),
+            ])
+          })),
       h('textarea', {
         key: 't',
         className: 'iw-float-textarea',
@@ -16591,6 +16918,17 @@ function apply(ctx) {
           return { error: String(error?.message ?? error) }
         }
       },
+      skillList: async (sessionId) => {
+        try {
+          // The Host takes a request object here, not a bare id.
+          const result = await ctx.remote.skills.list({ sessionId })
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          const value = result?.value
+          return { value: Array.isArray(value) ? value : (Array.isArray(value?.skills) ? value.skills : []) }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
       workspaceList: async (sessionId, path) => {
         try {
           const result = await ctx.remote.workspaceFiles.list(sessionId, path)
@@ -16738,6 +17076,6 @@ function apply(ctx) {
     // 'shortcuts' is read directly at apply time (the plugin contributes two
     // rebindable commands), and the client runtime refuses any service that is
     // not declared here: cannot get property "shortcuts" without inject.
-    return { inject: ['slots', 'locale', 'shortcuts', 'sessions', 'remote', 'remote.commands', 'remote.workspaceFiles'], apply }
+    return { inject: ['slots', 'locale', 'shortcuts', 'sessions', 'remote', 'remote.commands', 'remote.workspaceFiles', 'remote.skills'], apply }
   },
 })

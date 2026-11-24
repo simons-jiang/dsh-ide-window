@@ -1198,6 +1198,17 @@ function apply(ctx) {
           return { error: String(error?.message ?? error) }
         }
       },
+      skillList: async (sessionId) => {
+        try {
+          // The Host takes a request object here, not a bare id.
+          const result = await ctx.remote.skills.list({ sessionId })
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          const value = result?.value
+          return { value: Array.isArray(value) ? value : (Array.isArray(value?.skills) ? value.skills : []) }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
       workspaceList: async (sessionId, path) => {
         try {
           const result = await ctx.remote.workspaceFiles.list(sessionId, path)

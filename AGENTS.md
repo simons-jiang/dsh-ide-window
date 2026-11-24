@@ -295,8 +295,11 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **图片点开预览**：点缩略图开卡内全屏层（`Esc` 关、`复制图片` 走 canvas→PNG）
 - **能选中**：卡片与 `.iw-md` 要列进 `html.iw-select-code` 的白名单
 - **中文输入法组词时按 Enter 只上屏、不发送**：keydown 里先看 `composingRef`（`compositionstart/end` 维护）、`event.isComposing`、`keyCode === 229`，再看 `compositionend` 之后 80ms 内的那次 Enter（部分输入法先发 end 再发 keydown）；三条任一命中就交给输入法。**只判断 `isComposing` 不够**——踩过，用户组词按 Enter 直接把半句话发了出去
-- **运行进度也进卡片**：`running` 为真时显示一块进度——`深度求索中，用时 X 分 Y 秒`（复用对话的措辞；`running` 变真时记 `runningSince`，1 秒一次 `setClockTick` 重渲染，**给同一个时间戳 setState 会被 React bail out**）、最新那条 `tool/call` 的一行细节（bash 显示 `command`、读写显示 `file_path`、grep 显示 `pattern`，等宽字体单行截断）、以及 `已调用工具，执行了命令，已搜索代码…` 这种汇总。数据来自 `rawEntries`（transcript 会丢掉 tool/call，所以原始事件另存一份 ref）；`ideFloatActivityOf` / `ideFloatCallDetail` / `ideFloatElapsed` 都是纯函数，有用例
-- **`/` 与 `@` 和对话同一个数据源**：输入框里不靠自造列表——onChange 里用 `ideFloatTrigger` 取光标所在的 token（行首或空白后、到光标、无空格），`/` 走 `ctx.remote.commands.list(sessionId)`（就是对话那份指令目录，含 name/description），`@` 走 `ctx.remote.workspaceFiles.list(sessionId, dir)`（`'.'` 是工作区根，其余**相对路径**，绝对路径只认根；条目是 `{name,type}`，路径自己拼）。↑/↓ 选、Enter/Tab 选中、Esc 关、目录选中后**下钻**成 `@dir/`；指令执行走 `binding.session.command('/name')`，文件选中变成引用 chip。菜单绝对定位在输入框上方（`.iw-float-input` 必须是 `position: relative`，否则会飘到卡片顶上）
+- **进度按对话的样子进卡片**：`tool/call` 在 transcript 里**成批**变成一行步骤（`ideFloatStepKind` 把工具映射成 commands/read/write/search/web/questions/plan/tools，`ideFloatStepTitle` 复刻对话的措辞：一条=`执行了命令`、两条=`执行了命令并搜索代码`、三条以上=逗号连接+`等`，共用前缀「已」要去重）。**只有真正渲染的行（有文字/图片的消息、问题卡、交付卡）才切断批次**，别用空 assistant 消息切——那会把一次批量拆成一行一条；同一 `callId` 出现两次要按 id 去重。最后一批 `open`，`running` 时显示 `正在运行命令 · <细节>`（bash 取 `arguments.description`，没有才用 `command`）。底部计时行固定 `深度求索中，用时 X ···`，**起点取最近一条用户消息的 `time`**（不要用「发现 running 的时刻」，会重置成十几秒）。图标：步骤用 `IdeTerminalIcon`（`>_`）、计时行用 `IdeSparkleIcon`，字号 14px 与正文一致（早先 13px + 蓝点，和对话差得远）。被测：`ideFloatStepKind`/`ideFloatStepTitle`/批次切分都有用例
+- **`/` 与 `@` 和对话一样分节、同一个数据源**：onChange 里用 `ideFloatTrigger` 取光标所在的 token（行首或空白后、到光标、无空格）。
+  - `/` 三节：**添加**（文件→转 `@`、目标、计划、反馈）、**指令**（压缩、权限、模型→打开模型菜单、下载日志，外加 Host 里其他指令）、**技能**（`ctx.remote.skills.list({ sessionId })`——**这里要传对象**，传字符串拿不到）。前四项是编辑器动作，其余走 `binding.session.command('/name')`；名称/说明用本插件 locale（`floatCmdGoal`/`floatCmdGoalDesc`…），因为 Host 那份目录只有英文 name/description
+  - `@` 两节：**文件与文件夹**（`workspaceFiles.list(sessionId, dir)`，`'.'` 是根、其余相对路径、条目只有 `{name,type}`）+ **对话**（按标题过滤其他会话，选中即切换悬浮卡的会话）
+  - ↑/↓ 选、Enter/Tab 选中、Esc 关，目录**下钻**成 `@dir/`、文件变引用 chip、技能插入 `/<名字> `。菜单绝对定位在输入框上方（`.iw-float-input` 必须是 `position: relative`）
 - **输入区 = DSH 的 composer**：一个 16px 圆角容器（内边距 `10px 10px 8px 14px`），里面是无边框 textarea（占位文案同 DSH）与底行 `＋（圆形）/ 权限 pill（锁+文字+⌄）/ 空隙 / 思考等级 / 模型 chip / 圆形发送键（↑，运行中变 ■）`；引用是蓝色 chip，粘贴图片走剪贴板 `image/*`（≤4 张、单张 8 MB），发送 `prompt([image…, {text: refs + 正文}])`
 - **表头只留**：`▾` 标题（46% 截断）、`＋` 新建、`–`/`×`（模型与思考等级在输入区，别重复）
 - **每次打开 DSH 都从「收起来」开始**：卡片存在，但只占一个 44px 圆球（`floatCollapsed` 初值 `true`，不持久化）；球**由 CSS 钉在窗口右下角**（`right/bottom: 20px`，`left/top: auto`），窗口放大缩小都在原位——早先用卡片坐标算，最大化后还停在旧尺寸的位置，看着像跑到屏幕中间
@@ -418,9 +421,6 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 | 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
 | 截图编辑器画出巨大的实心色块 | 操作对象里 `width` 同时被当成"笔宽"和"矩形宽度"，`lineWidth` 变成几百像素 | 笔宽叫 `stroke`、几何叫 `width/height`；`ideShotDrawOp` 只从 `stroke` 取线宽 |
-| 文字框刚出现，一点它就消失，永远输不进字 | stage 的 `onPointerDown` 把「按下即取消输入框」写成了无差别判断，点在 input 上冒泡到 stage 也算「点了别处」 | 取消逻辑要放过落在输入框内的按压（`event.target.closest('.iw-shot-text')` 直接 return），input 自己再 `stopPropagation()` |
-| 按 Esc 关不掉文字框 | 浮层窗口级的 Esc 处理器在 `textAt !== null` 时直接 return，把「取消输入框」寄托在 input 自己的 onKeyDown 上，而 DSH 可能先吞掉 keydown | 一次按键只做一件事：输入框打开时窗口处理器**不参与**，由 input 自己的 onKeyDown 取消；没有输入框时窗口处理器才退出编辑器 |
-| 浮层里按 Esc 没反应 | 编辑器挂在 `shell.overlay`，浮层从不获得焦点，`onKeyDown` 只在该元素内按键才触发 | Esc / ⌘Z 都挂到 `window` 捕获阶段（`globalThis.addEventListener('keydown', handler, true)`），别依赖焦点 |
 | 截图画框后的操作条是白底白字、字体也不对 | 编辑器渲染在 `shell.overlay`，不在 `.iw-root` 里：① 面板组件才注入 `IdeStyles`，浮层没注入 → 全部 `.iw-*` 规则失效，掉回浏览器默认按钮；② `[data-dsh-theme]` 只在面板根节点上 → 浮层拿不到工作区调色板，用宿主 token | 浮层自己 `h(IdeStyles)` + 自带 `data-dsh-theme` 与字体变量；按钮复用 `.iw-btn` 而不是自造一套 |
 | 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
 | 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 质量阶梯 80→40 直到 ≤1 MB；仍超标才降分辨率（1 → 1/1.25 → 1/1.5 → 1/2）。**不预设 1080p**：抓屏与导出都保持设备像素 |
