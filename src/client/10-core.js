@@ -105,12 +105,17 @@ function ideWritePrefs(patch) {
   }
 }
 
-/** The floating card's shipped size, and the bounds the settings page accepts. */
-const IDE_FLOAT_DEFAULT_WIDTH = 460
+/**
+ * The floating card's shipped size, and the bounds the settings page accepts.
+ *
+ * The width matches DSH's own conversation column (744px at the reference
+ * viewport), so the card reads at the same measure as the chat behind it.
+ */
+const IDE_FLOAT_DEFAULT_WIDTH = 744
 const IDE_FLOAT_DEFAULT_HEIGHT = 560
 const IDE_FLOAT_MIN_WIDTH = 280
 const IDE_FLOAT_MIN_HEIGHT = 220
-const IDE_FLOAT_MAX_WIDTH = 900
+const IDE_FLOAT_MAX_WIDTH = 1200
 const IDE_FLOAT_MAX_HEIGHT = 900
 
 /** The card's default size: the preference, clamped, or the shipped size. */
@@ -458,8 +463,10 @@ function ideCreateStore(refs) {
     sessionId: null,
     // The floating quick-ask card: shown whenever the code workspace owns the
     // centre column, collapsed to a ball on request.
-    floatOpen: false,
-    floatCollapsed: false,
+    // A detached card is on screen from the start, wherever the app opens.
+    floatOpen: prefs.floatDetached === true,
+    // 每次打开 DSH 都从「收起来」开始：卡片在，但只占一个小球。
+    floatCollapsed: true,
     // Where the user dragged the card (null = the bottom-right corner).
     floatX: null,
     floatY: null,
@@ -472,6 +479,8 @@ function ideCreateStore(refs) {
     // The card's lifetime controls: `floatEnabled` is a preference, `floatClosed`
     // lasts until DSH restarts (the user asked for "stay closed until restart").
     floatEnabled: prefs.floatEnabled !== false,
+    // Detached cards stay on screen in every panel, not only the workspace.
+    floatDetached: prefs.floatDetached === true,
     floatClosed: false,
     // One reference waiting to be appended to the card's draft.
     floatInsert: null,
@@ -964,6 +973,16 @@ function ideCreateStore(refs) {
     const nextH = Math.round(h)
     if (state.floatWidth === nextW && state.floatHeight === nextH) return
     patch({ floatWidth: nextW, floatHeight: nextH })
+  }
+
+  /** Keep the card on screen outside the code workspace (persisted). */
+  function setFloatDetached(floatDetached) {
+    const next = floatDetached === true
+    if (state.floatDetached === next) return
+    ideWritePrefs({ floatDetached: next })
+    patch({ floatDetached: next })
+    // Turning it on while away from the workspace brings it back immediately.
+    if (next) patch({ floatOpen: true, floatClosed: false })
   }
 
   /** Turn the floating card on or off (persisted). */
@@ -1663,6 +1682,7 @@ function ideCreateStore(refs) {
     setFloatSize,
     setFloatDefaultSize,
     setFloatEnabled,
+    setFloatDetached,
     setFloatClosed,
     setFloatInsert,
     setRoot,

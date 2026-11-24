@@ -205,6 +205,35 @@ function IdeEntryIcon({ name, kind = '', size = IDE_ENTRY_ICON_SIZE }) {
   return h(IdeFileBadgeIcon, { letter: ideFileLetter(name), tint: ideTintOf(ideLangOf(name)), size })
 }
 
+/** Plus: the composer's attach menu. */
+function IdePlusIcon({ size = 16 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M8 3.5v9M3.5 8h9' })])
+}
+
+/** Chevron: this control opens a menu. */
+function IdeChevronDownIcon({ size = 12 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M4 6.5 8 10l4-3.5' })])
+}
+
+/** Send: an arrow leaving the composer. */
+function IdeArrowUpIcon({ size = 16 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M8 12.5v-9M4 7.5 8 3.5l4 4' })])
+}
+
+/** Stop: the running turn's cancel button. */
+function IdeStopMarkIcon({ size = 12 }) {
+  return ideSvg(size, [h('rect', { key: 'a', x: 4, y: 4, width: 8, height: 8, rx: 1.6, fill: 'currentColor', stroke: 'none' })])
+}
+
+/** Wrap: fold a long line back into the block's width. */
+function IdeWrapIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M2 4h12M2 8h8.5a2 2 0 0 1 0 4H8' }),
+    h('path', { key: 'b', d: 'M9.5 10.5 7.5 12l2 1.5' }),
+    h('path', { key: 'c', d: 'M2 12h3' }),
+  ])
+}
+
 /** Crosshair: reveal the active file in the tree. */
 function IdeLocateIcon({ size = 15 }) {
   return ideSvg(size, [

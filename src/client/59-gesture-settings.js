@@ -271,6 +271,17 @@ function IdeWorkspaceSettingsSection(props) {
             onClick: () => store.setFloatEnabled(state.floatEnabled === false),
           }, state.floatEnabled !== false ? tr('settingsOn') : tr('settingsOff')),
         ]),
+        // A card that lives on its own stays visible in other panels too.
+        h('div', { key: 'floatdetach', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatDetach')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: `iw-gesture-chip${state.floatDetached === true ? ' on' : ''}`,
+            title: tr('settingsFloatDetachHint'),
+            onClick: () => store.setFloatDetached(state.floatDetached !== true),
+          }, state.floatDetached === true ? tr('settingsOn') : tr('settingsOff')),
+        ]),
         h('div', { key: 'floatsize', className: 'iw-settings-item' }, [
           h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatSize')),
           h('button', {

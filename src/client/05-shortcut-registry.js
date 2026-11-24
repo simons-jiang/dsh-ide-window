@@ -68,6 +68,18 @@ const IDE_SHORTCUTS = [
     action: 'back',
   },
   {
+    id: 'dsh-ide-window.float-toggle',
+    kind: 'key',
+    labelKey: 'shortcutFloatToggle',
+    aliases: ['float', 'assistant', 'card', '悬浮', '悬浮框', '助手', '浮窗'],
+    // 两个运行时都用 ⌥+空格：不占字母键，在输入框里也能用
+    defaults: {
+      desktop: { code: 'Space', modifiers: ['alt'] },
+      web: { code: 'Space', modifiers: ['alt'] },
+    },
+    action: 'float-toggle',
+  },
+  {
     id: 'code-workspace.search-everywhere',
     kind: 'sequence',
     labelKey: 'shortcutSearchEverywhere',

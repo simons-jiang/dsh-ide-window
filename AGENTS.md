@@ -133,6 +133,8 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `window` 事件 `dsh-theme` | `{ detail: { id } }` | 同页立即生效，不用刷新 |
 | `data-dsh-theme` 属性 + `/dsh-ide/theme?id=<id>` | 主题文件选择器就是 `[data-dsh-theme="<id>"]` | 对方给自己的根节点加属性、`link` 同一份样式表即可套用 |
 
+主题除了 alias token，还统一提供 `--dsw-alias-markdown-inline-code`（= `--dsw-alias-bg-layer-3`）给行内代码，`test/theme.mjs` 会断言 10 套主题的 token 集合一致。
+
 改主题文件的选择器或键名 = 改接口，必须同步改 `dsh-git-window`（它的 `src/client/05-theme.js` 只读这三样）。对方没装本插件时样式请求 404，它保持自己的 token 外观，不会报错。
 
 ### 3.4 用到的 DSH 槽位
@@ -196,7 +198,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - **交付文件卡**（`[data-presented-file]`）：点卡片进工作区；卡片自己的操作按钮**不拦**
 - 视图持久化：每个工作区记标签/激活项/展开目录/树宽/树可见性（≤3 个）
 - 大文件保护：>60000 行或超字节上限时截断提示
-- **Markdown 文件预览**：`.md/.markdown/.mdx` 打开即渲染（`IdeFloatMarkdown` 复用），顶部「预览 / 源码」切换；判定是纯函数 `ideIsMarkdownPath`（有用例）
+- **Markdown 文件预览**：`.md/.markdown/.mdx` 打开即渲染（`IdeFloatMarkdown` 复用），顶部只有「预览 / 源码」两个按钮（**文件名不在这里重复**，面包屑已经写着）；判定是纯函数 `ideIsMarkdownPath`（有用例）。行内代码的底色取 `--dsw-alias-markdown-inline-code`，**10 套主题都把它定义成 `var(--dsw-alias-bg-layer-3)`**，所以工作区里不会出现「白底白字」
 
 ### 4.2 语义导航（IntelliJ LSP）
 - **双击**判定「是不是声明」的关键**不是**看有没有 `(`，而是看名字前面是不是一个**返回类型**：`private void foo(` / `Resp detail(` 算声明；本类里的裸调用 `        foo();`（前面只有缩进）、`page = service.foo(`、`service.foo(` 都不算——之前的正则在裸调用上误判为声明，导致双击本类方法只提示「当前位置就是定义」而不跳转
@@ -281,27 +283,34 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 `src/client/74-float.js`：浮在代码工作区上的小聊天卡，**进代码工作区自动出现、回对话自动消失**；**可拖动**（表头按下拖，位置存 `floatX/floatY`，渲染时按视口夹取，永不出屏）。
 
 - 挂 `shell.overlay`；可见性跟 **`selectPanel()`**
-- **可拖可缩**：表头拖动、四边+右下角缩放（西/北边拖时卡片移动，`ideFloatResizeStep`，最小 280×220）；手势挂 window，绑元素会「掉手」
-- 盒模型：`.iw-float *` 一律 `border-box`
-- **UI 跟随工作区**：带 `data-dsh-theme` 与 `treeFontSize`
-- **跟随面板的会话**：消息进 `state.sessionId`，所以模型就是该会话的模型
-- **模型 chip**：Client `modelDirectories`（同 composer）：`directoryFor(id).store` 出目录，`select({...})` 切换
-- **权限 chip**：发 `/permission <preset>`（`read-only` / `workspace-write` / `danger-full-access`）；**显示当前值**读 Host 投影 `session.projections.get('permissions').currentValue`（`faceOf('permissions').subscribe` 跟随），不靠猜
-- **文件 chip 可点**：文件行与「已编辑 N 个文件」行都走对话卡片同一入口 `openInWorkspace(path)`
-- **改动卡片**：宿主路由 `/dsh-ide/changes`（`sessionQuery.readSession` 找最新 `workspace/changes` 的 seq → `workspaceChanges.summary`）→ 标题 + `+N -M` + 前 3 个文件（可展开）。**只代表本轮**：摘要随进程消失，重启后卡片必须跟着消失，**绝不回落 git 工作区**（那样会把历史改动当成本轮常驻）；客户端永不读事件窗口（retained window 只留消息），空答案是「本轮没改动」，仅在刚结束一轮时重试两次（1200/3000ms）等摘要写入
-- **图片点开预览**：点缩略图开卡内全屏层（`Esc` 关、`复制图片` 走 canvas→PNG→`ClipboardItem`）；不再一点就复制
-- **能选中**：`html.iw-select-code` 会把整页禁选，卡片与 `.iw-md` 必须列进白名单，否则悬浮卡里选不了字
-- **输入区**：引用是**蓝色 chip**（`+ → 引用当前文件`、右键「复制引用回对话」都进 chips，可 ×）；**粘贴图片**读剪贴板 `image/*` 成 data URL 预览（≤4 张、单张 8 MB）；发送时 `prompt([image…, {type:'text', text: refs + 正文}])`
-- **表头**：`▾` 标题（`max-width:46%` 截断）、`＋` 新建、模型 chip、**思考等级 chip**（选项来自模型目录 `reasoning.efforts`，`select({...,reasoningEffort})`）、`–`/`×` 包在 `.iw-float-actions`（`margin-left:auto`）里——分开摆会在宽卡片上被拉开
-- **菜单**：`width:100%` + `min-height:30px`（原来只有文字可点，整行点不到）
+- **可拖可缩**：表头拖、四边/右下角缩放（最小 280×220），手势挂 window
+- `.iw-float *` 一律 `border-box`
+- **字号固定 14px（DSH 正文）**，字体继承宿主；只有配色跟工作区（`data-dsh-theme`）
+- **跟随面板的会话**：消息进 `state.sessionId`；模型 chip 走 `modelDirectories.directoryFor(id).store` 的 `select()`，权限 chip 发 `/permission <preset>`、显示值读投影 `projections.get('permissions').currentValue`
+<!-- 改动列表：卡片已移除（插件拿不到 turn 的 deliverables，宿主摘要只在内存里且晚于回复；用户要求不要这个框） -->
+- **问答也进卡片**：`ask_user_question` 是 `tool/call`，答案在配对的 `tool/result`（文本 `{"answers":[{id,selected[]}]}`）里
+  - **已回答** → 右对齐蓝气泡：header 12.5px 三级色、问题 14px 二级色、选中项 14px 一级色（上边距 4px）
+  - **未回答** → 整张卡（和对话里那张同一套度量）：eyebrow 11px 三级色、标题 16px、选项行 12px 圆角 + 序号徽标 20×20（radius 4，`bg-layer-3`）+ 14px 标签 + 13px 说明；卡片本身 `bg-layer-1` + `0 0 0 0.5px border-l1` 细环 + 两层软阴影（对话那张卡没有边框）；底部一行提示 + 「去对话作答」
+  - **作答只能在对话里**：宿主 `ctx.remote.userQuestions.answer` 对前台问题返回 `false`（作答权由 DSH 自己的卡片持有），所以卡片的按钮走 `goToChat()` 切回对话，不假装能在这里答
+- **图片点开预览**：点缩略图开卡内全屏层（`Esc` 关、`复制图片` 走 canvas→PNG）
+- **能选中**：卡片与 `.iw-md` 要列进 `html.iw-select-code` 的白名单
+- **中文输入法组词时按 Enter 只上屏、不发送**：keydown 里先看 `composingRef`（`compositionstart/end` 维护）、`event.isComposing`、`keyCode === 229`，再看 `compositionend` 之后 80ms 内的那次 Enter（部分输入法先发 end 再发 keydown）；三条任一命中就交给输入法。**只判断 `isComposing` 不够**——踩过，用户组词按 Enter 直接把半句话发了出去
+- **运行进度也进卡片**：`running` 为真时显示一块进度——`深度求索中，用时 X 分 Y 秒`（复用对话的措辞；`running` 变真时记 `runningSince`，1 秒一次 `setClockTick` 重渲染，**给同一个时间戳 setState 会被 React bail out**）、最新那条 `tool/call` 的一行细节（bash 显示 `command`、读写显示 `file_path`、grep 显示 `pattern`，等宽字体单行截断）、以及 `已调用工具，执行了命令，已搜索代码…` 这种汇总。数据来自 `rawEntries`（transcript 会丢掉 tool/call，所以原始事件另存一份 ref）；`ideFloatActivityOf` / `ideFloatCallDetail` / `ideFloatElapsed` 都是纯函数，有用例
+- **`/` 与 `@` 和对话同一个数据源**：输入框里不靠自造列表——onChange 里用 `ideFloatTrigger` 取光标所在的 token（行首或空白后、到光标、无空格），`/` 走 `ctx.remote.commands.list(sessionId)`（就是对话那份指令目录，含 name/description），`@` 走 `ctx.remote.workspaceFiles.list(sessionId, dir)`（`'.'` 是工作区根，其余**相对路径**，绝对路径只认根；条目是 `{name,type}`，路径自己拼）。↑/↓ 选、Enter/Tab 选中、Esc 关、目录选中后**下钻**成 `@dir/`；指令执行走 `binding.session.command('/name')`，文件选中变成引用 chip。菜单绝对定位在输入框上方（`.iw-float-input` 必须是 `position: relative`，否则会飘到卡片顶上）
+- **输入区 = DSH 的 composer**：一个 16px 圆角容器（内边距 `10px 10px 8px 14px`），里面是无边框 textarea（占位文案同 DSH）与底行 `＋（圆形）/ 权限 pill（锁+文字+⌄）/ 空隙 / 思考等级 / 模型 chip / 圆形发送键（↑，运行中变 ■）`；引用是蓝色 chip，粘贴图片走剪贴板 `image/*`（≤4 张、单张 8 MB），发送 `prompt([image…, {text: refs + 正文}])`
+- **表头只留**：`▾` 标题（46% 截断）、`＋` 新建、`–`/`×`（模型与思考等级在输入区，别重复）
+- **每次打开 DSH 都从「收起来」开始**：卡片存在，但只占一个 44px 圆球（`floatCollapsed` 初值 `true`，不持久化）；球**由 CSS 钉在窗口右下角**（`right/bottom: 20px`，`left/top: auto`），窗口放大缩小都在原位——早先用卡片坐标算，最大化后还停在旧尺寸的位置，看着像跑到屏幕中间
+- **窗口尺寸变化要重渲染**：`resize` 监听里 `setViewportTick` 一次，否则卡片坐标还是旧视口的夹取结果
+- **`⌥`+空格**（`dsh-ide-window.float-toggle`，可改键）：不可见→展开、球→展开、展开→收球；设置里关掉悬浮框时给一条提示而不是假装切了
 - **收起/关闭/开关**：`–` 收球、`×` 关闭（`floatClosed`，只本次进程内有效，重启才恢复）、设置页开关 `floatEnabled`（默认开，持久化）；渲染处统一 `open = floatOpen && enabled && !closed`
-- **归档不列**：用 `WorkspaceSnapshot.archivedSessionIds`（`useWorkspaces` 标准 hook）过滤
+- **可脱离工作区（`floatDetached`，默认关）**：`selectPanel()` 不再按面板开合（`panelId === IDE_PANEL_ID || detached`），`enter()` 清理也跳过。脱离时卡片按 **DSH 自己的外观**（不挂 `data-dsh-theme`、字号继承），贴回工作区才用工作区主题与字号
+- **归档不列**：按 `WorkspaceSnapshot.archivedSessionIds` 过滤
 - **引用优先给悬浮卡**：`referenceToChat` 命中上面 `open` 就把 `@引用` 走 `store.setFloatInsert` 追加进卡片草稿并聚焦（不跳转），否则回对话插芯片
-- **切换/新建会话**：按 `cwd` 分组、当前组置顶、打开滚到该组（rect 差）；切换 = `openSession` + `enterProject` + 140ms 重选面板；新建 = `startSession()`（可能复用空白会话，只能按 store 的 sessionId 变化判定）
+- **切换/新建会话**：按 `cwd` 分组、当前组置顶并滚过去；切换 = `openSession` + `enterProject` + 140ms 重选面板；新建 = `startSession()`（只能按 sessionId 变化判定）
 - **终止**：`session.getSnapshot().running` 为真时，发送键变「停止」→ `session.cancel()`
-- **默认大小 460×560**；设置页「悬浮框默认大小」用 ±20 步进调宽/高（280–900 px），写 `dsh-ide-window:v1` 的 `floatWidth/floatHeight`；拖动卡片只改**当前** `floatWidth/Height`，不改默认值
-- **正文按对话排版渲染**（`IdeFloatMarkdown`）：标题/段落/列表/引用/链接/行内代码/图片/代码块（`ideTokenize` 着色 + 语言标签 + 复制），窄卡里 `pre-wrap` 自动换行不横向滚动；assistant 的 image 块和 `deliverables/presented` 文件也显示
-- 只保留最近 6 条；Enter 发送、Shift+Enter 换行
+- **默认大小 744×560**（宽度 = DSH 对话列宽）；设置页 ±20 步进调宽/高（280–1200 px），写 `dsh-ide-window:v1` 的 `floatWidth/floatHeight`；拖动只改当前值
+- **对话按 DSH 的样子排版**：**没有「你 / 助手」标签**；用户消息右对齐、`max-width: min(477px, 82%)`、气泡 `--dsw-specific-bubble` + 20px 圆角 + `10px 16px` + 14px/22px，下方右对齐 `HH:MM`（13px，取事件 `time`）+ 复制按钮；助手整宽左对齐、无气泡、14px/24px（段落/标题/列表节奏同对话：段落 16px 首尾归零）
+- **正文按对话排版渲染**（`IdeFloatMarkdown`），代码块、表格、行内代码都照抄对话的度量：代码块 16px 圆角/42px 表头/11px·19px SF Mono/自动换行；表格只留行分隔线，13px/22px，单元格 `10px 16px 10px 0`；**行内代码**取对话那条规则（`display:inline-flex` + `0 5px` + `--dsw-radius-sm` + `0.875em` + `0.5px solid --dsw-alias-border-l1` + `--dsw-alias-markdown-inline-code` 底色），表格内同样 `0.875em`
 - `IdeStyles` 渲染成卡片的**兄弟节点**（否则样式文本会进正文）
 
 ### 4.5 设置（设置 → 左侧导航「代码工作区」）
@@ -309,6 +318,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **它是设置左侧导航里的独立一页**（`settings.section`，id `dsh-ide-window`，order 70，排在「归档管理」这一层），不再塞进「通用设置」里当一行——那样既挤又得先点「查看」才能看到内容。导航标签来自 `locale` 的 `settingsNav`（代码工作区 / Code workspace），由 `label: () => translate('settingsNav')` 提供
 - **快捷键**（8 条，全部可改，点「修改」直接按新键；「恢复默认」逐条重置）；手势三条是下拉（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，互斥）
 - **基础设置 → 字号**：代码字号（默认 12.5）、文件树字号（默认 14.5），10–24px 步进 0.5，行高按比例联动
+- **悬浮框**：启用开关、脱离代码工作区开关、默认大小（744×560）±20 步进
 - **Maven 本地仓库**：留空=自动检测，下面一行直接显示当前在用的路径
 - 整页样式走 `.iw-settings-section`（max-width 720px、上下留白），`IdeStyles` 由组件自己渲染（设置弹窗不在 `.iw-root` 里）
 
@@ -318,6 +328,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 |---|---|---|
 | `dsh-ide-window.toggle` | key | 桌面 `⌘2` / Web `⌥⌘I` |
 | `dsh-ide-window.back-to-chat` | key | 桌面 `⌘1` / Web `⌥⌘U` |
+| `dsh-ide-window.float-toggle` | key | `⌥`+空格（Windows `Alt+空格`）——显示/收起悬浮框 |
 | `code-workspace.search-everywhere` | sequence | 双击 `Shift`（窗口 400ms） |
 | `code-workspace.file-search` | key | `⌘P` |
 | `code-workspace.screenshot` | key | `⌘⇧S`（Windows `Ctrl+Shift+S`） |
@@ -340,7 +351,6 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
    `ctx.shortcuts` 只用来读平台/运行时、以及 `describeBinding` 判冲突。
 3. **`⌘W` 不绑**。它是 DSH 的「关闭窗口」，菜单里不写快捷键提示，避免误导。
 4. **jar 源码只读**：不反编译、不复制、不落盘；进程内只缓存 `类名 → jar 路径`。
-5. **改动列表用官方卡片**：插件只拦截它的文件行跳工作区，不再自己渲染卡片，也不再解析 `changes.summary`（少一处与 Host 内存态耦合的逻辑）。
 6. **状态放 store、结果缓存到模块级**。切到代码工作区会卸载对话组件，`useState` 会丢；`ideTurnStates` / `ideSummaryRequests` 是为此存在的。
 7. **设置项内联展开，不弹窗**。`shell.overlay` 的层级低于设置弹窗，弹窗会被盖住。
 8. **引用靠输入框自己的 `@` 流程落地，不伪造草稿**。DSH 没有给插件的「写入对话草稿」API：`conversation.input` 的 shell 是插件内部实例，客户端 Service 目录里也没有 composer 服务；直接写 `localStorage` 的草稿只有新建会话时才会被读取。所以「复制引用回对话」是先把面板切回对话，再在输入框里按人打字的顺序输入 mention 让 DSH 自己生成芯片——这是唯一能拿到真芯片、又不动已有草稿的路子。
@@ -395,44 +405,28 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 |---|---|---|
 | `cannot get property "shortcuts" without inject` | 插件导出没声明该服务 | `build.mjs` 里 `inject: ['slots','locale','shortcuts']` |
 | 快捷键注册整条失败 | 声明了 `web:linux` 默认值（该 profile 只允许 Slash/Comma/Period） | **不要**声明 `web:linux` |
-| `getBaseCurrency` 找不到定义 | 泛型接收者没解析出基类 | `ideChainBase` / `ideGenericArgument` 要容忍 `org.mockito.ArgumentCaptor<T>` |
-| 跳转成功却报 `outcome is not defined` | 解构时只取 `locations`，后面又用 `outcome.ms` | 接住整个返回值；**这类错误测不到，必须给跳转逻辑写桩测试** |
-| 注解点不动 | 分词把 `@X` 当成一个 `iw-ann` 运行，只有普通标识符可点击 | `ideSymbolOfRun()` 去 `@`、取简单名、算列偏移 |
-| 切到代码工作区再回来卡片消失 | 组件卸载丢 `useState` | 结果缓存到模块级 Map |
-| `plugins/...client.js?jsrev=… 404` | 我重建了 bundle，已开窗口拿的是旧 rev | 让用户 `⌘R` 或重启；批量 URL 里一个过期整批 404（连官方包也被连坐） |
-| 设置页弹窗看不见 | `shell.overlay` 层级低于设置弹窗 | 内联展开 |
-| 测试提取器截断箭头函数 | 在参数表 `)` 处就判定结束 | 只在 `}`/`]` 收尾 |
+| `plugins/...client.js?jsrev=… 404` | 重建了 bundle，已开窗口拿的是旧 rev | 让用户 `⌘R` 或重启；批量 URL 里一个过期整批 404 |
 | Windows 上点授权「没反应」 | `spawn` 直接跑 `.bat`/`.cmd`，Node 拒执行抛 EINVAL，被 `child.on('error')` 吞成 `spawn-failed` | `platform.needsShell(path)` + 两个 `spawn` 都传 `shell`（`index.js` 的 `runLicenseCommand`/`openLicenseLogin`） |
 | 客户端与宿主路径规则悄悄分叉 | 两份实现各自演化、没有测试 | harness 的采样对比（6 个样例）锁住 `toPosix`/`isAbsolutePath` |
-| 路由报错返回**空 body**（400/405 无内容） | catch 里引用了 try 内的 `const pathname`，抛 ReferenceError，被 webServer 的 `.catch` 吞成空 400 | 需要在 catch 用的变量提到 try 外面声明；改完用真实实例验证一次错误响应体 |
 | 插引用后出现「点了没反应」或拼出一半路径 | `@` 触发只在词首生效；菜单用 Escape 关闭后焦点已不在输入框 | 先用空格把 mention 与前面的文字分开；每次改插入位置前重新 `caretToEnd(editor)` 聚焦，并在关菜单后等一帧再补尾部字符 |
-| 引用插成了纯文本而不是芯片 | 菜单候选与目标路径对不上（同名文件、目录、路径不在会话工作区内） | 按设计退化：保持完整 `@相对路径` 文本并提示，绝不挑菜单里的第一个候选 |
-| 两个插件同时打开时右键菜单被截断/被覆盖 | `.iw-root` 是 `overflow: hidden`，shell 给面板包装层还有 transform，`position: fixed` 的菜单被限制在面板内，靠底部打开就只剩半截 | 菜单定位统一走 `useMenuPlacement()`：按 `.iw-root` 的矩形夹取，超出面板高度时内部滚动（四个菜单都用它，不要各写一套 `Math.min`） |
+| 右键菜单被截断/被覆盖 | `.iw-root` 是 `overflow: hidden`，外壳还有 transform，`position: fixed` 菜单被限制在面板内 | 菜单定位统一走 `useMenuPlacement()`（四个菜单共用，别各写一套 `Math.min`） |
 | 设了「Ctrl+单击」跳转，macOS 上点符号却弹右键菜单 | macOS 把 Ctrl+单击当**二级点击**（`contextmenu`，`button` 为 0），而符号菜单分支排在 Ctrl 手势判断之前；另外 Ctrl 默认没绑任何手势，未绑定时本来就该落到菜单 | Ctrl 手势判断要放在符号菜单**之前**，并用 `button === 0` 区分真正的右键（`button === 2` 仍出菜单）；默认手势是 双击/⌘/⌥，想用 Ctrl 必须去设置里指定 |
 | 双击 `extends ServiceImpl` 里的类名，弹出「声明 (50)」一屏 Repository | `类型 名字` 的判定把 `extends ServiceImpl<…>` 当成了方法声明，于是走「跳实现」；类名的实现就是它的**所有子类** | 跳转前用 `ideTypePositionAt` 判类型位置（extends/implements/class/泛型/new），类型位置不走实现兜底；LSP 兜底本身也加了 `implementationFallback` 开关，只有方法声明才允许退到 `goToImplementation` |
 | 点 Mapper 接口方法只提示「当前位置就是定义」 | MyBatis 的方法体不在 Java 里，LSP 只能回答「这就是声明」 | 声明点击时先按 `namespace` + `id` 去 mapper XML 找语句并跳过去；XML 里没有该 id 才保留原提示 |
 | 调用链说「没有找到调用方（可能已是入口方法）」，但控制器里明明有调用 | LSP 只回了**声明**（接口签名 + 被走的实现签名，`ideContractReferences` 还会补一条接口签名），非空于是走完流程、全部被 `callerAt === 'declaration'` 丢掉，而文本兜底只在**语义结果为空**时才跑 | 语义结果非空但**一个子节点都没加上**时，必须再跑一次文本匹配兜底；`textual` 标记只在真正用到文本行时置位。首轮索引进（`ImportExecutionKt` / 索引目录还在长大）时 LSP 也会回空，两者叠加就是这个弹窗 |
 | 右键菜单离鼠标很远，飘在面板上方 | 用「条目数 × 28」估高度，估小了就 `y - 估计高度`，真实菜单更高、被夹到面板底边后整体上移 | 高度必须挂载后实测：放不下时让菜单**底边贴在指针**（`top = y - height`），不要用估算值；`useLayoutEffect` 在首帧前算好并保持 `visibility: hidden` 直到定位完成 |
-| 「复制诊断信息」点了没反应、页面像卡住 | `await navigator.clipboard.writeText()` 在无权限/嵌入式环境下可能永不 resolve | 剪贴板用 `Promise.race` 加 1.5 秒超时，上报日志优先，超时退化为「已写入宿主日志」提示 |
-| 主题弹层里点某一项没反应（真鼠标点不动，代码里 `.click()` 却正常） | 关闭弹层用的是 `document` 上的 **capture** `pointerdown`：真实鼠标先派发 pointerdown，监听器先把弹层卸载，行的 click 永远到不了 | 关闭监听要放过落在弹层/触发按钮内部的按压（`target.closest('.iw-theme-pop, .iw-theme-button')`）；**交互必须用真实指针事件验证**，程序化 `.click()` 会绕过 pointerdown |
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 | 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
 | 截图编辑器画出巨大的实心色块 | 操作对象里 `width` 同时被当成"笔宽"和"矩形宽度"，`lineWidth` 变成几百像素 | 笔宽叫 `stroke`、几何叫 `width/height`；`ideShotDrawOp` 只从 `stroke` 取线宽 |
-| 截图里看到自己的窗口重影（两条标题栏） | 截图是整屏、浮层只盖住窗口，却把画面在窗口里居中显示：窗口自己的菜单栏/标题栏在画面里又出现一次 | 画布按 `1/dpr` 画在 `left/top = -(screenX/screenY)`，让冻结的画面与真实屏幕对齐；指针换算统一用画布的 `getBoundingClientRect()` |
 | 文字框刚出现，一点它就消失，永远输不进字 | stage 的 `onPointerDown` 把「按下即取消输入框」写成了无差别判断，点在 input 上冒泡到 stage 也算「点了别处」 | 取消逻辑要放过落在输入框内的按压（`event.target.closest('.iw-shot-text')` 直接 return），input 自己再 `stopPropagation()` |
-| 文字框离鼠标很远 / 是白底方块盖住图 | 输入框按 stage 定位（画布在 stage 里居中，偏移丢了）；样式用了不透明底色 + 实线边框 | 画布与输入框放进同宽的 `.iw-shot-frame`，坐标直接用图像点 × 缩放；输入框透明 + 虚线描边 |
 | 按 Esc 关不掉文字框 | 浮层窗口级的 Esc 处理器在 `textAt !== null` 时直接 return，把「取消输入框」寄托在 input 自己的 onKeyDown 上，而 DSH 可能先吞掉 keydown | 一次按键只做一件事：输入框打开时窗口处理器**不参与**，由 input 自己的 onKeyDown 取消；没有输入框时窗口处理器才退出编辑器 |
-| 浏览器里按截图快捷键什么都不发生 | 浏览器侧本来就没有屏幕权限（DSH 的 `configureSession` 把 display-media 源给空），代码却照常发请求 | 先判运行环境：`runtime === 'web'` 直接给「请移步桌面端」的提示，别发请求；调试用 `localStorage['dsh-ide:screenshot-force']` 显式放开 |
-| 截图里带上了自己的「正在截图…」字 | 抓屏前就把浮层渲染出来了：`screencapture` 会把当前屏幕原样拍下，包括刚画上去的浮层 | **先抓屏再渲染**：抓屏期间 DOM 里不许有任何自己的元素；需要反馈也只能在 Host 返回后显示 |
-| 以为截图里带着「蓝色选框」 | 选框是编辑器画的，导出走的是「底图 + 标注」重绘，实测四边偏蓝像素为 1（画面内容本身）；曾误判为要先框选再抓屏，`screencapture -i` 反而让 Windows 没有等价物、框完也没法标注 | 保持「先截整屏、再框选」，选框只存在于编辑器图层，绝不进入导出 |
 | 浮层里按 Esc 没反应 | 编辑器挂在 `shell.overlay`，浮层从不获得焦点，`onKeyDown` 只在该元素内按键才触发 | Esc / ⌘Z 都挂到 `window` 捕获阶段（`globalThis.addEventListener('keydown', handler, true)`），别依赖焦点 |
 | 截图画框后的操作条是白底白字、字体也不对 | 编辑器渲染在 `shell.overlay`，不在 `.iw-root` 里：① 面板组件才注入 `IdeStyles`，浮层没注入 → 全部 `.iw-*` 规则失效，掉回浏览器默认按钮；② `[data-dsh-theme]` 只在面板根节点上 → 浮层拿不到工作区调色板，用宿主 token | 浮层自己 `h(IdeStyles)` + 自带 `data-dsh-theme` 与字体变量；按钮复用 `.iw-btn` 而不是自造一套 |
 | 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
 | 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 质量阶梯 80→40 直到 ≤1 MB；仍超标才降分辨率（1 → 1/1.25 → 1/1.5 → 1/2）。**不预设 1080p**：抓屏与导出都保持设备像素 |
 | 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |
-| 悬浮卡切回对话还浮着 | 可见性只写在 `enter()`，面板切对话时并不卸载 | 跟 `selectPanel(panelId)` |
-| 悬浮卡里出现一堆 CSS 文本 | `<style>` 被渲染进卡片节点 | `IdeStyles` 作为兄弟节点渲染 |
-| 悬浮卡输入区凸出卡片边框 | flex 子项自动最小高度 = 内容高度，正文不肯缩，把输入区顶出去 | `.iw-float-body` 设 `min-height: 0`，卡片 `overflow: hidden` |
+| 想在悬浮框里直接答题 | 宿主 `remote.userQuestions.answer` 需要 `inject: ['remote.userQuestions']` 才拿得到，且对前台问题一律回 `false`（作答权在 DSH 自己的问答卡上，`publishContinuedQuestions` 只接管已延续的批次） | 悬浮框只渲染题目（读 `tool/call` 的 arguments），提交按钮引导回对话，不伪造作答 |
+| 悬浮卡整张没了（重启后明显），控制台没报错 | 行渲染里把图片节点也起名 `pictures`，遮住了上层的 `pictures`（附件 id → URL），`pictures[id]` 读到 null → 含图片的消息一渲染就抛错，`shell.overlay` 插槽把整个浮层卸掉 | 行渲染抽成 `ideFloatRow`，变量不重名（图片节点叫 `pics`）；**每行 try/catch**，一行坏数据不连坐整张卡 |
 | 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
 
 ---

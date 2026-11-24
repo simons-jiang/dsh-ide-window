@@ -9,6 +9,24 @@ window.__ModuleLoader__.load({
     const { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } = React
     const h = React.createElement
   const IDE_TEXT_EN = {
+    "floatActivityTask": "updated tasks",
+    "floatActivityAsk": "asked you a question",
+    "floatActivityWeb": "searched the web",
+    "floatActivityWrite": "edited files",
+    "floatActivityRead": "read files",
+    "floatActivitySearch": "searched code",
+    "floatActivityCommand": "ran commands",
+    "floatRunningTools": "tools used",
+    "floatElapsedSec": "{s}s",
+    "floatElapsedMin": "{m}m {s}s",
+    "floatSuggestFailed": "Suggestions unavailable",
+    "floatCommandFailed": "Command failed",
+    "floatSuggestEnterDir": "open folder",
+    "floatQuestionGo": "Answer in chat",
+    "floatQuestionHint": "DSH accepts answers in the conversation",
+    "floatQuestionWaiting": "Waiting for your answer in the conversation",
+    "floatToggleDisabled": "The assistant card is turned off in settings",
+    "shortcutFloatToggle": "Toggle the assistant card",
     "title": "Code Workspace",
     "subtitle": "Workspace",
     "files": "Files",
@@ -281,13 +299,11 @@ window.__ModuleLoader__.load({
     "floatEmpty": "Ask something; the answer lands in this session",
     "floatNoSession": "No session bound yet",
     "floatNoWorkspace": "no workspace",
-    "floatPlaceholder": "Ask something… (Enter to send, Shift+Enter for a newline)",
+    "floatPlaceholder": "Message or create a task, / for commands, @ for files or chats",
     "floatSend": "Send",
     "floatSending": "Sending…",
     "floatFailed": "Send failed",
-    "floatYou": "You",
-    "floatAssistant": "Assistant",
-    "floatRunning": "Answering…",
+    "floatRunning": "Thinking",
     "floatAttach": "Add content",
     "floatAttachReference": "Reference the open file",
     "floatNeedsFile": "Open a file first",
@@ -316,7 +332,7 @@ window.__ModuleLoader__.load({
     "floatImageTooLarge": "Image is larger than 8 MB",
     "floatEffort": "Reasoning effort",
     "floatEffortDefault": "Default",
-    "floatCode": "Code",
+    "floatCode": "Code block",
     "floatCopy": "Copy",
     "floatCopied": "Copied",
     "floatFiles": "Files",
@@ -325,6 +341,7 @@ window.__ModuleLoader__.load({
     "settingsFloatWidth": "Width",
     "settingsFloatHeight": "Height",
     "floatOpenFailed": "Cannot open in the workspace",
+    "floatCopyMessage": "Copy message",
     "floatCopyImage": "Copy image",
     "floatImageCopied": "Image copied",
     "floatCopyImageFailed": "Copying the image failed",
@@ -333,13 +350,29 @@ window.__ModuleLoader__.load({
     "mdSource": "Source",
     "floatPreviewImage": "Click to view the image",
     "floatCloseViewer": "Close",
-    "floatChangesTitle": "Edited",
-    "floatChangesUnit": "files",
-    "floatChangesBinary": "binary",
-    "floatChangesAll": "All",
-    "floatChangesLess": "Collapse",
+    "settingsFloatDetach": "Detach from the workspace",
+    "settingsFloatDetachHint": "Keep the card on screen when you switch to another panel or back to the conversation",
+    "floatWrap": "Wrap lines",
   }
   const IDE_TEXT_ZH = {
+    "floatActivityTask": "已更新任务",
+    "floatActivityAsk": "已向你提问",
+    "floatActivityWeb": "已联网搜索",
+    "floatActivityWrite": "已修改文件",
+    "floatActivityRead": "已读取文件",
+    "floatActivitySearch": "已搜索代码",
+    "floatActivityCommand": "执行了命令",
+    "floatRunningTools": "已调用工具",
+    "floatElapsedSec": "用时 {s} 秒",
+    "floatElapsedMin": "用时 {m} 分 {s} 秒",
+    "floatSuggestFailed": "候选加载失败",
+    "floatCommandFailed": "指令执行失败",
+    "floatSuggestEnterDir": "进入目录",
+    "floatQuestionGo": "去对话作答",
+    "floatQuestionHint": "DSH 只在对话里受理作答",
+    "floatQuestionWaiting": "等待你在对话里回答",
+    "floatToggleDisabled": "悬浮框已在设置里关闭",
+    "shortcutFloatToggle": "显示 / 收起悬浮框",
     "title": "代码工作区",
     "subtitle": "工作区",
     "files": "文件",
@@ -612,13 +645,11 @@ window.__ModuleLoader__.load({
     "floatEmpty": "问点什么，回答会出现在当前会话里",
     "floatNoSession": "还没有绑定会话",
     "floatNoWorkspace": "未选择工作区",
-    "floatPlaceholder": "问点什么…（Enter 发送，Shift+Enter 换行）",
+    "floatPlaceholder": "发消息或创建任务，/ 调用指令，@ 文件或对话",
     "floatSend": "发送",
     "floatSending": "发送中…",
     "floatFailed": "发送失败",
-    "floatYou": "你",
-    "floatAssistant": "助手",
-    "floatRunning": "正在回答…",
+    "floatRunning": "深度求索中",
     "floatAttach": "添加内容",
     "floatAttachReference": "引用当前文件",
     "floatNeedsFile": "先打开一个文件",
@@ -647,7 +678,7 @@ window.__ModuleLoader__.load({
     "floatImageTooLarge": "图片超过 8 MB",
     "floatEffort": "思考等级",
     "floatEffortDefault": "默认",
-    "floatCode": "代码",
+    "floatCode": "代码块",
     "floatCopy": "复制",
     "floatCopied": "已复制",
     "floatFiles": "文件",
@@ -656,6 +687,7 @@ window.__ModuleLoader__.load({
     "settingsFloatWidth": "宽度",
     "settingsFloatHeight": "高度",
     "floatOpenFailed": "无法在工作区打开",
+    "floatCopyMessage": "复制这条消息",
     "floatCopyImage": "复制图片",
     "floatImageCopied": "图片已复制",
     "floatCopyImageFailed": "复制图片失败",
@@ -664,11 +696,9 @@ window.__ModuleLoader__.load({
     "mdSource": "源码",
     "floatPreviewImage": "点击预览图片",
     "floatCloseViewer": "关闭",
-    "floatChangesTitle": "已编辑",
-    "floatChangesUnit": "个文件",
-    "floatChangesBinary": "二进制",
-    "floatChangesAll": "全部",
-    "floatChangesLess": "收起",
+    "settingsFloatDetach": "脱离代码工作区",
+    "settingsFloatDetachHint": "开启后悬浮框不再跟着代码工作区出现与消失：切到其他插件视图或回到对话时它依然在",
+    "floatWrap": "自动换行",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1849,7 +1879,14 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float, .iw-float *, .iw-float *::before, .iw-float *::after { box-sizing: border-box; }
 .iw-float-head { display: flex; align-items: center; gap: 6px; cursor: grab; user-select: none; touch-action: none; }
 .iw-float-head:active { cursor: grabbing; }
-.iw-float-collapsed { padding: 4px; border: 0; background: transparent; box-shadow: none; }
+.iw-float-collapsed {
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-height: 0;
+}
+.iw-float-collapsed .iw-float-ball-btn { flex: 0 0 auto; }
 .iw-float-chip {
   max-width: 168px;
   overflow: hidden;
@@ -1861,10 +1898,86 @@ html.iw-select-code .iw-code .iw-vision {
   background: transparent;
   color: var(--dsw-alias-label-secondary, inherit);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 .iw-float-chip:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
+/* The command and mention lists sit above the composer, the way the
+   conversation's own popup does: one row per candidate, description right. */
+/* While the Session works, the card says what it is doing and for how long. */
+.iw-float-running {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.08));
+}
+.iw-float-running-head { display: flex; align-items: center; gap: 6px; }
+.iw-float-running-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-accent, #4d6bfe);
+  animation: iw-float-pulse 1.2s ease-in-out infinite;
+}
+@keyframes iw-float-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.iw-float-running-text { font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary, #61666b); }
+.iw-float-running-detail {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-float-running-labels { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-suggest {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: 12px;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12));
+  background: var(--dsw-alias-bg-layer-1, rgba(28, 30, 34, 0.98));
+  box-shadow: var(--dsw-elevation-prominent, 0 10px 24px rgba(0, 0, 0, 0.35));
+}
+.iw-float-suggest-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-float-suggest-item.on { background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.08)); }
+.iw-float-suggest-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-float-suggest-hint { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-suggest-desc {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
 .iw-float-menu {
   display: flex;
   flex-direction: column;
@@ -1895,22 +2008,29 @@ html.iw-select-code .iw-code .iw-vision {
 }
 .iw-float-menu-item:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 .iw-float-menu-item.on { color: var(--dsw-alias-state-success-primary, #3fa55a); }
-.iw-float-menu-group { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); white-space: nowrap; }
-.iw-float-menu-empty { padding: 8px 10px; font-size: 12.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+.iw-float-menu-group { font-size: 12px; color: var(--dsw-alias-label-tertiary, inherit); white-space: nowrap; }
+.iw-float-menu-empty { padding: 8px 10px; font-size: 14px; color: var(--dsw-alias-label-tertiary, inherit); }
 /* Markdown tables: full width, scrolls sideways only when it must. */
-.iw-float-md-tablewrap { overflow-x: auto; margin: 4px 0; }
-.iw-float-md-table { border-collapse: collapse; font-size: 12px; max-width: 100%; }
+/* Same table as the conversation's: hairline rows, no grid, 13px text. */
+.iw-float-md-tablewrap { overflow-x: auto; margin: 8px 0; }
+.iw-float-md-table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 22px;
+}
 .iw-float-md-table th,
 .iw-float-md-table td {
-  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.16));
-  padding: 3px 7px;
+  border: 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  padding: 10px 16px 10px 0;
   vertical-align: top;
   text-align: left;
+  font-weight: 400;
 }
-.iw-float-md-table th {
-  background: var(--dsw-alias-fill-l2, rgba(255, 255, 255, 0.05));
-  font-weight: 600;
-}
+.iw-float-md-table th { font-weight: 500; }
+.iw-float-md-table tr:last-child td { border-bottom: 0; }
 .iw-float-md-left { text-align: left; }
 .iw-float-md-center { text-align: center; }
 .iw-float-md-right { text-align: right; }
@@ -1953,7 +2073,7 @@ html.iw-select-code .iw-code .iw-vision {
   background: var(--dsw-alias-blue-tint, rgba(64, 128, 255, 0.18));
   border: 0.5px solid var(--dsw-alias-blue-border, rgba(96, 150, 255, 0.55));
   color: var(--dsw-alias-label-link, #6ea8ff);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 17px;
 }
 .iw-float-chip-ref-text {
@@ -2103,7 +2223,7 @@ html.iw-select-code .iw-code .iw-vision {
 }
 .iw-float-group-current > .iw-float-group-head { color: var(--dsw-alias-label-secondary, inherit); }
 .iw-float-title {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2128,7 +2248,7 @@ html.iw-select-code .iw-code .iw-vision {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 8px;
+  gap: 20px;
   /* A flex item's automatic minimum is its content, which pushed the composer
      below the card's border once the transcript grew. */
   min-height: 0;
@@ -2136,73 +2256,190 @@ html.iw-select-code .iw-code .iw-vision {
   padding: 2px 0;
 }
 .iw-float-empty { font-size: 12px; color: var(--dsw-alias-label-tertiary, inherit); padding: 6px 0; }
-.iw-float-row { display: flex; flex-direction: column; gap: 2px; }
-.iw-float-who { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+/* Transcript rows, shaped like the conversation: the user side is a
+   right-aligned bubble with a clock under it, the assistant side is plain
+   full-width markdown. Measured off DSH: bubble 20px corners, 10px 16px,
+   14px/22px; body 14px/24px with 16px paragraph rhythm. */
+.iw-float-row { display: flex; flex-direction: column; }
+.iw-float-assistant {
+  font-size: 14px;
+  line-height: 24px;
+}
+.iw-float-user {
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.iw-float-bubble {
+  max-width: min(477px, 82%);
+  padding: 10px 16px;
+  border-radius: var(--dsw-radius-xl, 20px);
+  background: var(--dsw-specific-bubble, #edf3fe);
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 14px;
+  line-height: 22px;
+  word-break: break-word;
+}
+.iw-float-bubble .iw-float-md { line-height: 22px; }
+/* An open question is a card, matching the conversation's own: an 11px eyebrow,
+   a 16px question, numbered options, and the way back to the conversation. */
+.iw-float-ask {
+  align-self: stretch;
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  /* The conversation's card has no border: a hairline ring plus two soft
+     shadows is what lifts it off the page. */
+  box-shadow: 0 0 0 0.5px var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.1)), 0 3px 8px rgba(0, 0, 0, 0.03), 0 0 16px rgba(0, 0, 0, 0.02);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.iw-float-ask-head { display: flex; flex-direction: column; gap: 2px; }
+.iw-float-ask-eyebrow { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-ask-title { font-size: 16px; line-height: 24px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-float-ask-options { display: flex; flex-direction: column; gap: 8px; }
+.iw-float-ask-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 12px;
+}
+.iw-float-ask-index {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-3, rgba(0, 0, 0, 0.06));
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+.iw-float-ask-label { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-primary, inherit); }
+.iw-float-ask-desc { font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-ask-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.iw-float-ask-hint { font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-ask-go { flex: 0 0 auto; }
+/* The问答 card, borrowed from the conversation: the bubble is the user's own,
+   header and question in the secondary colour, the picked answer in primary. */
+.iw-float-question { display: flex; flex-direction: column; }
+.iw-float-q-head { font-size: 12.5px; line-height: 20px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-q-ask { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary, #61666b); }
+.iw-float-q-answer { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-primary, inherit); margin-top: 4px; }
+.iw-float-q-wait { font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary, #81858c); margin-top: 4px; }
+.iw-float-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-clock { font-size: 13px; line-height: 20px; }
+.iw-float-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  cursor: pointer;
+}
+.iw-float-copy:hover { background: var(--dsw-alias-bg-layer-3, rgba(127, 127, 127, 0.12)); }
 .iw-float-text {
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.iw-float-user .iw-float-text {
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: var(--dsw-alias-card-fill, rgba(255, 255, 255, 0.06));
-}
-.iw-float-md { font-size: 12.5px; line-height: 1.55; word-break: break-word; }
-.iw-float-md-p { margin: 0 0 6px; }
+.iw-float-md { font-size: 14px; line-height: 24px; word-break: break-word; }
+.iw-float-md-p { margin: 16px 0; }
+.iw-float-md-p:first-child { margin-top: 0; }
 .iw-float-md-p:last-child { margin-bottom: 0; }
-.iw-float-md-h { margin: 8px 0 4px; font-weight: 600; }
-.iw-float-md-h1 { font-size: 15px; }
-.iw-float-md-h2 { font-size: 14px; }
-.iw-float-md-h3, .iw-float-md-h4, .iw-float-md-h5, .iw-float-md-h6 { font-size: 13px; }
-.iw-float-md-list { margin: 0 0 6px; padding-left: 18px; }
-.iw-float-md-list li { margin: 1px 0; }
+.iw-float-md-h { margin: 32px 0 16px; font-weight: 600; line-height: 1.3; }
+.iw-float-md-h4, .iw-float-md-h5, .iw-float-md-h6 { margin: 16px 0; }
+.iw-float-md-h1 { font-size: 24px; }
+.iw-float-md-h2 { font-size: 20px; }
+.iw-float-md-h3 { font-size: 16px; }
+.iw-float-md-h4 { font-size: 14px; }
+.iw-float-md-h5, .iw-float-md-h6 { font-size: 14px; }
+.iw-float-md-list { margin: 16px 0; padding-left: 18px; }
+.iw-float-md-list li { margin: 0; }
+.iw-float-md-list li:not(:first-child) { margin-top: 6px; }
+/* Inline code, measured off the conversation's own rule (not-pre > code):
+   inline-flex keeps the snippet on one line instead of breaking a path
+   mid-word, 0.875em + a 0.5px hairline + 8px corners. */
 .iw-float-md-code {
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.08));
-  font-family: var(--ds-font-family-code, ui-monospace, Menlo, monospace);
-  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 5px;
+  border-radius: var(--dsw-radius-sm, 8px);
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.24));
+  background: var(--dsw-alias-markdown-inline-code, color-mix(in srgb, currentColor 7%, transparent));
+  font-family: var(--ds-font-family-code, "SF Mono", ui-monospace, Menlo, monospace);
+  font-size: 0.875em;
+  line-height: inherit;
+  color: inherit;
 }
+/* The conversation keeps the same 0.875em inside tables (11.375px at 13px). */
+.iw-float-md-table code { font-size: 0.875em; }
 .iw-float-md-link { color: var(--dsw-alias-brand-primary, #4b8bf5); text-decoration: none; }
 .iw-float-md-link:hover { text-decoration: underline; }
+/* Shaped like the conversation's block: 16px corners, a 42px header with the
+   block name on the left and wrap/copy on the right, 11px/19px SF Mono body. */
 .iw-float-md-codeblock {
-  margin: 6px 0;
-  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
+  margin: 8px 0;
+  border-radius: 16px;
   overflow: hidden;
-  background: var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.2));
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 4%, transparent);
 }
 .iw-float-md-codehead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px 8px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.1));
+  height: 42px;
+  padding: 0 10px 0 22px;
   color: var(--dsw-alias-label-tertiary, inherit);
-  font-size: 10.5px;
+  font-size: 11px;
 }
-.iw-float-md-copy {
-  border: 0;
+.iw-float-md-codelang { color: var(--dsw-alias-label-tertiary, inherit); }
+.iw-float-md-codeacts { display: flex; align-items: center; gap: 2px; }
+.iw-float-md-codeact {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
+  border: 0;
+  border-radius: 6px;
   background: transparent;
-  color: inherit;
-  font: inherit;
+  color: var(--dsw-alias-label-tertiary, inherit);
   cursor: pointer;
 }
-.iw-float-md-copy:hover { color: var(--dsw-alias-label-primary, inherit); }
+.iw-float-md-codeact:hover {
+  color: var(--dsw-alias-label-primary, inherit);
+  background: color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 8%, transparent);
+}
+.iw-float-md-codeact.on { color: var(--dsw-alias-label-primary, inherit); }
 .iw-float-md-pre {
   margin: 0;
-  padding: 6px 8px;
+  padding: 6px 22px 20px;
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: 220px;
-  font-family: var(--ds-font-family-code, ui-monospace, Menlo, monospace);
-  font-size: 11.5px;
-  line-height: 1.5;
+  max-height: 260px;
+  font-family: var(--ds-font-family-code, "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace);
+  font-size: 11px;
+  line-height: 19px;
+  color: var(--dsw-alias-label-primary, inherit);
 }
-.iw-float-md-line { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.iw-float-md-line { white-space: pre; }
+.iw-float-md-wrapped .iw-float-md-line { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 /* Long code lines wrap inside the narrow card instead of scrolling sideways. */
 .iw-float-md-quote {
   margin: 6px 0;
@@ -2261,39 +2498,108 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-add { color: var(--dsw-alias-state-success-primary, #3fa55a); }
 .iw-float-del { color: var(--dsw-alias-state-danger-primary, #e5534b); }
 .iw-float-running { font-size: 11.5px; color: var(--dsw-alias-label-tertiary, inherit); }
+/* The composer, shaped like DSH's own: one round container holding the field
+   and a control row — attach, permission, model, round send. */
 .iw-float-input {
+  /* The suggestion list is absolutely positioned above this box, so the box is
+     its containing block. */
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   gap: 6px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08));
-  padding-top: 8px;
+  padding: 10px 10px 8px 14px;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-1, transparent);
 }
 .iw-float-textarea {
   width: 100%;
+  min-height: 44px;
+  max-height: 140px;
   resize: none;
-  padding: 6px 8px;
-  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.14));
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.04));
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font: inherit;
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 22px;
 }
-.iw-float-textarea:focus { outline: none; border-color: var(--dsw-alias-border-l3, rgba(120, 160, 255, 0.6)); }
-.iw-float-send {
-  align-self: flex-end;
-  padding: 4px 12px;
-  border: 0;
-  border-radius: 7px;
-  background: var(--dsw-alias-bg-accent, #3b6ef0);
-  color: #fff;
-  font: inherit;
-  font-size: 12px;
+.iw-float-textarea::placeholder { color: var(--dsw-alias-label-tertiary, inherit); }
+.iw-float-textarea:focus { outline: none; }
+.iw-float-foot { display: flex; align-items: center; gap: 6px; }
+.iw-float-plus {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
   cursor: pointer;
 }
-.iw-float-send:disabled { opacity: 0.5; cursor: default; }
+.iw-float-plus:hover { background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.1)); }
+.iw-float-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 46%;
+  padding: 4px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.22));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.iw-float-perm:hover { background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.1)); }
+.iw-float-perm-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-float-foot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, inherit);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.iw-float-foot-chip:hover { background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.1)); }
+.iw-float-foot-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.iw-float-foot-model { max-width: 46%; }
+.iw-float-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-accent, #3b6ef0);
+  color: #fff;
+  cursor: pointer;
+}
+.iw-float-send:hover { filter: brightness(1.06); }
+.iw-float-send:disabled { opacity: 0.8; cursor: default; filter: none; }
+.iw-float-stop { background: var(--dsw-alias-label-primary, #333); color: var(--dsw-alias-bg-layer-1, #fff); }
 /* Resize: four edge strips plus a marked corner. The strips are invisible but
    wide enough to hit, and each carries the cursor the edge implies. */
 .iw-float-grip { position: absolute; touch-action: none; z-index: 2; }
@@ -2841,44 +3147,6 @@ html.iw-select-code .iw-code .iw-vision {
   font-weight: 400;
 }
 
-/* The turn's changed files, right under the transcript. */
-.iw-float-changes {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
-  background: var(--dsw-alias-card-fill, rgba(255, 255, 255, 0.05));
-}
-.iw-float-changes-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-.iw-float-changes-icon { opacity: 0.6; }
-.iw-float-changes-title { flex: 1 1 auto; }
-.iw-float-changes-add { color: var(--dsw-alias-state-success-primary, #3fa55a); font-variant-numeric: tabular-nums; }
-.iw-float-changes-del { color: var(--dsw-alias-state-danger-primary, #e5534b); font-variant-numeric: tabular-nums; }
-.iw-float-changes-list { display: flex; flex-direction: column; }
-.iw-float-changes-more {
-  border: 0;
-  background: transparent;
-  color: var(--dsw-alias-label-link, #6ea8ff);
-  font: inherit;
-  font-size: 11.5px;
-  padding: 2px 0 0;
-  cursor: pointer;
-  text-align: left;
-}
 /* Full-size picture viewer over the card. */
 .iw-float-viewer {
   position: absolute;
@@ -2913,7 +3181,7 @@ html.iw-select-code .iw-code .iw-vision {
   font-size: 12.5px;
   color: var(--dsw-alias-label-secondary, inherit);
 }
-.iw-md-bar-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-md-bar { justify-content: flex-end; }
 .iw-md-body { max-width: 860px; width: 100%; }
 .iw-md-body .iw-float-md { font-size: 14px; line-height: 1.7; }
 .iw-md-body .iw-float-md-h1 { font-size: 22px; margin: 18px 0 10px; }
@@ -2922,7 +3190,7 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-md-body .iw-float-md-p { margin: 8px 0; }
 .iw-md-body .iw-float-md-list { margin: 6px 0; padding-left: 22px; }
 .iw-md-body .iw-float-md-table { font-size: 13px; }
-.iw-md-body .iw-float-md-pre { font-size: 12.5px; }
+.iw-md-body .iw-float-md-pre { font-size: 11px; }
 `
 
 /** Render the stylesheet as a React element so unmounting removes it. */
@@ -3136,6 +3404,35 @@ const IDE_FOLDER_ICON_SIZE = 20
 function IdeEntryIcon({ name, kind = '', size = IDE_ENTRY_ICON_SIZE }) {
   if (ideLangOf(name) === 'java') return h(IdeJavaIcon, { kind, size })
   return h(IdeFileBadgeIcon, { letter: ideFileLetter(name), tint: ideTintOf(ideLangOf(name)), size })
+}
+
+/** Plus: the composer's attach menu. */
+function IdePlusIcon({ size = 16 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M8 3.5v9M3.5 8h9' })])
+}
+
+/** Chevron: this control opens a menu. */
+function IdeChevronDownIcon({ size = 12 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M4 6.5 8 10l4-3.5' })])
+}
+
+/** Send: an arrow leaving the composer. */
+function IdeArrowUpIcon({ size = 16 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M8 12.5v-9M4 7.5 8 3.5l4 4' })])
+}
+
+/** Stop: the running turn's cancel button. */
+function IdeStopMarkIcon({ size = 12 }) {
+  return ideSvg(size, [h('rect', { key: 'a', x: 4, y: 4, width: 8, height: 8, rx: 1.6, fill: 'currentColor', stroke: 'none' })])
+}
+
+/** Wrap: fold a long line back into the block's width. */
+function IdeWrapIcon({ size = 15 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M2 4h12M2 8h8.5a2 2 0 0 1 0 4H8' }),
+    h('path', { key: 'b', d: 'M9.5 10.5 7.5 12l2 1.5' }),
+    h('path', { key: 'c', d: 'M2 12h3' }),
+  ])
 }
 
 /** Crosshair: reveal the active file in the tree. */
@@ -3378,6 +3675,18 @@ const IDE_SHORTCUTS = [
       web: { code: 'KeyU', modifiers: ['primary', 'alt'] },
     },
     action: 'back',
+  },
+  {
+    id: 'dsh-ide-window.float-toggle',
+    kind: 'key',
+    labelKey: 'shortcutFloatToggle',
+    aliases: ['float', 'assistant', 'card', '悬浮', '悬浮框', '助手', '浮窗'],
+    // 两个运行时都用 ⌥+空格：不占字母键，在输入框里也能用
+    defaults: {
+      desktop: { code: 'Space', modifiers: ['alt'] },
+      web: { code: 'Space', modifiers: ['alt'] },
+    },
+    action: 'float-toggle',
   },
   {
     id: 'code-workspace.search-everywhere',
@@ -3786,12 +4095,17 @@ function ideWritePrefs(patch) {
   }
 }
 
-/** The floating card's shipped size, and the bounds the settings page accepts. */
-const IDE_FLOAT_DEFAULT_WIDTH = 460
+/**
+ * The floating card's shipped size, and the bounds the settings page accepts.
+ *
+ * The width matches DSH's own conversation column (744px at the reference
+ * viewport), so the card reads at the same measure as the chat behind it.
+ */
+const IDE_FLOAT_DEFAULT_WIDTH = 744
 const IDE_FLOAT_DEFAULT_HEIGHT = 560
 const IDE_FLOAT_MIN_WIDTH = 280
 const IDE_FLOAT_MIN_HEIGHT = 220
-const IDE_FLOAT_MAX_WIDTH = 900
+const IDE_FLOAT_MAX_WIDTH = 1200
 const IDE_FLOAT_MAX_HEIGHT = 900
 
 /** The card's default size: the preference, clamped, or the shipped size. */
@@ -4139,8 +4453,10 @@ function ideCreateStore(refs) {
     sessionId: null,
     // The floating quick-ask card: shown whenever the code workspace owns the
     // centre column, collapsed to a ball on request.
-    floatOpen: false,
-    floatCollapsed: false,
+    // A detached card is on screen from the start, wherever the app opens.
+    floatOpen: prefs.floatDetached === true,
+    // 每次打开 DSH 都从「收起来」开始：卡片在，但只占一个小球。
+    floatCollapsed: true,
     // Where the user dragged the card (null = the bottom-right corner).
     floatX: null,
     floatY: null,
@@ -4153,6 +4469,8 @@ function ideCreateStore(refs) {
     // The card's lifetime controls: `floatEnabled` is a preference, `floatClosed`
     // lasts until DSH restarts (the user asked for "stay closed until restart").
     floatEnabled: prefs.floatEnabled !== false,
+    // Detached cards stay on screen in every panel, not only the workspace.
+    floatDetached: prefs.floatDetached === true,
     floatClosed: false,
     // One reference waiting to be appended to the card's draft.
     floatInsert: null,
@@ -4645,6 +4963,16 @@ function ideCreateStore(refs) {
     const nextH = Math.round(h)
     if (state.floatWidth === nextW && state.floatHeight === nextH) return
     patch({ floatWidth: nextW, floatHeight: nextH })
+  }
+
+  /** Keep the card on screen outside the code workspace (persisted). */
+  function setFloatDetached(floatDetached) {
+    const next = floatDetached === true
+    if (state.floatDetached === next) return
+    ideWritePrefs({ floatDetached: next })
+    patch({ floatDetached: next })
+    // Turning it on while away from the workspace brings it back immediately.
+    if (next) patch({ floatOpen: true, floatClosed: false })
   }
 
   /** Turn the floating card on or off (persisted). */
@@ -5344,6 +5672,7 @@ function ideCreateStore(refs) {
     setFloatSize,
     setFloatDefaultSize,
     setFloatEnabled,
+    setFloatDetached,
     setFloatClosed,
     setFloatInsert,
     setRoot,
@@ -7907,7 +8236,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const isMarkdown = tab.kind !== 'jar' && ideIsMarkdownPath(tab.path)
   const markdownBar = isMarkdown && tab.status === 'ready'
     ? h('div', { key: 'mdbar', className: 'iw-md-bar' }, [
-      h('span', { key: 'name', className: 'iw-md-bar-name' }, tab.name),
+      // 文件名不在这里重复：上面的面包屑已经写着同一个名字
       h('button', {
         key: 'preview',
         type: 'button',
@@ -8919,6 +9248,17 @@ function IdeWorkspaceSettingsSection(props) {
             title: tr('settingsFloatHint'),
             onClick: () => store.setFloatEnabled(state.floatEnabled === false),
           }, state.floatEnabled !== false ? tr('settingsOn') : tr('settingsOff')),
+        ]),
+        // A card that lives on its own stays visible in other panels too.
+        h('div', { key: 'floatdetach', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatDetach')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: `iw-gesture-chip${state.floatDetached === true ? ' on' : ''}`,
+            title: tr('settingsFloatDetachHint'),
+            onClick: () => store.setFloatDetached(state.floatDetached !== true),
+          }, state.floatDetached === true ? tr('settingsOn') : tr('settingsOff')),
         ]),
         h('div', { key: 'floatsize', className: 'iw-settings-item' }, [
           h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatSize')),
@@ -13004,8 +13344,17 @@ async function ideDataWindowOpenMapper(store, tr, root, path, symbol, line) {
 
 /** How many messages the card keeps on screen. */
 const IDE_FLOAT_MESSAGES = 6
+/** How long after `compositionend` an Enter still counts as "confirm the IME". */
+const IDE_FLOAT_IME_SETTLE_MS = 80
+/** Collapsed card: a 44px ball plus the 4px padding the shell adds. */
+const IDE_FLOAT_BALL = 52
+/** Gap between the collapsed ball and the window corner. */
+const IDE_FLOAT_BALL_INSET = 20
 /** Re-ask delays after a turn, while its summary is still being recorded. */
-const IDE_FLOAT_CHANGES_RETRIES = [1200, 3000]
+// A turn's summary is written after the reply lands, and a long turn can take
+// tens of seconds to get there: keep asking instead of showing an older turn.
+/** DSH's own body size: the card reads at the same measure as the chat. */
+const IDE_FLOAT_FONT_SIZE = 14
 
 /** Permission presets the workspace switch offers, in DSH's own order. */
 const IDE_FLOAT_PERMISSIONS = [
@@ -13079,8 +13428,182 @@ function ideFloatImagesOf(content) {
   return images
 }
 
+/** `HH:MM` for a user row, the way the conversation stamps its bubble. */
+function ideFloatClock(time) {
+  if (!Number.isFinite(time) || time <= 0) return ''
+  const date = new Date(time)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+/**
+ * One transcript row: a right-aligned bubble for the user with a clock and a
+ * copy button underneath, plain full-width markdown for the assistant.
+ */
+function ideFloatRow(row, tr, io) {
+  const { setViewing, store, pictures } = io
+  // Questions cannot be answered here: DSH only accepts the answer in the
+  // Conversation, so the card's button navigates there instead.
+  const goToChat = typeof io.goToChat === 'function' ? io.goToChat : () => {}
+  if (row.role === 'files') {
+    return h('div', { key: row.key, className: 'iw-float-row iw-float-files' }, [
+      h('span', { key: 'who', className: 'iw-float-who' }, tr('floatFiles')),
+      h('div', { key: 'list', className: 'iw-float-filelist' }, (row.files ?? []).map((file) => h('button', {
+        key: file.path,
+        type: 'button',
+        className: 'iw-float-file',
+        title: file.path,
+        onClick: () => {
+          // Same entry point as the conversation's file cards: open the file in
+          // the workspace and switch the panel to it.
+          const opened = typeof openInWorkspace === 'function'
+            ? openInWorkspace(file.path) === true
+            : store.openAt(file.path) === true
+          if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
+        },
+      }, [
+        h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
+        file.description === '' ? null : h('span', { key: 'd', className: 'iw-float-file-desc' }, file.description),
+      ]))),
+    ])
+  }
+  // Shaped like the conversation: the user side is a right-aligned bubble with
+  // a clock and a copy button under it, the assistant side is plain full-width
+  // markdown. No "you"/"assistant" captions.
+  const body = row.text === '' ? null : h(IdeFloatMarkdown, { key: 'text', text: row.text, tr })
+  const pics = row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
+    const url = pictures[image.attachmentId] ?? ''
+    if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
+    return h('img', {
+      key: `pic${index}`,
+      className: 'iw-float-pic',
+      src: url,
+      alt: image.name ?? '',
+      title: tr('floatPreviewImage'),
+      draggable: false,
+      // Right-clicking here offers the app's own "Copy", which pastes the file
+      // name instead of the picture.
+      onContextMenu: (event) => event.preventDefault(),
+      onClick: () => setViewing({ url, name: image.name ?? '' }),
+    })
+  }))
+  if (row.role === 'question') {
+    const picked = Array.isArray(row.answers) ? row.answers : []
+    // Answered: the compact bubble the conversation leaves behind. Open: the
+    // full card, so the question is readable without leaving the workspace.
+    if (picked.length > 0) {
+      return h('div', { key: row.key, className: 'iw-float-row iw-float-user' }, [
+        h('div', { key: 'bubble', className: 'iw-float-bubble iw-float-question' }, [
+          row.header === '' ? null : h('div', { key: 'h', className: 'iw-float-q-head' }, row.header),
+          h('div', { key: 'q', className: 'iw-float-q-ask' }, row.question),
+          h('div', { key: 'a', className: 'iw-float-q-answer' }, picked.join('、')),
+        ]),
+      ])
+    }
+    const options = Array.isArray(row.options) ? row.options : []
+    return h('div', { key: row.key, className: 'iw-float-row' }, [
+      h('div', { key: 'card', className: 'iw-float-ask' }, [
+        h('div', { key: 'head', className: 'iw-float-ask-head' }, [
+          row.header === '' ? null : h('div', { key: 'e', className: 'iw-float-ask-eyebrow' }, row.header),
+          h('div', { key: 't', className: 'iw-float-ask-title' }, row.question),
+        ]),
+        options.length === 0 ? null : h('div', { key: 'o', className: 'iw-float-ask-options' },
+          options.map((option, index) => h('div', {
+            key: `o${index}`,
+            className: 'iw-float-ask-option',
+          }, [
+            h('span', { key: 'n', className: 'iw-float-ask-index' }, String(index + 1)),
+            h('span', { key: 'l', className: 'iw-float-ask-label' }, option.label),
+            option.description === ''
+              ? null
+              : h('span', { key: 'd', className: 'iw-float-ask-desc' }, option.description),
+          ]))),
+        h('div', { key: 'foot', className: 'iw-float-ask-foot' }, [
+          h('span', { key: 'hint', className: 'iw-float-ask-hint' }, tr('floatQuestionHint')),
+          h('button', {
+            key: 'go',
+            type: 'button',
+            className: 'iw-btn primary iw-float-ask-go',
+            onClick: () => { goToChat() },
+          }, tr('floatQuestionGo')),
+        ]),
+      ]),
+    ])
+  }
+  if (row.role === 'user') {
+    const clock = ideFloatClock(row.time)
+    return h('div', { key: row.key, className: 'iw-float-row iw-float-user' }, [
+      h('div', { key: 'bubble', className: 'iw-float-bubble' }, [body, pics].filter((part) => part !== null)),
+      h('div', { key: 'meta', className: 'iw-float-meta' }, [
+        clock === '' ? null : h('span', { key: 'clock', className: 'iw-float-clock' }, clock),
+        row.text === '' ? null : h('button', {
+          key: 'copy',
+          type: 'button',
+          className: 'iw-float-copy',
+          title: tr('floatCopyMessage'),
+          onClick: () => { ideCopyWithNotice(store, tr, row.text) },
+        }, h(IdeCopyIcon, { size: 13 })),
+      ].filter((part) => part !== null)),
+    ])
+  }
+  return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, [body, pics].filter((part) => part !== null))
+}
+
+/**
+ * The questions inside an `ask_user_question` call. `arguments` is a JSON string
+ * on the wire; anything unparseable yields no rows rather than a broken card.
+ */
+function ideFloatQuestionsOf(argumentText) {
+  let parsed
+  try {
+    parsed = typeof argumentText === 'string' ? JSON.parse(argumentText) : argumentText
+  } catch (error) {
+    ideLogRecord('warn', 'float', 'question arguments unreadable', { error: String(error) })
+    return []
+  }
+  const list = Array.isArray(parsed?.questions) ? parsed.questions : []
+  return list.map((entry) => ({
+    id: String(entry?.id ?? ''),
+    header: String(entry?.header ?? ''),
+    question: String(entry?.question ?? ''),
+    multiSelect: entry?.multiSelect === true || entry?.multi_select === true,
+    options: (Array.isArray(entry?.options) ? entry.options : []).map((option) => ({
+      label: String(option?.label ?? ''),
+      description: String(option?.description ?? ''),
+    })).filter((option) => option.label !== ''),
+  })).filter((entry) => entry.question !== '')
+}
+
+/** Question id → the labels the user picked, read off the tool results. */
+function ideFloatAnswers(entries) {
+  const answers = new Map()
+  if (!Array.isArray(entries)) return answers
+  for (const entry of entries) {
+    const event = entry?.event
+    if (event?.type !== 'tool/result') continue
+    const text = ideFloatTextOf(event.data?.message?.content)
+    if (!text.includes('answers')) continue
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch (error) {
+      continue
+    }
+    for (const answer of Array.isArray(parsed?.answers) ? parsed.answers : []) {
+      const picked = [
+        ...(Array.isArray(answer?.selected) ? answer.selected.map(String) : []),
+        ...(typeof answer?.custom === 'string' && answer.custom !== '' ? [answer.custom] : []),
+      ]
+      if (picked.length > 0) answers.set(String(answer?.id ?? ''), picked)
+    }
+  }
+  return answers
+}
+
 function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
   if (!Array.isArray(entries)) return []
+  const answers = ideFloatAnswers(entries)
   const rows = []
   for (const entry of entries) {
     const event = entry?.event
@@ -13092,14 +13615,40 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
       const text = ideFloatTextOf(content)
       // A prompt can be images only, so a row exists when either part exists.
       const images = ideFloatImagesOf(content)
-      if (text !== '' || images.length > 0) rows.push({ key: `u${event.seq}`, role: 'user', text, images })
+      if (text !== '' || images.length > 0) {
+        rows.push({ key: `u${event.seq}`, role: 'user', text, images, time: Number(event.time ?? 0) })
+      }
       continue
     }
     if (event.type === 'assistant/message') {
       const content = event.data?.message?.content
       const text = ideFloatTextOf(content)
       const images = ideFloatImagesOf(content)
-      if (text !== '' || images.length > 0) rows.push({ key: `a${event.seq}`, role: 'assistant', text, images })
+      if (text !== '' || images.length > 0) {
+        rows.push({ key: `a${event.seq}`, role: 'assistant', text, images, time: Number(event.time ?? 0) })
+      }
+      continue
+    }
+    // The conversation's own question card: `ask_user_question` is a tool call,
+    // and its answer comes back as the tool result with matching ids.
+    if (event.type === 'tool/call' && event.data?.name === 'ask_user_question') {
+      const questions = ideFloatQuestionsOf(event.data?.arguments)
+      questions.forEach((question, index) => {
+        const picked = answers.get(String(question.id)) ?? []
+        rows.push({
+          key: `q${event.seq}:${index}`,
+          role: 'question',
+          text: '',
+          images: [],
+          time: Number(event.time ?? 0),
+          header: question.header,
+          question: question.question,
+          options: question.options,
+          multiSelect: question.multiSelect,
+          answers: picked,
+          pending: picked.length === 0,
+        })
+      })
       continue
     }
     if (event.type === 'deliverables/presented') {
@@ -13117,27 +13666,105 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * (`read-only` / `workspace-write` / `danger-full-access`). Unknown ids are shown
  * verbatim rather than guessed.
  */
-/** One changed-file row from the Host's summary, or null when unusable. */
-function ideFloatChangedFile(entry) {
-  if (entry === null || typeof entry !== 'object') return null
-  if (typeof entry.path !== 'string' || entry.path === '') return null
+/** How a Tool call reads in the card's progress line. */
+const IDE_FLOAT_ACTIVITY = [
+  { pattern: /^(bash|shell|terminal)$/u, key: 'floatActivityCommand' },
+  { pattern: /^grep$/u, key: 'floatActivitySearch' },
+  { pattern: /^read$/u, key: 'floatActivityRead' },
+  { pattern: /^(write|edit|patch)$/u, key: 'floatActivityWrite' },
+  { pattern: /^(web_search|web_fetch)$/u, key: 'floatActivityWeb' },
+  { pattern: /^ask_user_question$/u, key: 'floatActivityAsk' },
+  { pattern: /^(todo_write|task|workflow)$/u, key: 'floatActivityTask' },
+]
+
+/**
+ * What the current turn has done so far: the Tool calls since the newest human
+ * prompt, newest first, plus a one-line detail of the newest one. Pure so the
+ * progress line is testable without a Session.
+ */
+function ideFloatActivityOf(entries) {
+  const names = new Set()
+  let detail = ''
+  if (!Array.isArray(entries)) return { names: [], detail }
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const event = entries[index]?.event
+    if (event?.type === 'user/message' && event.data?.source?.kind === 'user') break
+    if (event?.type !== 'tool/call') continue
+    const name = String(event.data?.name ?? '')
+    if (name === '') continue
+    if (detail === '') detail = ideFloatCallDetail(name, event.data?.arguments)
+    names.add(name)
+  }
+  return { names: [...names].reverse(), detail }
+}
+
+/** The one line under the progress label: what the newest call is doing. */
+function ideFloatCallDetail(name, argumentText) {
+  let args
+  try {
+    args = typeof argumentText === 'string' ? JSON.parse(argumentText) : argumentText
+  } catch (error) {
+    return ''
+  }
+  const text = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim().replace(/\s+/gu, ' ') : '')
+  if (/^(bash|shell|terminal)$/u.test(name)) return text(args?.command)
+  if (/^(read|write|edit|patch)$/u.test(name)) return text(args?.file_path ?? args?.path)
+  if (name === 'grep') return text(args?.pattern ?? args?.query)
+  if (name === 'web_search') return Array.isArray(args?.queries) ? text(args.queries[0]) : ''
+  return ''
+}
+
+/** `用时 2 分 26 秒` / `用时 26 秒`, the way the conversation's footer reads. */
+function ideFloatElapsed(ms, translate) {
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const seconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return minutes > 0
+    ? tr('floatElapsedMin').replace('{m}', String(minutes)).replace('{s}', String(rest))
+    : tr('floatElapsedSec').replace('{s}', String(rest))
+}
+
+/**
+ * The `/` or `@` token the caret sits in, or null. A token starts after
+ * whitespace and runs to the caret without spaces, exactly like the command
+ * trigger in the conversation composer.
+ */
+function ideFloatTrigger(text, caret) {
+  const head = String(text ?? '').slice(0, Math.max(0, Number(caret) || 0))
+  const match = /(^|\s)([/@][^\s]*)$/u.exec(head)
+  if (match === null) return null
+  const token = match[2]
   return {
-    path: entry.path,
-    added: Number.isFinite(entry.added) ? entry.added : 0,
-    deleted: Number.isFinite(entry.deleted) ? entry.deleted : 0,
-    binary: entry.binary === true,
+    sign: token[0],
+    body: token.slice(1),
+    start: head.length - token.length,
+    end: Math.max(0, Number(caret) || 0),
   }
 }
 
-/** The rows of one changes summary, tolerant of a partial answer. */
-function ideFloatChangedFiles(summary) {
-  const files = Array.isArray(summary?.files) ? summary.files : []
-  const rows = []
-  for (const entry of files) {
-    const row = ideFloatChangedFile(entry)
-    if (row !== null) rows.push(row)
-  }
-  return rows
+/** `@a/b/c` → the directory to list and the prefix to match inside it. */
+function ideFloatMentionQuery(body) {
+  const text = String(body ?? '')
+  const slash = text.lastIndexOf('/')
+  return slash < 0
+    ? { dir: '', query: text }
+    : { dir: text.slice(0, slash), query: text.slice(slash + 1) }
+}
+
+/**
+ * One `workspaceFiles.list` entry. The Host answers with `{name, type}` relative
+ * to the directory that was listed, so the caller's directory makes the path.
+ */
+function ideFloatEntryOf(raw, dir) {
+  if (raw === null || typeof raw !== 'object') return null
+  const name = String(raw.name ?? raw.path ?? '')
+  if (name === '') return null
+  const kind = String(raw.kind ?? raw.type ?? '')
+  const isDir = raw.isDirectory === true || kind === 'directory' || kind === 'dir' || kind === 'folder'
+  const prefix = String(dir ?? '').replace(/\/+$/, '')
+  const path = prefix === '' ? name : `${prefix}/${name}`
+  return { path, name, isDir }
 }
 
 function ideFloatPermissionLabel(preset, translate) {
@@ -13604,9 +14231,15 @@ function ideFloatMarkdownBlocks(text) {
   return blocks
 }
 
-/** One fenced code block: language label, copy, tokenised lines. */
+/**
+ * One fenced code block, shaped like the conversation's: a quiet header with the
+ * block name on the left and the wrap/copy controls on the right.
+ */
 function IdeFloatCodeBlock({ code, lang, tr }) {
   const [copied, setCopied] = useState(false)
+  // Long lines are readable in a narrow card only when they wrap, so that is
+  // the default and the header offers the switch.
+  const [wrap, setWrap] = useState(true)
   const language = ideLangOf(`x.${String(lang ?? '').trim()}`) || ''
   const lines = useMemo(() => String(code ?? '').split('\n'), [code])
   const copy = () => {
@@ -13616,10 +14249,32 @@ function IdeFloatCodeBlock({ code, lang, tr }) {
   }
   return h('div', { className: 'iw-float-md-codeblock' }, [
     h('div', { key: 'head', className: 'iw-float-md-codehead' }, [
-      h('span', { key: 'lang', className: 'iw-float-md-codelang' }, ideLangLabel(language) || (lang === '' ? tr('floatCode') : lang)),
-      h('button', { key: 'copy', type: 'button', className: 'iw-float-md-copy', onClick: copy }, copied ? tr('floatCopied') : tr('floatCopy')),
+      // An unlabelled or plain-text fence is just "代码块", as DSH calls it.
+      h('span', {
+        key: 'lang',
+        className: 'iw-float-md-codelang',
+      }, language === '' || language === 'txt' ? tr('floatCode') : ideLangLabel(language) || tr('floatCode')),
+      h('span', { key: 'acts', className: 'iw-float-md-codeacts' }, [
+        h('button', {
+          key: 'wrap',
+          type: 'button',
+          className: `iw-float-md-codeact${wrap ? ' on' : ''}`,
+          title: tr('floatWrap'),
+          onClick: () => setWrap(!wrap),
+        }, h(IdeWrapIcon, { size: 14 })),
+        h('button', {
+          key: 'copy',
+          type: 'button',
+          className: 'iw-float-md-codeact',
+          title: copied ? tr('floatCopied') : tr('floatCopy'),
+          onClick: copy,
+        }, h(IdeCopyIcon, { size: 14 })),
+      ]),
     ]),
-    h('pre', { key: 'pre', className: 'iw-float-md-pre' }, lines.map((line, lineIndex) => h('div', {
+    h('pre', {
+      key: 'pre',
+      className: `iw-float-md-pre${wrap ? ' iw-float-md-wrapped' : ''}`,
+    }, lines.map((line, lineIndex) => h('div', {
       key: lineIndex,
       className: 'iw-float-md-line',
     }, ideTokenize(line, language).map((run, runIndex) => (run.cls === ''
@@ -13674,7 +14329,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, commandList, workspaceList }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -13694,15 +14349,25 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const [preset, setPreset] = useState('')
   const [effort, setEffort] = useState(null)
   // Attachment bytes are fetched on demand: the log only carries references.
+  // The `/` and `@` menus: the same Host catalog and the same directory listing
+  // the conversation's composer offers, so the two never disagree.
+  const [suggest, setSuggest] = useState(null)
+  const rawEntries = useRef([])
+  const suggestSeq = useRef(0)
+  const commandCache = useRef(null)
+  const directoryCache = useRef(new Map())
   const [pictures, setPictures] = useState({})
-  // The turn's changed files, and the picture the user is looking at.
-  const [changes, setChanges] = useState(null)
-  const [changeOpen, setChangeOpen] = useState(false)
+  // The picture the user is looking at.
   const [viewing, setViewing] = useState(null)
   const picturesRef = useRef({})
   picturesRef.current = pictures
   const [projectedPreset, setProjectedPreset] = useState('')
   const cardRef = useRef(null)
+  // An Enter that confirms an IME candidate must only commit the text, never
+  // send: the conversation's composer behaves the same way. Some IMEs fire
+  // `compositionend` just before that keydown, so the timestamp covers them.
+  const composingRef = useRef(false)
+  const composedAtRef = useRef(0)
   const dragRef = useRef(null)
   const menuRef = useRef(null)
 
@@ -13748,55 +14413,6 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
     return () => { alive = false }
   }, [binding, entries])
-
-  // The changed-files card of the latest turn.
-  //
-  // The Host announces `workspace/changes` on the session log, but that event
-  // never reaches a plugin (the retained window keeps messages), and the Host's
-  // own summary route sits behind its authenticated fence. So the plugin's host
-  // answers instead, and the answer only exists while the turn's summary lives
-  // in memory — exactly like the conversation's card.
-  useEffect(() => {
-    // `sessionId` is declared below; read it from the snapshot so the effect
-    // can stay next to the other data effects without a temporal-dead-zone crash.
-    const owner = state.sessionId ?? ''
-    if (binding === null || owner === '') {
-      setChanges(null)
-      return undefined
-    }
-    let alive = true
-    let timer
-    const ask = (attempt) => {
-      fetch(`/dsh-ide/changes?session=${encodeURIComponent(owner)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ session: owner }),
-      })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((answer) => {
-          if (alive !== true || answer === null || answer.ok !== true) return
-          const files = ideFloatChangedFiles(answer.value)
-          if (files.length > 0) {
-            setChanges({ files, added: files.reduce((sum, row) => sum + row.added, 0), deleted: files.reduce((sum, row) => sum + row.deleted, 0) })
-            return
-          }
-          // The Host records the announcement after the reply lands, so the
-          // first ask of a fresh turn can arrive early; a couple of retries
-          // cover it without polling.
-          if (attempt >= IDE_FLOAT_CHANGES_RETRIES.length) {
-            setChanges(null)
-            return
-          }
-          timer = globalThis.setTimeout(() => ask(attempt + 1), IDE_FLOAT_CHANGES_RETRIES[attempt])
-        })
-        .catch(() => {})
-    }
-    ask(0)
-    return () => {
-      alive = false
-      globalThis.clearTimeout(timer)
-    }
-  }, [binding, state.sessionId, entries.length])
 
   // Coming back into view (conversation → code workspace) shows the newest line
   // again, even if the user had scrolled up before leaving.
@@ -13857,7 +14473,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
     const source = binding.eventSource
     const read = () => {
-      setEntries(ideFloatTranscript(source.getSnapshot()?.entries))
+      const raw = source.getSnapshot()?.entries
+      // The transcript drops Tool calls; the progress line needs them.
+      rawEntries.current = Array.isArray(raw) ? raw : []
+      setEntries(ideFloatTranscript(raw))
     }
     read()
     return source.subscribe(read)
@@ -13947,6 +14566,104 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
 
   const permission = projectedPreset !== '' ? projectedPreset : (preset !== '' ? preset : ideFloatPermissionOf(entries))
 
+  // `/` and `@` suggestions, recomputed whenever the draft changes. The lists
+  // come from the Host (`commands.list` / `workspaceFiles.list`), which is the
+  // same pair the conversation composer reads.
+  useEffect(() => {
+    if (binding === null || sessionId === '') { setSuggest(null); return }
+    const token = ideFloatTrigger(draft, draft.length)
+    if (token === null) { setSuggest(null); return }
+    const seq = suggestSeq.current + 1
+    suggestSeq.current = seq
+    if (token.sign === '/') {
+      const run = async () => {
+        let catalog = commandCache.current
+        if (catalog === null) {
+          const result = typeof commandList === 'function' ? await commandList(sessionId) : { value: [] }
+          if (suggestSeq.current !== seq) return
+          if (result?.error !== undefined) {
+            store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
+            setSuggest(null)
+            return
+          }
+          catalog = Array.isArray(result?.value) ? result.value : []
+          commandCache.current = catalog
+        }
+        if (suggestSeq.current !== seq) return
+        const query = token.body.toLowerCase()
+        const items = catalog.map((raw) => ({
+          id: String(raw?.name ?? ''),
+          label: String(raw?.name ?? ''),
+          description: String(raw?.description ?? ''),
+          group: String(raw?.category ?? raw?.group ?? ''),
+          kind: 'command',
+        })).filter((item) => item.id !== ''
+          && (query === '' || item.id.toLowerCase().includes(query) || item.label.toLowerCase().includes(query)))
+        setSuggest({ sign: '/', token, items: items.slice(0, 12), index: 0, dir: '' })
+      }
+      void run()
+      return
+    }
+    const { dir, query } = ideFloatMentionQuery(token.body)
+    const run = async () => {
+      let entries = directoryCache.current.get(dir)
+      if (entries === undefined) {
+        // Paths are relative to the Session's workspace root, and `'.'` is that
+        // root: an empty string is refused with "path is required".
+        const result = typeof workspaceList === 'function'
+          ? await workspaceList(sessionId, dir === '' ? '.' : dir)
+          : { value: [] }
+        if (suggestSeq.current !== seq) return
+        if (result?.error !== undefined) {
+          store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
+          setSuggest(null)
+          return
+        }
+        entries = (Array.isArray(result?.value) ? result.value : [])
+          .map((raw) => ideFloatEntryOf(raw, dir))
+          .filter((entry) => entry !== null)
+        directoryCache.current.set(dir, entries)
+      }
+      if (suggestSeq.current !== seq) return
+      const needle = query.toLowerCase()
+      const items = entries
+        .filter((entry) => needle === '' || entry.name.toLowerCase().includes(needle))
+        .sort((left, right) => (left.isDir === right.isDir ? left.name.localeCompare(right.name) : left.isDir ? -1 : 1))
+        .slice(0, 40)
+        .map((entry) => ({ id: entry.path, label: entry.name, description: '', group: '', kind: entry.isDir ? 'dir' : 'file' }))
+      setSuggest({ sign: '@', token, items, index: 0, dir })
+    }
+    void run()
+  }, [draft, binding, sessionId, commandList, workspaceList])
+
+  // Pick one suggestion: a command runs through the Session's own command line,
+  // a file becomes a reference chip — both exactly what the conversation does.
+  const pickSuggest = (item) => {
+    if (item === undefined) return
+    const token = ideFloatTrigger(draft, draft.length)
+    const cut = token === null ? draft : `${draft.slice(0, token.start)}${draft.slice(token.end)}`
+    setDraft(cut)
+    setSuggest(null)
+    if (item.kind === 'dir') {
+      // Drill in: keep the trigger, append the directory and a slash.
+      setDraft(`${cut}@${item.id}/`)
+      return
+    }
+    if (item.kind === 'file') {
+      const ref = `@${item.id}`
+      setRefs((current) => (current.includes(ref) ? current : [...current, ref]))
+      return
+    }
+    const command = binding?.session?.command
+    if (typeof command !== 'function') return
+    Promise.resolve(command(`/${item.id}`)).then((result) => {
+      const failed = result?.ok === false || result?.value?.matched === false
+      if (failed) store.setNotice(`${tr('floatCommandFailed')}: ${item.id}`)
+    }).catch((error) => {
+      store.setNotice(`${tr('floatCommandFailed')}: ${error?.message ?? error}`)
+    })
+  }
+
   // Opening the switcher lands on the current workspace's group: the list can
   // be long, and the conversations a person wants are the ones next to them.
   useEffect(() => {
@@ -13988,16 +14705,38 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return () => document.removeEventListener('pointerdown', onDown, true)
   }, [menu])
 
+  const running = binding !== null && binding.session.getSnapshot()?.running === true
+  // The elapsed clock only runs while the Session is working; a fresh turn
+  // starts it again, so `用时` always means this turn.
+  const [runningSince, setRunningSince] = useState(0)
+  const [, setClockTick] = useState(0)
+  useEffect(() => {
+    if (running !== true) { setRunningSince(0); return undefined }
+    setRunningSince((current) => (current === 0 ? Date.now() : current))
+    // Bumping a counter is what re-renders once a second; setting the same
+    // timestamp again would be a no-op React bails out of.
+    const timer = globalThis.setInterval(() => setClockTick((tick) => tick + 1), 1000)
+    return () => globalThis.clearInterval(timer)
+  }, [running])
+
   if (!open) return null
 
-  const running = binding !== null && binding.session.getSnapshot()?.running === true
   // The header names the conversation, not the folder: that is what the menu
   // switches. The workspace stays available in the tooltip and the empty state.
   const currentRow = sessionRows.find((row) => row.sessionId === sessionId)
   const sessionGroups = ideFloatSessionGroups(sessionRows, state.rootPath ?? '')
+  const workspace = ideBasename(state.rootPath ?? '') || tr('floatNoWorkspace')
   const sessionTitle = currentRow?.title
     ?? (workspace === '' || workspace === tr('floatNoWorkspace') ? tr('floatNoSession') : workspace)
-  const workspace = ideBasename(state.rootPath ?? '') || tr('floatNoWorkspace')
+  // Maximising the window moves both card and ball: nothing else re-renders
+  // this component on resize, so the coordinates would stay at the old size.
+  const [, setViewportTick] = useState(0)
+  useEffect(() => {
+    const onResize = () => setViewportTick((tick) => tick + 1)
+    globalThis.addEventListener('resize', onResize)
+    return () => globalThis.removeEventListener('resize', onResize)
+  }, [])
+
   const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth
   const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
   const size = ideFloatSize(state, viewportWidth, viewportHeight)
@@ -14260,36 +14999,44 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const options = ideFloatModelOptions(models)
   // The workspace palette drives the card: same attribute, same tokens, same
   // type scale as the panel behind it.
-  const font = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  // The card reads like DSH's own chat: the host's 14px body size and the
+  // host font. The workspace's tree size and palette only apply while the card
+  // sits inside the workspace.
+  const detached = state.floatDetached === true
+  const font = `${IDE_FLOAT_FONT_SIZE}px`
 
   // The stylesheet stays a sibling of the card: a `<style>` inside it would put
   // its text into the card's own text content.
   const styled = (node) => h(React.Fragment, null, [h(IdeStyles, { key: 'style' }), node])
 
-  const shell = (children, extra) => styled(h('div', {
+  const shell = (children, extra, box) => styled(h('div', {
     key: 'card',
     ref: cardRef,
     className: extra === undefined ? 'iw-float' : `iw-float ${extra}`,
-    'data-dsh-theme': state.theme === '' ? undefined : state.theme,
+    'data-dsh-theme': detached || state.theme === '' ? undefined : state.theme,
     style: {
-      left: `${point.left}px`,
-      top: `${point.top}px`,
-      right: 'auto',
-      bottom: 'auto',
-      width: `${size.width}px`,
-      height: `${size.height}px`,
-      fontSize: `${font}px`,
+      // A box without coordinates is pinned to the bottom-right corner.
+      left: box === undefined ? `${point.left}px` : 'auto',
+      top: box === undefined ? `${point.top}px` : 'auto',
+      right: box === undefined ? 'auto' : `${IDE_FLOAT_BALL_INSET}px`,
+      bottom: box === undefined ? 'auto' : `${IDE_FLOAT_BALL_INSET}px`,
+      width: `${box?.width ?? size.width}px`,
+      height: `${box?.height ?? size.height}px`,
+      fontSize: font,
     },
   }, children))
 
   if (collapsed) {
+    // The ball is anchored to the window's bottom-right corner by CSS, so a
+    // window resize can never leave it stranded mid-screen.
     return shell([h('button', {
       key: 'b',
       type: 'button',
       className: 'iw-float-ball-btn',
       onClick: () => store.setFloatCollapsed(false),
+      title: tr('floatExpand'),
       'aria-label': tr('floatExpand'),
-    }, 'AI')], 'iw-float-collapsed')
+    }, 'AI')], 'iw-float-collapsed', { width: IDE_FLOAT_BALL, height: IDE_FLOAT_BALL })
   }
 
   return shell([
@@ -14320,20 +15067,6 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           if (typeof startSession === 'function') startSession()
         },
       }, '＋'),
-      h('button', {
-        key: 'model',
-        type: 'button',
-        className: 'iw-float-chip',
-        title: tr('floatModelHint'),
-        onClick: () => setMenu(menu === 'model' ? '' : 'model'),
-      }, modelLabel),
-      efforts.length === 0 ? null : h('button', {
-        key: 'effort',
-        type: 'button',
-        className: 'iw-float-chip iw-float-effort',
-        title: `${tr('floatEffort')}: ${effortLabel}`,
-        onClick: () => setMenu(menu === 'effort' ? '' : 'effort'),
-      }, effortLabel),
       h('div', { key: 'actions', className: 'iw-float-actions' }, [
         h('button', {
           key: 'shrink',
@@ -14418,91 +15151,36 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }, entries.length === 0
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : entries.map((row) => {
-        if (row.role === 'files') {
-          return h('div', { key: row.key, className: 'iw-float-row iw-float-files' }, [
-            h('span', { key: 'who', className: 'iw-float-who' }, tr('floatFiles')),
-            h('div', { key: 'list', className: 'iw-float-filelist' }, (row.files ?? []).map((file) => h('button', {
-              key: file.path,
-              type: 'button',
-              className: 'iw-float-file',
-              title: file.path,
-              onClick: () => {
-                // Same entry point as the conversation's file cards: open the
-                // file in the workspace and switch the panel to it.
-                const opened = typeof openInWorkspace === 'function'
-                  ? openInWorkspace(file.path) === true
-                  : store.openAt(file.path) === true
-                if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
-              },
-            }, [
-              h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
-              file.description === '' ? null : h('span', { key: 'd', className: 'iw-float-file-desc' }, file.description),
-            ]))),
-          ])
+        // One malformed event must not take the whole card down: a throw inside
+        // this map unmounts the overlay, and the user just sees the card vanish.
+        try {
+          return ideFloatRow(row, tr, { setViewing, store, pictures, goToChat })
+        } catch (error) {
+          ideLogRecord('warn', 'float', 'row render failed', { key: row.key, error: String(error) })
+          return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
-        return h('div', { key: row.key, className: `iw-float-row iw-float-${row.role}` }, [
-          h('span', { key: 'who', className: 'iw-float-who' }, row.role === 'user' ? tr('floatYou') : tr('floatAssistant')),
-          // Both sides are markdown: a prompt can carry tables and lists too, and
-          // rendering it as raw text was exactly what users complained about.
-          row.text === '' ? null : h(IdeFloatMarkdown, { key: 'text', text: row.text, tr }),
-          row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
-            const url = pictures[image.attachmentId] ?? ''
-            if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
-            return h('img', {
-              key: `pic${index}`,
-              className: 'iw-float-pic',
-              src: url,
-              alt: image.name ?? '',
-              title: tr('floatPreviewImage'),
-              draggable: false,
-              // Right-clicking here offers the app's own "Copy", which pastes the
-              // file name instead of the picture.
-              onContextMenu: (event) => event.preventDefault(),
-              onClick: () => setViewing({ url, name: image.name ?? '' }),
-            })
-          })),
-        ])
       })),
-    running ? h('div', { key: 'run', className: 'iw-float-running' }, tr('floatRunning')) : null,
-    changes === null ? null : h('div', { key: 'changes', className: 'iw-float-changes' }, [
-      h('button', {
-        key: 'head',
-        type: 'button',
-        className: 'iw-float-changes-head',
-        onClick: () => setChangeOpen(!changeOpen),
-      }, [
-        h('span', { key: 'icon', className: 'iw-float-changes-icon', 'aria-hidden': 'true' }, '⌗'),
-        h('span', { key: 'title', className: 'iw-float-changes-title' }, `${tr('floatChangesTitle')} ${changes.files.length} ${tr('floatChangesUnit')}`),
-        h('span', { key: 'added', className: 'iw-float-changes-add' }, `+${changes.added}`),
-        h('span', { key: 'deleted', className: 'iw-float-changes-del' }, `-${changes.deleted}`),
-      ]),
-      h('div', { key: 'list', className: 'iw-float-changes-list' }, (changeOpen ? changes.files : changes.files.slice(0, 3)).map((file) => h('button', {
-        key: file.path,
-        type: 'button',
-        className: 'iw-float-file',
-        title: file.path,
-        onClick: () => {
-          const opened = typeof openInWorkspace === 'function'
-            ? openInWorkspace(file.path) === true
-            : store.openAt(file.path) === true
-          if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
-        },
-      }, [
-        h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
-        file.binary
-          ? h('span', { key: 'd', className: 'iw-float-file-desc' }, tr('floatChangesBinary'))
-          : h('span', { key: 'd', className: 'iw-float-file-desc' }, [
-            h('span', { key: 'a', className: 'iw-float-add' }, `+${file.added}`),
-            h('span', { key: 'r', className: 'iw-float-del' }, `-${file.deleted}`),
+    running
+      ? (() => {
+        const activity = ideFloatActivityOf(rawEntries.current)
+        const labels = [tr('floatRunningTools')]
+        for (const name of activity.names) {
+          const entry = IDE_FLOAT_ACTIVITY.find((item) => item.pattern.test(name))
+          const label = entry === undefined ? '' : tr(entry.key)
+          if (label !== '' && !labels.includes(label)) labels.push(label)
+        }
+        return h('div', { key: 'run', className: 'iw-float-running' }, [
+          h('div', { key: 'head', className: 'iw-float-running-head' }, [
+            h('span', { key: 'd', className: 'iw-float-running-dot', 'aria-hidden': 'true' }),
+            h('span', { key: 't', className: 'iw-float-running-text' }, `${tr('floatRunning')}，${ideFloatElapsed(runningSince === 0 ? 0 : Date.now() - runningSince, tr)}`),
           ]),
-      ]))),
-      changes.files.length <= 3 ? null : h('button', {
-        key: 'more',
-        type: 'button',
-        className: 'iw-float-changes-more',
-        onClick: () => setChangeOpen(!changeOpen),
-      }, changeOpen ? tr('floatChangesLess') : `${tr('floatChangesAll')} ${changes.files.length}`),
-    ]),
+          activity.detail === ''
+            ? null
+            : h('div', { key: 'detail', className: 'iw-float-running-detail', title: activity.detail }, activity.detail),
+          h('div', { key: 'labels', className: 'iw-float-running-labels' }, labels.join('，')),
+        ])
+      })()
+      : null,
     viewing === null ? null : h('div', { key: 'viewer', className: 'iw-float-viewer' }, [
       h('img', {
         key: 'img',
@@ -14580,6 +15258,21 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           onClick: () => { void choosePermission(entry.id) },
         }, tr(entry.labelKey))))
         : null,
+      suggest === null || suggest.items.length === 0
+        ? null
+        : h('div', { key: 'suggest', className: 'iw-float-suggest', role: 'listbox' },
+          suggest.items.map((item, index) => h('button', {
+            key: `${item.kind}:${item.id}`,
+            type: 'button',
+            role: 'option',
+            'aria-selected': index === suggest.index,
+            className: `iw-float-suggest-item${index === suggest.index ? ' on' : ''}`,
+            onMouseDown: (event) => { event.preventDefault(); pickSuggest(item) },
+          }, [
+            h('span', { key: 'n', className: 'iw-float-suggest-name' }, suggest.sign === '/' && item.kind === 'command' ? `/${item.label}` : item.label),
+            item.kind === 'dir' ? h('span', { key: 'd', className: 'iw-float-suggest-hint' }, tr('floatSuggestEnterDir')) : null,
+            item.description === '' ? null : h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
+          ]))),
       h('textarea', {
         key: 't',
         className: 'iw-float-textarea',
@@ -14589,45 +15282,99 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         disabled: binding === null,
         onChange: (event) => setDraft(event.target.value),
         onPaste,
+        onCompositionStart: () => { composingRef.current = true },
+        onCompositionEnd: () => {
+          composingRef.current = false
+          composedAtRef.current = Date.now()
+        },
         onKeyDown: (event) => {
-          if (event.key === 'Enter' && event.shiftKey !== true) {
-            event.preventDefault()
-            void submit()
+          if (suggest !== null && suggest.items.length > 0) {
+            const count = suggest.items.length
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              const step = event.key === 'ArrowDown' ? 1 : -1
+              setSuggest({ ...suggest, index: (suggest.index + step + count) % count })
+              return
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setSuggest(null)
+              return
+            }
+            if ((event.key === 'Enter' && event.shiftKey !== true) || event.key === 'Tab') {
+              // Mid-composition the IME owns the key; the menu must not eat it.
+              if (composingRef.current === true || event.nativeEvent?.isComposing === true || event.keyCode === 229) return
+              event.preventDefault()
+              pickSuggest(suggest.items[suggest.index])
+              return
+            }
           }
+          if (event.key !== 'Enter' || event.shiftKey === true) return
+          // Mid-composition (or the keydown that ends one) belongs to the IME.
+          if (composingRef.current === true) return
+          if (event.nativeEvent?.isComposing === true || event.keyCode === 229) return
+          if (Date.now() - composedAtRef.current < IDE_FLOAT_IME_SETTLE_MS) return
+          event.preventDefault()
+          void submit()
         },
       }),
       h('div', { key: 'foot', className: 'iw-float-foot' }, [
         h('button', {
           key: 'plus',
           type: 'button',
-          className: 'iw-float-icon iw-float-plus',
+          className: 'iw-float-plus',
           title: tr('floatAttach'),
           'aria-label': tr('floatAttach'),
           onClick: () => setMenu(menu === 'attach' ? '' : 'attach'),
-        }, '+'),
+        }, h(IdePlusIcon, { size: 14 })),
         h('button', {
           key: 'perm',
           type: 'button',
-          className: 'iw-float-chip iw-float-perm',
+          className: 'iw-float-perm',
           title: `${tr('floatPermission')}: ${ideFloatPermissionLabel(permission, tr)}`,
           onClick: () => setMenu(menu === 'perm' ? '' : 'perm'),
-        }, ideFloatPermissionLabel(permission, tr)),
+        }, [
+          h(IdeLockIcon, { key: 'i', size: 13 }),
+          h('span', { key: 't', className: 'iw-float-perm-text' }, ideFloatPermissionLabel(permission, tr)),
+          h(IdeChevronDownIcon, { key: 'c', size: 12 }),
+        ]),
         h('span', { key: 'gap', className: 'iw-float-gap' }),
+        efforts.length === 0 ? null : h('button', {
+          key: 'effort',
+          type: 'button',
+          className: 'iw-float-foot-chip',
+          title: `${tr('floatEffort')}: ${effortLabel}`,
+          onClick: () => setMenu(menu === 'effort' ? '' : 'effort'),
+        }, effortLabel),
+        h('button', {
+          key: 'model',
+          type: 'button',
+          className: 'iw-float-foot-chip iw-float-foot-model',
+          title: tr('floatModelHint'),
+          onClick: () => setMenu(menu === 'model' ? '' : 'model'),
+        }, [
+          h('span', { key: 't', className: 'iw-float-foot-chip-text' }, modelLabel),
+          h(IdeChevronDownIcon, { key: 'c', size: 12 }),
+        ]),
         running
           ? h('button', {
             key: 'stop',
             type: 'button',
             className: 'iw-float-send iw-float-stop',
+            title: tr('floatStop'),
+            'aria-label': tr('floatStop'),
             onClick: () => { void stop() },
-          }, tr('floatStop'))
+          }, h(IdeStopMarkIcon, { size: 12 }))
           : h('button', {
             key: 'send',
             type: 'button',
             className: 'iw-float-send',
+            title: tr('floatSend'),
+            'aria-label': tr('floatSend'),
             // A prompt may be images (or references) only.
             disabled: binding === null || sending || (draft.trim() === '' && refs.length === 0 && images.length === 0),
             onClick: () => { void submit() },
-          }, sending ? tr('floatSending') : tr('floatSend')),
+          }, h(IdeArrowUpIcon, { size: 16 })),
       ]),
     ]),
     h('div', { key: 'grip-n', className: 'iw-float-grip iw-float-grip-n', onPointerDown: onGripDown('n') }),
@@ -15225,9 +15972,10 @@ function apply(ctx) {
     try {
       layout.selectPanel(panelId)
       lastSelect = 'ok'
-      // The floating assistant belongs to the code workspace: it appears when
-      // that panel takes the centre column and goes away with it.
-      store.setFloatOpen(panelId === IDE_PANEL_ID)
+      // The whole workspace panel takes the centre column. A card the user
+      // detached keeps showing in every other panel too.
+      const detached = store.getState().floatDetached === true
+      store.setFloatOpen(panelId === IDE_PANEL_ID || detached)
     } catch (error) {
       // The main seat registers after this row on a cold load; the button then
       // simply does nothing rather than throwing into the click handler.
@@ -15520,8 +16268,9 @@ function apply(ctx) {
     return () => {
       if (!immersive) return
       immersive = false
-      // Back to the conversation: the assistant card belongs to the workspace.
-      store.setFloatOpen(false)
+      // Back to the conversation: the card leaves with the workspace unless the
+      // user asked it to live on its own.
+      if (store.getState().floatDetached !== true) store.setFloatOpen(false)
       restoreSidebar()
     }
   }
@@ -15732,6 +16481,7 @@ function apply(ctx) {
         if (editable && !withModifier && command.action !== 'back') return
         event.preventDefault()
         if (command.action === 'toggle') openPanel()
+        else if (command.action === 'float-toggle') toggleFloat()
         else if (command.action === 'back') selectPanel(null)
         else if (command.action === 'screenshot') void startScreenshot()
         else if (command.action === 'copy-reference') void copyReferenceShortcut()
@@ -15739,6 +16489,25 @@ function apply(ctx) {
         return
       }
     }, true)
+  }
+
+  /**
+   * ⌥+空格：叫出/收起悬浮助手卡。卡片被设置关掉时说一声，而不是假装切了。
+   */
+  function toggleFloat() {
+    const look = store.getState()
+    if (look.floatEnabled !== true) {
+      store.setNotice(translate('floatToggleDisabled'))
+      return
+    }
+    const visible = look.floatOpen === true && look.floatClosed !== true
+    if (!visible) {
+      store.setFloatOpen(true)
+      store.setFloatCollapsed(false)
+      return
+    }
+    // Expanded → 收成小球；小球 → 展开。一次按键只走一步。
+    store.setFloatCollapsed(look.floatCollapsed !== true)
   }
 
   /**
@@ -15811,6 +16580,30 @@ function apply(ctx) {
       sessions: ctx.get('sessions'),
       modelDirectories: ctx.get('modelDirectories'),
       translate,
+      // The float's `/` and `@` menus read the same catalog and the same file
+      // listing the conversation's own composer does: one source of truth.
+      commandList: async (sessionId) => {
+        try {
+          const result = await ctx.remote.commands.list(sessionId)
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          return { value: Array.isArray(result?.value) ? result.value : [] }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
+      workspaceList: async (sessionId, path) => {
+        try {
+          const result = await ctx.remote.workspaceFiles.list(sessionId, path)
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          const entries = result?.value?.entries
+          return { value: Array.isArray(entries) ? entries : [] }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
+      // An open question can only be answered in the Conversation; the card's
+      // button sends the user there instead of faking an answer.
+      goToChat: () => backToChat(),
       // The card's file chips open files exactly like the conversation's file
       // cards do: one workspace tab, one panel selection, no preview pane.
       openInWorkspace: (path) => {
@@ -15945,6 +16738,6 @@ function apply(ctx) {
     // 'shortcuts' is read directly at apply time (the plugin contributes two
     // rebindable commands), and the client runtime refuses any service that is
     // not declared here: cannot get property "shortcuts" without inject.
-    return { inject: ['slots', 'locale', 'shortcuts', 'sessions'], apply }
+    return { inject: ['slots', 'locale', 'shortcuts', 'sessions', 'remote', 'remote.commands', 'remote.workspaceFiles'], apply }
   },
 })

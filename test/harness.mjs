@@ -1713,10 +1713,14 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 // ---- the single shortcut registry ------------------------------------------
 {
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
-  check(Array.isArray(registry) && registry.length === 10, 'the registry holds every code-workspace shortcut', String(registry?.length))
+  check(Array.isArray(registry) && registry.length === 11, 'the registry holds every code-workspace shortcut', String(registry?.length))
   const kinds = registry.map((entry) => entry.kind)
-  check(kinds.filter((kind) => kind === 'key').length === 6,
-    'six keyboard commands (toggle, back, ⌘P, screenshot, copy reference, open table)', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'key').length === 7,
+    'seven keyboard commands (toggle, back, float, ⌘P, screenshot, copy reference, open table)', kinds.join(','))
+  const floatToggle = registry.find((entry) => entry.action === 'float-toggle')
+  check(floatToggle?.kind === 'key' && floatToggle?.defaults?.desktop?.code === 'Space'
+    && floatToggle?.defaults?.desktop?.modifiers?.join(',') === 'alt',
+  '⌥+空格叫出悬浮框 is a bindable key', JSON.stringify(floatToggle?.defaults))
   const copyReference = registry.find((entry) => entry.action === 'copy-reference')
   check(copyReference?.kind === 'key' && copyReference?.defaults?.desktop?.code === 'KeyC',
     '复制引用回对话 is a bindable key', JSON.stringify(copyReference?.defaults))
@@ -1777,7 +1781,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 {
   const textOf = new Function(`${grabSource('ideFloatTextOf', '74-float.js')}\nreturn ideFloatTextOf`)()
   const transcriptOf = new Function(
-    `${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`,
+    `${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\nconst ideLogRecord = () => {};\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`,
   )()
 
   check(textOf([{ type: 'text', text: 'a' }, { type: 'reasoning', text: 'x' }, { type: 'text', text: 'b' }]) === 'a\nb',
@@ -1794,6 +1798,68 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(rows[1]?.role === 'assistant' && rows[1]?.text === '答案', 'the reply becomes an assistant row', JSON.stringify(rows[1]))
   check(transcriptOf(log, 1).length === 1, 'the card keeps only the newest rows', String(transcriptOf(log, 1).length))
   check(transcriptOf(undefined).length === 0, 'an empty log renders no rows')
+
+  // ⌥+空格 那种问答：tool/call 是问题，tool/result 是答案，两者合成一张卡。
+  const askLog = [
+    { event: { type: 'tool/call', seq: 1, data: {
+      name: 'ask_user_question',
+      arguments: JSON.stringify({ questions: [{ id: 'color', header: '颜色偏好', question: '你喜欢哪个颜色？', options: [{ label: '红色' }, { label: '蓝色' }] }] }),
+    } } },
+    { event: { type: 'tool/result', seq: 2, data: {
+      toolCallId: 'call-1',
+      message: { role: 'tool', content: [{ type: 'text', text: JSON.stringify({ answers: [{ id: 'color', selected: ['蓝色'] }] }) }] },
+    } } },
+  ]
+  const asked = transcriptOf(askLog)
+  check(asked.length === 1 && asked[0]?.role === 'question', 'ask_user_question becomes one card row', JSON.stringify(asked))
+  check(asked[0]?.options?.[1]?.label === '蓝色' && asked[0]?.pending === false,
+    'an answered question keeps its options and is no longer pending', JSON.stringify(asked[0]))
+  check(transcriptOf(askLog.slice(0, 1))[0]?.pending === true,
+    'an open question is marked pending so the card renders', 'pending')
+  check(asked[0]?.header === '颜色偏好' && asked[0]?.question === '你喜欢哪个颜色？', 'the card keeps header and question', JSON.stringify(asked[0]))
+  check(asked[0]?.answers?.join('、') === '蓝色', 'the picked option lands on the card', JSON.stringify(asked[0]?.answers))
+  const unanswered = transcriptOf(askLog.slice(0, 1))
+  check(unanswered[0]?.role === 'question' && unanswered[0]?.answers?.length === 0, 'an unanswered question is still a card', JSON.stringify(unanswered[0]))
+
+  // The progress line reads the current turn's Tool calls, not the whole log.
+  const activityOf = new Function(`${grabSource('IDE_FLOAT_ACTIVITY', '74-float.js')}\n${grabSource('ideFloatCallDetail', '74-float.js')}\n${grabSource('ideFloatActivityOf', '74-float.js')}\nreturn ideFloatActivityOf`)()
+  const turnLog = [
+    { event: { type: 'tool/call', seq: 1, data: { name: 'read', arguments: JSON.stringify({ file_path: 'old/Old.java' }) } } },
+    { event: { type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '做点事' }] } } },
+    { event: { type: 'tool/call', seq: 3, data: { name: 'bash', arguments: JSON.stringify({ command: 'npm test' }) } } },
+    { event: { type: 'tool/call', seq: 4, data: { name: 'grep', arguments: JSON.stringify({ pattern: 'floatRunning' }) } } },
+  ]
+  const activity = activityOf(turnLog)
+  check(activity.names.join(',') === 'bash,grep', 'only this turn tool calls count', JSON.stringify(activity.names))
+  // Newest call wins: here that is the grep, not the earlier bash.
+  check(activity.detail === 'floatRunning', 'the newest call names its detail', JSON.stringify(activity.detail))
+  const bashOnly = activityOf([{ event: { type: 'tool/call', seq: 1, data: { name: 'bash', arguments: JSON.stringify({ command: 'npm test' }) } } }])
+  check(bashOnly.detail === 'npm test', 'a bash call shows its command', JSON.stringify(bashOnly.detail))
+  check(activityOf([]).names.length === 0 && activityOf([]).detail === '', 'no calls means no progress detail', 'empty')
+  const elapsedOf = new Function(`${grabSource('ideFloatElapsed', '74-float.js')}\nreturn ideFloatElapsed`)()
+  const fakeTr = (key) => ({ floatElapsedMin: '用时 {m} 分 {s} 秒', floatElapsedSec: '用时 {s} 秒' })[key] ?? key
+  check(elapsedOf(146000, fakeTr) === '用时 2 分 26 秒', 'minutes and seconds read like the footer', elapsedOf(146000, fakeTr))
+  check(elapsedOf(26000, fakeTr) === '用时 26 秒', 'under a minute drops the minute part', elapsedOf(26000, fakeTr))
+
+  // `/` and `@` in the float composer parse the same way the conversation does.
+  const triggerOf = new Function(`${grabSource('ideFloatTrigger', '74-float.js')}\nreturn ideFloatTrigger`)()
+  const mentionOf = new Function(`${grabSource('ideFloatMentionQuery', '74-float.js')}\nreturn ideFloatMentionQuery`)()
+  const entryOf = new Function(`${grabSource('ideFloatEntryOf', '74-float.js')}\nreturn ideFloatEntryOf`)()
+
+  check(triggerOf('/goal', 5)?.sign === '/' && triggerOf('/goal', 5)?.body === 'goal',
+    'a slash token reaches the menu', JSON.stringify(triggerOf('/goal', 5)))
+  check(triggerOf('hi @src', 7)?.sign === '@' && triggerOf('hi @src', 7)?.body === 'src',
+    'a mention token after text still opens the menu', JSON.stringify(triggerOf('hi @src', 7)))
+  check(triggerOf('/goal done', 10) === null, 'a space closes the token', String(triggerOf('/goal done', 10)))
+  check(triggerOf('no trigger', 10) === null, 'plain text opens nothing', String(triggerOf('no trigger', 10)))
+  check(mentionOf('a/b/c')?.dir === 'a/b' && mentionOf('a/b/c')?.query === 'c',
+    'a mention splits into directory and prefix', JSON.stringify(mentionOf('a/b/c')))
+  check(mentionOf('src')?.dir === '' && mentionOf('src')?.query === 'src', 'a bare mention lists the root', JSON.stringify(mentionOf('src')))
+  check(entryOf({ name: 'src', type: 'directory' }, '')?.path === 'src' && entryOf({ name: 'src', type: 'directory' }, '')?.isDir === true,
+    'a directory entry keeps its path', JSON.stringify(entryOf({ name: 'src', type: 'directory' }, '')))
+  check(entryOf({ name: 'Server.java', type: 'file' }, 'src/main')?.path === 'src/main/Server.java',
+    'a nested entry joins the listed directory', JSON.stringify(entryOf({ name: 'Server.java', type: 'file' }, 'src/main')))
+  check(entryOf(null, '') === null, 'a malformed entry is dropped', 'null')
 
   // The session switcher lists conversations, newest first, without subagents.
   const sessionsOf = new Function(`${grabSource('ideFloatSessions', '74-float.js')}\nreturn ideFloatSessions`)()
@@ -1823,7 +1889,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'archived sessions stay out of the switcher', JSON.stringify(withArchived.map((row) => row.title)))
 
   // A prompt with an image carries it into the card.
-  const pictureTranscript = new Function(`${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`)()
+  const pictureTranscript = new Function(`${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`)()
   const pictureLog = [
     { event: { type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [
       { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 2, height: 2 } },
@@ -1843,22 +1909,12 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'an image-only prompt has no text but keeps its picture', JSON.stringify(pictureRows[1]))
   check(pictureRows[2].images.length === 0, 'assistant rows carry no pictures')
 
-  // The card's file chips use the same opener as the conversation's cards.
+  // Files the card hands to the workspace opener.
   const bundle = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
-  check(bundle.includes('openInWorkspace(file.path)') && bundle.includes('openInWorkspace: (path) =>'),
+  check(bundle.includes('openInWorkspace: (path) =>'),
     'the floating card opens files through the workspace opener')
-
-  const filesOf = new Function(`${grabSource('ideFloatChangedFile', '74-float.js')}\n${grabSource('ideFloatChangedFiles', '74-float.js')}\nreturn ideFloatChangedFiles`)()
-  const changed = filesOf({ files: [
-    { path: 'src/a.js', added: 12, deleted: 3 },
-    { path: '', added: 1, deleted: 1 },
-    null,
-    { path: 'README.md', binary: true },
-  ] })
-  check(changed.length === 2, 'unusable rows are dropped', String(changed.length))
-  check(changed[0].added === 12 && changed[0].deleted === 3, 'counts survive', JSON.stringify(changed[0]))
-  check(changed[1].binary === true && changed[1].added === 0, 'a binary row has no line counts', JSON.stringify(changed[1]))
-  check(filesOf(undefined).length === 0 && filesOf({}).length === 0, 'a missing summary lists nothing')
+  check(bundle.includes('iw-float-changes') === false,
+    'the removed changed-files card leaves no styles behind')
 
   // Markdown files are recognised by extension, whatever the caller's case.
   const isMd = new Function(`${grabSource('ideIsMarkdownPath', '30-code.js')}\nreturn ideIsMarkdownPath`)()
@@ -1972,9 +2028,9 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(offscreen.left === 12 && offscreen.top === 358, 'a point outside the viewport is pulled back in', JSON.stringify(offscreen))
 
   // The corner grip: shipped size, remembered size, and both directions of the cap.
-  const sizeOf = new Function(`const IDE_FLOAT_DEFAULT_WIDTH = 460;\nconst IDE_FLOAT_DEFAULT_HEIGHT = 560;\nconst IDE_FLOAT_MIN_WIDTH = 280;\nconst IDE_FLOAT_MIN_HEIGHT = 220;\nconst IDE_FLOAT_MAX_WIDTH = 900;\nconst IDE_FLOAT_MAX_HEIGHT = 900;\n${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatSize', '74-float.js')}\nreturn ideFloatSize`)()
+  const sizeOf = new Function(`const IDE_FLOAT_DEFAULT_WIDTH = 744;\nconst IDE_FLOAT_DEFAULT_HEIGHT = 560;\nconst IDE_FLOAT_MIN_WIDTH = 280;\nconst IDE_FLOAT_MIN_HEIGHT = 220;\nconst IDE_FLOAT_MAX_WIDTH = 1200;\nconst IDE_FLOAT_MAX_HEIGHT = 900;\n${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatSize', '74-float.js')}\nreturn ideFloatSize`)()
   const shipped = sizeOf({ floatWidth: null, floatHeight: null }, 1200, 800)
-  check(shipped.width === 460 && shipped.height === 560, 'an untouched card has the shipped size', JSON.stringify(shipped))
+  check(shipped.width === 744 && shipped.height === 560, 'an untouched card has the shipped size', JSON.stringify(shipped))
   const resized = sizeOf({ floatWidth: 520, floatHeight: 360 }, 1200, 800)
   check(resized.width === 520 && resized.height === 360, 'a resized card keeps its size', JSON.stringify(resized))
   const tiny = sizeOf({ floatWidth: 40, floatHeight: 10 }, 1200, 800)
@@ -1983,7 +2039,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(huge.width === 1176 && huge.height === 776, 'the card cannot grow past the viewport', JSON.stringify(huge))
 
   // Each edge drags the side it names, and the opposite side stays put.
-  const stepOf = new Function(`const IDE_FLOAT_DEFAULT_WIDTH = 460;\nconst IDE_FLOAT_DEFAULT_HEIGHT = 560;\nconst IDE_FLOAT_MIN_WIDTH = 280;\nconst IDE_FLOAT_MIN_HEIGHT = 220;\nconst IDE_FLOAT_MAX_WIDTH = 900;\nconst IDE_FLOAT_MAX_HEIGHT = 900;\n${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatResizeStep', '74-float.js')}\nreturn ideFloatResizeStep`)()
+  const stepOf = new Function(`const IDE_FLOAT_DEFAULT_WIDTH = 744;\nconst IDE_FLOAT_DEFAULT_HEIGHT = 560;\nconst IDE_FLOAT_MIN_WIDTH = 280;\nconst IDE_FLOAT_MIN_HEIGHT = 220;\nconst IDE_FLOAT_MAX_WIDTH = 1200;\nconst IDE_FLOAT_MAX_HEIGHT = 900;\n${grabSource('ideClamp', '10-core.js')}\n${grabSource('ideFloatResizeStep', '74-float.js')}\nreturn ideFloatResizeStep`)()
   const base = { left: 400, top: 300, width: 340, height: 430, x: 500, y: 400 }
   const east = stepOf(base, 'e', 560, 400, 1200, 800)
   check(east.width === 400 && east.left === 400, 'the east edge grows rightwards only', JSON.stringify(east))

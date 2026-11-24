@@ -20,6 +20,8 @@
   --dsw-alias-label-secondary: #c1c0c0;
   --dsw-alias-label-tertiary: #939293;
   --dsw-alias-border-l1: #363337;
+  /* 行内代码：比正文底色高一层，和标签色/边框同属 alias，随主题自适配 */
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
   --dsw-alias-border-l2: #403e41;
   --dsw-alias-border-l3: #525053;
   --dsw-alias-border: #403e41;

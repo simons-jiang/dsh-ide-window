@@ -1490,7 +1490,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const isMarkdown = tab.kind !== 'jar' && ideIsMarkdownPath(tab.path)
   const markdownBar = isMarkdown && tab.status === 'ready'
     ? h('div', { key: 'mdbar', className: 'iw-md-bar' }, [
-      h('span', { key: 'name', className: 'iw-md-bar-name' }, tab.name),
+      // 文件名不在这里重复：上面的面包屑已经写着同一个名字
       h('button', {
         key: 'preview',
         type: 'button',

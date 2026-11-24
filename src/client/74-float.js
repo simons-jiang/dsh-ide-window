@@ -14,8 +14,17 @@
 
 /** How many messages the card keeps on screen. */
 const IDE_FLOAT_MESSAGES = 6
+/** How long after `compositionend` an Enter still counts as "confirm the IME". */
+const IDE_FLOAT_IME_SETTLE_MS = 80
+/** Collapsed card: a 44px ball plus the 4px padding the shell adds. */
+const IDE_FLOAT_BALL = 52
+/** Gap between the collapsed ball and the window corner. */
+const IDE_FLOAT_BALL_INSET = 20
 /** Re-ask delays after a turn, while its summary is still being recorded. */
-const IDE_FLOAT_CHANGES_RETRIES = [1200, 3000]
+// A turn's summary is written after the reply lands, and a long turn can take
+// tens of seconds to get there: keep asking instead of showing an older turn.
+/** DSH's own body size: the card reads at the same measure as the chat. */
+const IDE_FLOAT_FONT_SIZE = 14
 
 /** Permission presets the workspace switch offers, in DSH's own order. */
 const IDE_FLOAT_PERMISSIONS = [
@@ -89,8 +98,182 @@ function ideFloatImagesOf(content) {
   return images
 }
 
+/** `HH:MM` for a user row, the way the conversation stamps its bubble. */
+function ideFloatClock(time) {
+  if (!Number.isFinite(time) || time <= 0) return ''
+  const date = new Date(time)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+/**
+ * One transcript row: a right-aligned bubble for the user with a clock and a
+ * copy button underneath, plain full-width markdown for the assistant.
+ */
+function ideFloatRow(row, tr, io) {
+  const { setViewing, store, pictures } = io
+  // Questions cannot be answered here: DSH only accepts the answer in the
+  // Conversation, so the card's button navigates there instead.
+  const goToChat = typeof io.goToChat === 'function' ? io.goToChat : () => {}
+  if (row.role === 'files') {
+    return h('div', { key: row.key, className: 'iw-float-row iw-float-files' }, [
+      h('span', { key: 'who', className: 'iw-float-who' }, tr('floatFiles')),
+      h('div', { key: 'list', className: 'iw-float-filelist' }, (row.files ?? []).map((file) => h('button', {
+        key: file.path,
+        type: 'button',
+        className: 'iw-float-file',
+        title: file.path,
+        onClick: () => {
+          // Same entry point as the conversation's file cards: open the file in
+          // the workspace and switch the panel to it.
+          const opened = typeof openInWorkspace === 'function'
+            ? openInWorkspace(file.path) === true
+            : store.openAt(file.path) === true
+          if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
+        },
+      }, [
+        h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
+        file.description === '' ? null : h('span', { key: 'd', className: 'iw-float-file-desc' }, file.description),
+      ]))),
+    ])
+  }
+  // Shaped like the conversation: the user side is a right-aligned bubble with
+  // a clock and a copy button under it, the assistant side is plain full-width
+  // markdown. No "you"/"assistant" captions.
+  const body = row.text === '' ? null : h(IdeFloatMarkdown, { key: 'text', text: row.text, tr })
+  const pics = row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
+    const url = pictures[image.attachmentId] ?? ''
+    if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
+    return h('img', {
+      key: `pic${index}`,
+      className: 'iw-float-pic',
+      src: url,
+      alt: image.name ?? '',
+      title: tr('floatPreviewImage'),
+      draggable: false,
+      // Right-clicking here offers the app's own "Copy", which pastes the file
+      // name instead of the picture.
+      onContextMenu: (event) => event.preventDefault(),
+      onClick: () => setViewing({ url, name: image.name ?? '' }),
+    })
+  }))
+  if (row.role === 'question') {
+    const picked = Array.isArray(row.answers) ? row.answers : []
+    // Answered: the compact bubble the conversation leaves behind. Open: the
+    // full card, so the question is readable without leaving the workspace.
+    if (picked.length > 0) {
+      return h('div', { key: row.key, className: 'iw-float-row iw-float-user' }, [
+        h('div', { key: 'bubble', className: 'iw-float-bubble iw-float-question' }, [
+          row.header === '' ? null : h('div', { key: 'h', className: 'iw-float-q-head' }, row.header),
+          h('div', { key: 'q', className: 'iw-float-q-ask' }, row.question),
+          h('div', { key: 'a', className: 'iw-float-q-answer' }, picked.join('、')),
+        ]),
+      ])
+    }
+    const options = Array.isArray(row.options) ? row.options : []
+    return h('div', { key: row.key, className: 'iw-float-row' }, [
+      h('div', { key: 'card', className: 'iw-float-ask' }, [
+        h('div', { key: 'head', className: 'iw-float-ask-head' }, [
+          row.header === '' ? null : h('div', { key: 'e', className: 'iw-float-ask-eyebrow' }, row.header),
+          h('div', { key: 't', className: 'iw-float-ask-title' }, row.question),
+        ]),
+        options.length === 0 ? null : h('div', { key: 'o', className: 'iw-float-ask-options' },
+          options.map((option, index) => h('div', {
+            key: `o${index}`,
+            className: 'iw-float-ask-option',
+          }, [
+            h('span', { key: 'n', className: 'iw-float-ask-index' }, String(index + 1)),
+            h('span', { key: 'l', className: 'iw-float-ask-label' }, option.label),
+            option.description === ''
+              ? null
+              : h('span', { key: 'd', className: 'iw-float-ask-desc' }, option.description),
+          ]))),
+        h('div', { key: 'foot', className: 'iw-float-ask-foot' }, [
+          h('span', { key: 'hint', className: 'iw-float-ask-hint' }, tr('floatQuestionHint')),
+          h('button', {
+            key: 'go',
+            type: 'button',
+            className: 'iw-btn primary iw-float-ask-go',
+            onClick: () => { goToChat() },
+          }, tr('floatQuestionGo')),
+        ]),
+      ]),
+    ])
+  }
+  if (row.role === 'user') {
+    const clock = ideFloatClock(row.time)
+    return h('div', { key: row.key, className: 'iw-float-row iw-float-user' }, [
+      h('div', { key: 'bubble', className: 'iw-float-bubble' }, [body, pics].filter((part) => part !== null)),
+      h('div', { key: 'meta', className: 'iw-float-meta' }, [
+        clock === '' ? null : h('span', { key: 'clock', className: 'iw-float-clock' }, clock),
+        row.text === '' ? null : h('button', {
+          key: 'copy',
+          type: 'button',
+          className: 'iw-float-copy',
+          title: tr('floatCopyMessage'),
+          onClick: () => { ideCopyWithNotice(store, tr, row.text) },
+        }, h(IdeCopyIcon, { size: 13 })),
+      ].filter((part) => part !== null)),
+    ])
+  }
+  return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, [body, pics].filter((part) => part !== null))
+}
+
+/**
+ * The questions inside an `ask_user_question` call. `arguments` is a JSON string
+ * on the wire; anything unparseable yields no rows rather than a broken card.
+ */
+function ideFloatQuestionsOf(argumentText) {
+  let parsed
+  try {
+    parsed = typeof argumentText === 'string' ? JSON.parse(argumentText) : argumentText
+  } catch (error) {
+    ideLogRecord('warn', 'float', 'question arguments unreadable', { error: String(error) })
+    return []
+  }
+  const list = Array.isArray(parsed?.questions) ? parsed.questions : []
+  return list.map((entry) => ({
+    id: String(entry?.id ?? ''),
+    header: String(entry?.header ?? ''),
+    question: String(entry?.question ?? ''),
+    multiSelect: entry?.multiSelect === true || entry?.multi_select === true,
+    options: (Array.isArray(entry?.options) ? entry.options : []).map((option) => ({
+      label: String(option?.label ?? ''),
+      description: String(option?.description ?? ''),
+    })).filter((option) => option.label !== ''),
+  })).filter((entry) => entry.question !== '')
+}
+
+/** Question id → the labels the user picked, read off the tool results. */
+function ideFloatAnswers(entries) {
+  const answers = new Map()
+  if (!Array.isArray(entries)) return answers
+  for (const entry of entries) {
+    const event = entry?.event
+    if (event?.type !== 'tool/result') continue
+    const text = ideFloatTextOf(event.data?.message?.content)
+    if (!text.includes('answers')) continue
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch (error) {
+      continue
+    }
+    for (const answer of Array.isArray(parsed?.answers) ? parsed.answers : []) {
+      const picked = [
+        ...(Array.isArray(answer?.selected) ? answer.selected.map(String) : []),
+        ...(typeof answer?.custom === 'string' && answer.custom !== '' ? [answer.custom] : []),
+      ]
+      if (picked.length > 0) answers.set(String(answer?.id ?? ''), picked)
+    }
+  }
+  return answers
+}
+
 function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
   if (!Array.isArray(entries)) return []
+  const answers = ideFloatAnswers(entries)
   const rows = []
   for (const entry of entries) {
     const event = entry?.event
@@ -102,14 +285,40 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
       const text = ideFloatTextOf(content)
       // A prompt can be images only, so a row exists when either part exists.
       const images = ideFloatImagesOf(content)
-      if (text !== '' || images.length > 0) rows.push({ key: `u${event.seq}`, role: 'user', text, images })
+      if (text !== '' || images.length > 0) {
+        rows.push({ key: `u${event.seq}`, role: 'user', text, images, time: Number(event.time ?? 0) })
+      }
       continue
     }
     if (event.type === 'assistant/message') {
       const content = event.data?.message?.content
       const text = ideFloatTextOf(content)
       const images = ideFloatImagesOf(content)
-      if (text !== '' || images.length > 0) rows.push({ key: `a${event.seq}`, role: 'assistant', text, images })
+      if (text !== '' || images.length > 0) {
+        rows.push({ key: `a${event.seq}`, role: 'assistant', text, images, time: Number(event.time ?? 0) })
+      }
+      continue
+    }
+    // The conversation's own question card: `ask_user_question` is a tool call,
+    // and its answer comes back as the tool result with matching ids.
+    if (event.type === 'tool/call' && event.data?.name === 'ask_user_question') {
+      const questions = ideFloatQuestionsOf(event.data?.arguments)
+      questions.forEach((question, index) => {
+        const picked = answers.get(String(question.id)) ?? []
+        rows.push({
+          key: `q${event.seq}:${index}`,
+          role: 'question',
+          text: '',
+          images: [],
+          time: Number(event.time ?? 0),
+          header: question.header,
+          question: question.question,
+          options: question.options,
+          multiSelect: question.multiSelect,
+          answers: picked,
+          pending: picked.length === 0,
+        })
+      })
       continue
     }
     if (event.type === 'deliverables/presented') {
@@ -127,27 +336,105 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * (`read-only` / `workspace-write` / `danger-full-access`). Unknown ids are shown
  * verbatim rather than guessed.
  */
-/** One changed-file row from the Host's summary, or null when unusable. */
-function ideFloatChangedFile(entry) {
-  if (entry === null || typeof entry !== 'object') return null
-  if (typeof entry.path !== 'string' || entry.path === '') return null
+/** How a Tool call reads in the card's progress line. */
+const IDE_FLOAT_ACTIVITY = [
+  { pattern: /^(bash|shell|terminal)$/u, key: 'floatActivityCommand' },
+  { pattern: /^grep$/u, key: 'floatActivitySearch' },
+  { pattern: /^read$/u, key: 'floatActivityRead' },
+  { pattern: /^(write|edit|patch)$/u, key: 'floatActivityWrite' },
+  { pattern: /^(web_search|web_fetch)$/u, key: 'floatActivityWeb' },
+  { pattern: /^ask_user_question$/u, key: 'floatActivityAsk' },
+  { pattern: /^(todo_write|task|workflow)$/u, key: 'floatActivityTask' },
+]
+
+/**
+ * What the current turn has done so far: the Tool calls since the newest human
+ * prompt, newest first, plus a one-line detail of the newest one. Pure so the
+ * progress line is testable without a Session.
+ */
+function ideFloatActivityOf(entries) {
+  const names = new Set()
+  let detail = ''
+  if (!Array.isArray(entries)) return { names: [], detail }
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const event = entries[index]?.event
+    if (event?.type === 'user/message' && event.data?.source?.kind === 'user') break
+    if (event?.type !== 'tool/call') continue
+    const name = String(event.data?.name ?? '')
+    if (name === '') continue
+    if (detail === '') detail = ideFloatCallDetail(name, event.data?.arguments)
+    names.add(name)
+  }
+  return { names: [...names].reverse(), detail }
+}
+
+/** The one line under the progress label: what the newest call is doing. */
+function ideFloatCallDetail(name, argumentText) {
+  let args
+  try {
+    args = typeof argumentText === 'string' ? JSON.parse(argumentText) : argumentText
+  } catch (error) {
+    return ''
+  }
+  const text = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim().replace(/\s+/gu, ' ') : '')
+  if (/^(bash|shell|terminal)$/u.test(name)) return text(args?.command)
+  if (/^(read|write|edit|patch)$/u.test(name)) return text(args?.file_path ?? args?.path)
+  if (name === 'grep') return text(args?.pattern ?? args?.query)
+  if (name === 'web_search') return Array.isArray(args?.queries) ? text(args.queries[0]) : ''
+  return ''
+}
+
+/** `用时 2 分 26 秒` / `用时 26 秒`, the way the conversation's footer reads. */
+function ideFloatElapsed(ms, translate) {
+  const tr = typeof translate === 'function' ? translate : (key) => key
+  const seconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return minutes > 0
+    ? tr('floatElapsedMin').replace('{m}', String(minutes)).replace('{s}', String(rest))
+    : tr('floatElapsedSec').replace('{s}', String(rest))
+}
+
+/**
+ * The `/` or `@` token the caret sits in, or null. A token starts after
+ * whitespace and runs to the caret without spaces, exactly like the command
+ * trigger in the conversation composer.
+ */
+function ideFloatTrigger(text, caret) {
+  const head = String(text ?? '').slice(0, Math.max(0, Number(caret) || 0))
+  const match = /(^|\s)([/@][^\s]*)$/u.exec(head)
+  if (match === null) return null
+  const token = match[2]
   return {
-    path: entry.path,
-    added: Number.isFinite(entry.added) ? entry.added : 0,
-    deleted: Number.isFinite(entry.deleted) ? entry.deleted : 0,
-    binary: entry.binary === true,
+    sign: token[0],
+    body: token.slice(1),
+    start: head.length - token.length,
+    end: Math.max(0, Number(caret) || 0),
   }
 }
 
-/** The rows of one changes summary, tolerant of a partial answer. */
-function ideFloatChangedFiles(summary) {
-  const files = Array.isArray(summary?.files) ? summary.files : []
-  const rows = []
-  for (const entry of files) {
-    const row = ideFloatChangedFile(entry)
-    if (row !== null) rows.push(row)
-  }
-  return rows
+/** `@a/b/c` → the directory to list and the prefix to match inside it. */
+function ideFloatMentionQuery(body) {
+  const text = String(body ?? '')
+  const slash = text.lastIndexOf('/')
+  return slash < 0
+    ? { dir: '', query: text }
+    : { dir: text.slice(0, slash), query: text.slice(slash + 1) }
+}
+
+/**
+ * One `workspaceFiles.list` entry. The Host answers with `{name, type}` relative
+ * to the directory that was listed, so the caller's directory makes the path.
+ */
+function ideFloatEntryOf(raw, dir) {
+  if (raw === null || typeof raw !== 'object') return null
+  const name = String(raw.name ?? raw.path ?? '')
+  if (name === '') return null
+  const kind = String(raw.kind ?? raw.type ?? '')
+  const isDir = raw.isDirectory === true || kind === 'directory' || kind === 'dir' || kind === 'folder'
+  const prefix = String(dir ?? '').replace(/\/+$/, '')
+  const path = prefix === '' ? name : `${prefix}/${name}`
+  return { path, name, isDir }
 }
 
 function ideFloatPermissionLabel(preset, translate) {
@@ -614,9 +901,15 @@ function ideFloatMarkdownBlocks(text) {
   return blocks
 }
 
-/** One fenced code block: language label, copy, tokenised lines. */
+/**
+ * One fenced code block, shaped like the conversation's: a quiet header with the
+ * block name on the left and the wrap/copy controls on the right.
+ */
 function IdeFloatCodeBlock({ code, lang, tr }) {
   const [copied, setCopied] = useState(false)
+  // Long lines are readable in a narrow card only when they wrap, so that is
+  // the default and the header offers the switch.
+  const [wrap, setWrap] = useState(true)
   const language = ideLangOf(`x.${String(lang ?? '').trim()}`) || ''
   const lines = useMemo(() => String(code ?? '').split('\n'), [code])
   const copy = () => {
@@ -626,10 +919,32 @@ function IdeFloatCodeBlock({ code, lang, tr }) {
   }
   return h('div', { className: 'iw-float-md-codeblock' }, [
     h('div', { key: 'head', className: 'iw-float-md-codehead' }, [
-      h('span', { key: 'lang', className: 'iw-float-md-codelang' }, ideLangLabel(language) || (lang === '' ? tr('floatCode') : lang)),
-      h('button', { key: 'copy', type: 'button', className: 'iw-float-md-copy', onClick: copy }, copied ? tr('floatCopied') : tr('floatCopy')),
+      // An unlabelled or plain-text fence is just "代码块", as DSH calls it.
+      h('span', {
+        key: 'lang',
+        className: 'iw-float-md-codelang',
+      }, language === '' || language === 'txt' ? tr('floatCode') : ideLangLabel(language) || tr('floatCode')),
+      h('span', { key: 'acts', className: 'iw-float-md-codeacts' }, [
+        h('button', {
+          key: 'wrap',
+          type: 'button',
+          className: `iw-float-md-codeact${wrap ? ' on' : ''}`,
+          title: tr('floatWrap'),
+          onClick: () => setWrap(!wrap),
+        }, h(IdeWrapIcon, { size: 14 })),
+        h('button', {
+          key: 'copy',
+          type: 'button',
+          className: 'iw-float-md-codeact',
+          title: copied ? tr('floatCopied') : tr('floatCopy'),
+          onClick: copy,
+        }, h(IdeCopyIcon, { size: 14 })),
+      ]),
     ]),
-    h('pre', { key: 'pre', className: 'iw-float-md-pre' }, lines.map((line, lineIndex) => h('div', {
+    h('pre', {
+      key: 'pre',
+      className: `iw-float-md-pre${wrap ? ' iw-float-md-wrapped' : ''}`,
+    }, lines.map((line, lineIndex) => h('div', {
       key: lineIndex,
       className: 'iw-float-md-line',
     }, ideTokenize(line, language).map((run, runIndex) => (run.cls === ''
@@ -684,7 +999,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, commandList, workspaceList }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -704,15 +1019,25 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const [preset, setPreset] = useState('')
   const [effort, setEffort] = useState(null)
   // Attachment bytes are fetched on demand: the log only carries references.
+  // The `/` and `@` menus: the same Host catalog and the same directory listing
+  // the conversation's composer offers, so the two never disagree.
+  const [suggest, setSuggest] = useState(null)
+  const rawEntries = useRef([])
+  const suggestSeq = useRef(0)
+  const commandCache = useRef(null)
+  const directoryCache = useRef(new Map())
   const [pictures, setPictures] = useState({})
-  // The turn's changed files, and the picture the user is looking at.
-  const [changes, setChanges] = useState(null)
-  const [changeOpen, setChangeOpen] = useState(false)
+  // The picture the user is looking at.
   const [viewing, setViewing] = useState(null)
   const picturesRef = useRef({})
   picturesRef.current = pictures
   const [projectedPreset, setProjectedPreset] = useState('')
   const cardRef = useRef(null)
+  // An Enter that confirms an IME candidate must only commit the text, never
+  // send: the conversation's composer behaves the same way. Some IMEs fire
+  // `compositionend` just before that keydown, so the timestamp covers them.
+  const composingRef = useRef(false)
+  const composedAtRef = useRef(0)
   const dragRef = useRef(null)
   const menuRef = useRef(null)
 
@@ -758,55 +1083,6 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
     return () => { alive = false }
   }, [binding, entries])
-
-  // The changed-files card of the latest turn.
-  //
-  // The Host announces `workspace/changes` on the session log, but that event
-  // never reaches a plugin (the retained window keeps messages), and the Host's
-  // own summary route sits behind its authenticated fence. So the plugin's host
-  // answers instead, and the answer only exists while the turn's summary lives
-  // in memory — exactly like the conversation's card.
-  useEffect(() => {
-    // `sessionId` is declared below; read it from the snapshot so the effect
-    // can stay next to the other data effects without a temporal-dead-zone crash.
-    const owner = state.sessionId ?? ''
-    if (binding === null || owner === '') {
-      setChanges(null)
-      return undefined
-    }
-    let alive = true
-    let timer
-    const ask = (attempt) => {
-      fetch(`/dsh-ide/changes?session=${encodeURIComponent(owner)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ session: owner }),
-      })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((answer) => {
-          if (alive !== true || answer === null || answer.ok !== true) return
-          const files = ideFloatChangedFiles(answer.value)
-          if (files.length > 0) {
-            setChanges({ files, added: files.reduce((sum, row) => sum + row.added, 0), deleted: files.reduce((sum, row) => sum + row.deleted, 0) })
-            return
-          }
-          // The Host records the announcement after the reply lands, so the
-          // first ask of a fresh turn can arrive early; a couple of retries
-          // cover it without polling.
-          if (attempt >= IDE_FLOAT_CHANGES_RETRIES.length) {
-            setChanges(null)
-            return
-          }
-          timer = globalThis.setTimeout(() => ask(attempt + 1), IDE_FLOAT_CHANGES_RETRIES[attempt])
-        })
-        .catch(() => {})
-    }
-    ask(0)
-    return () => {
-      alive = false
-      globalThis.clearTimeout(timer)
-    }
-  }, [binding, state.sessionId, entries.length])
 
   // Coming back into view (conversation → code workspace) shows the newest line
   // again, even if the user had scrolled up before leaving.
@@ -867,7 +1143,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
     const source = binding.eventSource
     const read = () => {
-      setEntries(ideFloatTranscript(source.getSnapshot()?.entries))
+      const raw = source.getSnapshot()?.entries
+      // The transcript drops Tool calls; the progress line needs them.
+      rawEntries.current = Array.isArray(raw) ? raw : []
+      setEntries(ideFloatTranscript(raw))
     }
     read()
     return source.subscribe(read)
@@ -957,6 +1236,104 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
 
   const permission = projectedPreset !== '' ? projectedPreset : (preset !== '' ? preset : ideFloatPermissionOf(entries))
 
+  // `/` and `@` suggestions, recomputed whenever the draft changes. The lists
+  // come from the Host (`commands.list` / `workspaceFiles.list`), which is the
+  // same pair the conversation composer reads.
+  useEffect(() => {
+    if (binding === null || sessionId === '') { setSuggest(null); return }
+    const token = ideFloatTrigger(draft, draft.length)
+    if (token === null) { setSuggest(null); return }
+    const seq = suggestSeq.current + 1
+    suggestSeq.current = seq
+    if (token.sign === '/') {
+      const run = async () => {
+        let catalog = commandCache.current
+        if (catalog === null) {
+          const result = typeof commandList === 'function' ? await commandList(sessionId) : { value: [] }
+          if (suggestSeq.current !== seq) return
+          if (result?.error !== undefined) {
+            store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
+            setSuggest(null)
+            return
+          }
+          catalog = Array.isArray(result?.value) ? result.value : []
+          commandCache.current = catalog
+        }
+        if (suggestSeq.current !== seq) return
+        const query = token.body.toLowerCase()
+        const items = catalog.map((raw) => ({
+          id: String(raw?.name ?? ''),
+          label: String(raw?.name ?? ''),
+          description: String(raw?.description ?? ''),
+          group: String(raw?.category ?? raw?.group ?? ''),
+          kind: 'command',
+        })).filter((item) => item.id !== ''
+          && (query === '' || item.id.toLowerCase().includes(query) || item.label.toLowerCase().includes(query)))
+        setSuggest({ sign: '/', token, items: items.slice(0, 12), index: 0, dir: '' })
+      }
+      void run()
+      return
+    }
+    const { dir, query } = ideFloatMentionQuery(token.body)
+    const run = async () => {
+      let entries = directoryCache.current.get(dir)
+      if (entries === undefined) {
+        // Paths are relative to the Session's workspace root, and `'.'` is that
+        // root: an empty string is refused with "path is required".
+        const result = typeof workspaceList === 'function'
+          ? await workspaceList(sessionId, dir === '' ? '.' : dir)
+          : { value: [] }
+        if (suggestSeq.current !== seq) return
+        if (result?.error !== undefined) {
+          store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
+          setSuggest(null)
+          return
+        }
+        entries = (Array.isArray(result?.value) ? result.value : [])
+          .map((raw) => ideFloatEntryOf(raw, dir))
+          .filter((entry) => entry !== null)
+        directoryCache.current.set(dir, entries)
+      }
+      if (suggestSeq.current !== seq) return
+      const needle = query.toLowerCase()
+      const items = entries
+        .filter((entry) => needle === '' || entry.name.toLowerCase().includes(needle))
+        .sort((left, right) => (left.isDir === right.isDir ? left.name.localeCompare(right.name) : left.isDir ? -1 : 1))
+        .slice(0, 40)
+        .map((entry) => ({ id: entry.path, label: entry.name, description: '', group: '', kind: entry.isDir ? 'dir' : 'file' }))
+      setSuggest({ sign: '@', token, items, index: 0, dir })
+    }
+    void run()
+  }, [draft, binding, sessionId, commandList, workspaceList])
+
+  // Pick one suggestion: a command runs through the Session's own command line,
+  // a file becomes a reference chip — both exactly what the conversation does.
+  const pickSuggest = (item) => {
+    if (item === undefined) return
+    const token = ideFloatTrigger(draft, draft.length)
+    const cut = token === null ? draft : `${draft.slice(0, token.start)}${draft.slice(token.end)}`
+    setDraft(cut)
+    setSuggest(null)
+    if (item.kind === 'dir') {
+      // Drill in: keep the trigger, append the directory and a slash.
+      setDraft(`${cut}@${item.id}/`)
+      return
+    }
+    if (item.kind === 'file') {
+      const ref = `@${item.id}`
+      setRefs((current) => (current.includes(ref) ? current : [...current, ref]))
+      return
+    }
+    const command = binding?.session?.command
+    if (typeof command !== 'function') return
+    Promise.resolve(command(`/${item.id}`)).then((result) => {
+      const failed = result?.ok === false || result?.value?.matched === false
+      if (failed) store.setNotice(`${tr('floatCommandFailed')}: ${item.id}`)
+    }).catch((error) => {
+      store.setNotice(`${tr('floatCommandFailed')}: ${error?.message ?? error}`)
+    })
+  }
+
   // Opening the switcher lands on the current workspace's group: the list can
   // be long, and the conversations a person wants are the ones next to them.
   useEffect(() => {
@@ -998,16 +1375,38 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return () => document.removeEventListener('pointerdown', onDown, true)
   }, [menu])
 
+  const running = binding !== null && binding.session.getSnapshot()?.running === true
+  // The elapsed clock only runs while the Session is working; a fresh turn
+  // starts it again, so `用时` always means this turn.
+  const [runningSince, setRunningSince] = useState(0)
+  const [, setClockTick] = useState(0)
+  useEffect(() => {
+    if (running !== true) { setRunningSince(0); return undefined }
+    setRunningSince((current) => (current === 0 ? Date.now() : current))
+    // Bumping a counter is what re-renders once a second; setting the same
+    // timestamp again would be a no-op React bails out of.
+    const timer = globalThis.setInterval(() => setClockTick((tick) => tick + 1), 1000)
+    return () => globalThis.clearInterval(timer)
+  }, [running])
+
   if (!open) return null
 
-  const running = binding !== null && binding.session.getSnapshot()?.running === true
   // The header names the conversation, not the folder: that is what the menu
   // switches. The workspace stays available in the tooltip and the empty state.
   const currentRow = sessionRows.find((row) => row.sessionId === sessionId)
   const sessionGroups = ideFloatSessionGroups(sessionRows, state.rootPath ?? '')
+  const workspace = ideBasename(state.rootPath ?? '') || tr('floatNoWorkspace')
   const sessionTitle = currentRow?.title
     ?? (workspace === '' || workspace === tr('floatNoWorkspace') ? tr('floatNoSession') : workspace)
-  const workspace = ideBasename(state.rootPath ?? '') || tr('floatNoWorkspace')
+  // Maximising the window moves both card and ball: nothing else re-renders
+  // this component on resize, so the coordinates would stay at the old size.
+  const [, setViewportTick] = useState(0)
+  useEffect(() => {
+    const onResize = () => setViewportTick((tick) => tick + 1)
+    globalThis.addEventListener('resize', onResize)
+    return () => globalThis.removeEventListener('resize', onResize)
+  }, [])
+
   const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth
   const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
   const size = ideFloatSize(state, viewportWidth, viewportHeight)
@@ -1270,36 +1669,44 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const options = ideFloatModelOptions(models)
   // The workspace palette drives the card: same attribute, same tokens, same
   // type scale as the panel behind it.
-  const font = Number.isFinite(state.treeFontSize) ? state.treeFontSize : 14.5
+  // The card reads like DSH's own chat: the host's 14px body size and the
+  // host font. The workspace's tree size and palette only apply while the card
+  // sits inside the workspace.
+  const detached = state.floatDetached === true
+  const font = `${IDE_FLOAT_FONT_SIZE}px`
 
   // The stylesheet stays a sibling of the card: a `<style>` inside it would put
   // its text into the card's own text content.
   const styled = (node) => h(React.Fragment, null, [h(IdeStyles, { key: 'style' }), node])
 
-  const shell = (children, extra) => styled(h('div', {
+  const shell = (children, extra, box) => styled(h('div', {
     key: 'card',
     ref: cardRef,
     className: extra === undefined ? 'iw-float' : `iw-float ${extra}`,
-    'data-dsh-theme': state.theme === '' ? undefined : state.theme,
+    'data-dsh-theme': detached || state.theme === '' ? undefined : state.theme,
     style: {
-      left: `${point.left}px`,
-      top: `${point.top}px`,
-      right: 'auto',
-      bottom: 'auto',
-      width: `${size.width}px`,
-      height: `${size.height}px`,
-      fontSize: `${font}px`,
+      // A box without coordinates is pinned to the bottom-right corner.
+      left: box === undefined ? `${point.left}px` : 'auto',
+      top: box === undefined ? `${point.top}px` : 'auto',
+      right: box === undefined ? 'auto' : `${IDE_FLOAT_BALL_INSET}px`,
+      bottom: box === undefined ? 'auto' : `${IDE_FLOAT_BALL_INSET}px`,
+      width: `${box?.width ?? size.width}px`,
+      height: `${box?.height ?? size.height}px`,
+      fontSize: font,
     },
   }, children))
 
   if (collapsed) {
+    // The ball is anchored to the window's bottom-right corner by CSS, so a
+    // window resize can never leave it stranded mid-screen.
     return shell([h('button', {
       key: 'b',
       type: 'button',
       className: 'iw-float-ball-btn',
       onClick: () => store.setFloatCollapsed(false),
+      title: tr('floatExpand'),
       'aria-label': tr('floatExpand'),
-    }, 'AI')], 'iw-float-collapsed')
+    }, 'AI')], 'iw-float-collapsed', { width: IDE_FLOAT_BALL, height: IDE_FLOAT_BALL })
   }
 
   return shell([
@@ -1330,20 +1737,6 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           if (typeof startSession === 'function') startSession()
         },
       }, '＋'),
-      h('button', {
-        key: 'model',
-        type: 'button',
-        className: 'iw-float-chip',
-        title: tr('floatModelHint'),
-        onClick: () => setMenu(menu === 'model' ? '' : 'model'),
-      }, modelLabel),
-      efforts.length === 0 ? null : h('button', {
-        key: 'effort',
-        type: 'button',
-        className: 'iw-float-chip iw-float-effort',
-        title: `${tr('floatEffort')}: ${effortLabel}`,
-        onClick: () => setMenu(menu === 'effort' ? '' : 'effort'),
-      }, effortLabel),
       h('div', { key: 'actions', className: 'iw-float-actions' }, [
         h('button', {
           key: 'shrink',
@@ -1428,91 +1821,36 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }, entries.length === 0
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : entries.map((row) => {
-        if (row.role === 'files') {
-          return h('div', { key: row.key, className: 'iw-float-row iw-float-files' }, [
-            h('span', { key: 'who', className: 'iw-float-who' }, tr('floatFiles')),
-            h('div', { key: 'list', className: 'iw-float-filelist' }, (row.files ?? []).map((file) => h('button', {
-              key: file.path,
-              type: 'button',
-              className: 'iw-float-file',
-              title: file.path,
-              onClick: () => {
-                // Same entry point as the conversation's file cards: open the
-                // file in the workspace and switch the panel to it.
-                const opened = typeof openInWorkspace === 'function'
-                  ? openInWorkspace(file.path) === true
-                  : store.openAt(file.path) === true
-                if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
-              },
-            }, [
-              h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
-              file.description === '' ? null : h('span', { key: 'd', className: 'iw-float-file-desc' }, file.description),
-            ]))),
-          ])
+        // One malformed event must not take the whole card down: a throw inside
+        // this map unmounts the overlay, and the user just sees the card vanish.
+        try {
+          return ideFloatRow(row, tr, { setViewing, store, pictures, goToChat })
+        } catch (error) {
+          ideLogRecord('warn', 'float', 'row render failed', { key: row.key, error: String(error) })
+          return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
-        return h('div', { key: row.key, className: `iw-float-row iw-float-${row.role}` }, [
-          h('span', { key: 'who', className: 'iw-float-who' }, row.role === 'user' ? tr('floatYou') : tr('floatAssistant')),
-          // Both sides are markdown: a prompt can carry tables and lists too, and
-          // rendering it as raw text was exactly what users complained about.
-          row.text === '' ? null : h(IdeFloatMarkdown, { key: 'text', text: row.text, tr }),
-          row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
-            const url = pictures[image.attachmentId] ?? ''
-            if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
-            return h('img', {
-              key: `pic${index}`,
-              className: 'iw-float-pic',
-              src: url,
-              alt: image.name ?? '',
-              title: tr('floatPreviewImage'),
-              draggable: false,
-              // Right-clicking here offers the app's own "Copy", which pastes the
-              // file name instead of the picture.
-              onContextMenu: (event) => event.preventDefault(),
-              onClick: () => setViewing({ url, name: image.name ?? '' }),
-            })
-          })),
-        ])
       })),
-    running ? h('div', { key: 'run', className: 'iw-float-running' }, tr('floatRunning')) : null,
-    changes === null ? null : h('div', { key: 'changes', className: 'iw-float-changes' }, [
-      h('button', {
-        key: 'head',
-        type: 'button',
-        className: 'iw-float-changes-head',
-        onClick: () => setChangeOpen(!changeOpen),
-      }, [
-        h('span', { key: 'icon', className: 'iw-float-changes-icon', 'aria-hidden': 'true' }, '⌗'),
-        h('span', { key: 'title', className: 'iw-float-changes-title' }, `${tr('floatChangesTitle')} ${changes.files.length} ${tr('floatChangesUnit')}`),
-        h('span', { key: 'added', className: 'iw-float-changes-add' }, `+${changes.added}`),
-        h('span', { key: 'deleted', className: 'iw-float-changes-del' }, `-${changes.deleted}`),
-      ]),
-      h('div', { key: 'list', className: 'iw-float-changes-list' }, (changeOpen ? changes.files : changes.files.slice(0, 3)).map((file) => h('button', {
-        key: file.path,
-        type: 'button',
-        className: 'iw-float-file',
-        title: file.path,
-        onClick: () => {
-          const opened = typeof openInWorkspace === 'function'
-            ? openInWorkspace(file.path) === true
-            : store.openAt(file.path) === true
-          if (opened !== true) store.setNotice(`${tr('floatOpenFailed')}: ${file.path}`)
-        },
-      }, [
-        h('span', { key: 'n', className: 'iw-float-file-name' }, ideBasename(file.path)),
-        file.binary
-          ? h('span', { key: 'd', className: 'iw-float-file-desc' }, tr('floatChangesBinary'))
-          : h('span', { key: 'd', className: 'iw-float-file-desc' }, [
-            h('span', { key: 'a', className: 'iw-float-add' }, `+${file.added}`),
-            h('span', { key: 'r', className: 'iw-float-del' }, `-${file.deleted}`),
+    running
+      ? (() => {
+        const activity = ideFloatActivityOf(rawEntries.current)
+        const labels = [tr('floatRunningTools')]
+        for (const name of activity.names) {
+          const entry = IDE_FLOAT_ACTIVITY.find((item) => item.pattern.test(name))
+          const label = entry === undefined ? '' : tr(entry.key)
+          if (label !== '' && !labels.includes(label)) labels.push(label)
+        }
+        return h('div', { key: 'run', className: 'iw-float-running' }, [
+          h('div', { key: 'head', className: 'iw-float-running-head' }, [
+            h('span', { key: 'd', className: 'iw-float-running-dot', 'aria-hidden': 'true' }),
+            h('span', { key: 't', className: 'iw-float-running-text' }, `${tr('floatRunning')}，${ideFloatElapsed(runningSince === 0 ? 0 : Date.now() - runningSince, tr)}`),
           ]),
-      ]))),
-      changes.files.length <= 3 ? null : h('button', {
-        key: 'more',
-        type: 'button',
-        className: 'iw-float-changes-more',
-        onClick: () => setChangeOpen(!changeOpen),
-      }, changeOpen ? tr('floatChangesLess') : `${tr('floatChangesAll')} ${changes.files.length}`),
-    ]),
+          activity.detail === ''
+            ? null
+            : h('div', { key: 'detail', className: 'iw-float-running-detail', title: activity.detail }, activity.detail),
+          h('div', { key: 'labels', className: 'iw-float-running-labels' }, labels.join('，')),
+        ])
+      })()
+      : null,
     viewing === null ? null : h('div', { key: 'viewer', className: 'iw-float-viewer' }, [
       h('img', {
         key: 'img',
@@ -1590,6 +1928,21 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           onClick: () => { void choosePermission(entry.id) },
         }, tr(entry.labelKey))))
         : null,
+      suggest === null || suggest.items.length === 0
+        ? null
+        : h('div', { key: 'suggest', className: 'iw-float-suggest', role: 'listbox' },
+          suggest.items.map((item, index) => h('button', {
+            key: `${item.kind}:${item.id}`,
+            type: 'button',
+            role: 'option',
+            'aria-selected': index === suggest.index,
+            className: `iw-float-suggest-item${index === suggest.index ? ' on' : ''}`,
+            onMouseDown: (event) => { event.preventDefault(); pickSuggest(item) },
+          }, [
+            h('span', { key: 'n', className: 'iw-float-suggest-name' }, suggest.sign === '/' && item.kind === 'command' ? `/${item.label}` : item.label),
+            item.kind === 'dir' ? h('span', { key: 'd', className: 'iw-float-suggest-hint' }, tr('floatSuggestEnterDir')) : null,
+            item.description === '' ? null : h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
+          ]))),
       h('textarea', {
         key: 't',
         className: 'iw-float-textarea',
@@ -1599,45 +1952,99 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         disabled: binding === null,
         onChange: (event) => setDraft(event.target.value),
         onPaste,
+        onCompositionStart: () => { composingRef.current = true },
+        onCompositionEnd: () => {
+          composingRef.current = false
+          composedAtRef.current = Date.now()
+        },
         onKeyDown: (event) => {
-          if (event.key === 'Enter' && event.shiftKey !== true) {
-            event.preventDefault()
-            void submit()
+          if (suggest !== null && suggest.items.length > 0) {
+            const count = suggest.items.length
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              const step = event.key === 'ArrowDown' ? 1 : -1
+              setSuggest({ ...suggest, index: (suggest.index + step + count) % count })
+              return
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setSuggest(null)
+              return
+            }
+            if ((event.key === 'Enter' && event.shiftKey !== true) || event.key === 'Tab') {
+              // Mid-composition the IME owns the key; the menu must not eat it.
+              if (composingRef.current === true || event.nativeEvent?.isComposing === true || event.keyCode === 229) return
+              event.preventDefault()
+              pickSuggest(suggest.items[suggest.index])
+              return
+            }
           }
+          if (event.key !== 'Enter' || event.shiftKey === true) return
+          // Mid-composition (or the keydown that ends one) belongs to the IME.
+          if (composingRef.current === true) return
+          if (event.nativeEvent?.isComposing === true || event.keyCode === 229) return
+          if (Date.now() - composedAtRef.current < IDE_FLOAT_IME_SETTLE_MS) return
+          event.preventDefault()
+          void submit()
         },
       }),
       h('div', { key: 'foot', className: 'iw-float-foot' }, [
         h('button', {
           key: 'plus',
           type: 'button',
-          className: 'iw-float-icon iw-float-plus',
+          className: 'iw-float-plus',
           title: tr('floatAttach'),
           'aria-label': tr('floatAttach'),
           onClick: () => setMenu(menu === 'attach' ? '' : 'attach'),
-        }, '+'),
+        }, h(IdePlusIcon, { size: 14 })),
         h('button', {
           key: 'perm',
           type: 'button',
-          className: 'iw-float-chip iw-float-perm',
+          className: 'iw-float-perm',
           title: `${tr('floatPermission')}: ${ideFloatPermissionLabel(permission, tr)}`,
           onClick: () => setMenu(menu === 'perm' ? '' : 'perm'),
-        }, ideFloatPermissionLabel(permission, tr)),
+        }, [
+          h(IdeLockIcon, { key: 'i', size: 13 }),
+          h('span', { key: 't', className: 'iw-float-perm-text' }, ideFloatPermissionLabel(permission, tr)),
+          h(IdeChevronDownIcon, { key: 'c', size: 12 }),
+        ]),
         h('span', { key: 'gap', className: 'iw-float-gap' }),
+        efforts.length === 0 ? null : h('button', {
+          key: 'effort',
+          type: 'button',
+          className: 'iw-float-foot-chip',
+          title: `${tr('floatEffort')}: ${effortLabel}`,
+          onClick: () => setMenu(menu === 'effort' ? '' : 'effort'),
+        }, effortLabel),
+        h('button', {
+          key: 'model',
+          type: 'button',
+          className: 'iw-float-foot-chip iw-float-foot-model',
+          title: tr('floatModelHint'),
+          onClick: () => setMenu(menu === 'model' ? '' : 'model'),
+        }, [
+          h('span', { key: 't', className: 'iw-float-foot-chip-text' }, modelLabel),
+          h(IdeChevronDownIcon, { key: 'c', size: 12 }),
+        ]),
         running
           ? h('button', {
             key: 'stop',
             type: 'button',
             className: 'iw-float-send iw-float-stop',
+            title: tr('floatStop'),
+            'aria-label': tr('floatStop'),
             onClick: () => { void stop() },
-          }, tr('floatStop'))
+          }, h(IdeStopMarkIcon, { size: 12 }))
           : h('button', {
             key: 'send',
             type: 'button',
             className: 'iw-float-send',
+            title: tr('floatSend'),
+            'aria-label': tr('floatSend'),
             // A prompt may be images (or references) only.
             disabled: binding === null || sending || (draft.trim() === '' && refs.length === 0 && images.length === 0),
             onClick: () => { void submit() },
-          }, sending ? tr('floatSending') : tr('floatSend')),
+          }, h(IdeArrowUpIcon, { size: 16 })),
       ]),
     ]),
     h('div', { key: 'grip-n', className: 'iw-float-grip iw-float-grip-n', onPointerDown: onGripDown('n') }),

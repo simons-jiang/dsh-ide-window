@@ -579,9 +579,10 @@ function apply(ctx) {
     try {
       layout.selectPanel(panelId)
       lastSelect = 'ok'
-      // The floating assistant belongs to the code workspace: it appears when
-      // that panel takes the centre column and goes away with it.
-      store.setFloatOpen(panelId === IDE_PANEL_ID)
+      // The whole workspace panel takes the centre column. A card the user
+      // detached keeps showing in every other panel too.
+      const detached = store.getState().floatDetached === true
+      store.setFloatOpen(panelId === IDE_PANEL_ID || detached)
     } catch (error) {
       // The main seat registers after this row on a cold load; the button then
       // simply does nothing rather than throwing into the click handler.
@@ -874,8 +875,9 @@ function apply(ctx) {
     return () => {
       if (!immersive) return
       immersive = false
-      // Back to the conversation: the assistant card belongs to the workspace.
-      store.setFloatOpen(false)
+      // Back to the conversation: the card leaves with the workspace unless the
+      // user asked it to live on its own.
+      if (store.getState().floatDetached !== true) store.setFloatOpen(false)
       restoreSidebar()
     }
   }
@@ -1086,6 +1088,7 @@ function apply(ctx) {
         if (editable && !withModifier && command.action !== 'back') return
         event.preventDefault()
         if (command.action === 'toggle') openPanel()
+        else if (command.action === 'float-toggle') toggleFloat()
         else if (command.action === 'back') selectPanel(null)
         else if (command.action === 'screenshot') void startScreenshot()
         else if (command.action === 'copy-reference') void copyReferenceShortcut()
@@ -1093,6 +1096,25 @@ function apply(ctx) {
         return
       }
     }, true)
+  }
+
+  /**
+   * ⌥+空格：叫出/收起悬浮助手卡。卡片被设置关掉时说一声，而不是假装切了。
+   */
+  function toggleFloat() {
+    const look = store.getState()
+    if (look.floatEnabled !== true) {
+      store.setNotice(translate('floatToggleDisabled'))
+      return
+    }
+    const visible = look.floatOpen === true && look.floatClosed !== true
+    if (!visible) {
+      store.setFloatOpen(true)
+      store.setFloatCollapsed(false)
+      return
+    }
+    // Expanded → 收成小球；小球 → 展开。一次按键只走一步。
+    store.setFloatCollapsed(look.floatCollapsed !== true)
   }
 
   /**
@@ -1165,6 +1187,30 @@ function apply(ctx) {
       sessions: ctx.get('sessions'),
       modelDirectories: ctx.get('modelDirectories'),
       translate,
+      // The float's `/` and `@` menus read the same catalog and the same file
+      // listing the conversation's own composer does: one source of truth.
+      commandList: async (sessionId) => {
+        try {
+          const result = await ctx.remote.commands.list(sessionId)
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          return { value: Array.isArray(result?.value) ? result.value : [] }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
+      workspaceList: async (sessionId, path) => {
+        try {
+          const result = await ctx.remote.workspaceFiles.list(sessionId, path)
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          const entries = result?.value?.entries
+          return { value: Array.isArray(entries) ? entries : [] }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
+      // An open question can only be answered in the Conversation; the card's
+      // button sends the user there instead of faking an answer.
+      goToChat: () => backToChat(),
       // The card's file chips open files exactly like the conversation's file
       // cards do: one workspace tab, one panel selection, no preview pane.
       openInWorkspace: (path) => {
