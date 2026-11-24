@@ -101,6 +101,30 @@ const IDE_SHORTCUTS = [
     action: 'screenshot',
   },
   {
+    id: 'code-workspace.copy-reference-to-chat',
+    kind: 'key',
+    labelKey: 'shortcutCopyReference',
+    aliases: ['reference', 'copy', 'chat', '引用', '复制引用', '对话'],
+    // ⌘⇧C is IDEA's "copy reference"; on the Web runtime Ctrl+Shift+C belongs to
+    // the browser's inspector, so that one uses ⌥ instead of ⇧.
+    defaults: {
+      desktop: { code: 'KeyC', modifiers: ['primary', 'shift'] },
+      web: { code: 'KeyC', modifiers: ['primary', 'alt'] },
+    },
+    action: 'copy-reference',
+  },
+  {
+    id: 'code-workspace.open-table',
+    kind: 'key',
+    labelKey: 'shortcutOpenTable',
+    aliases: ['data', 'table', 'sql', '数据窗口', '打开表', '数据'],
+    defaults: {
+      desktop: { code: 'KeyT', modifiers: ['primary', 'alt'] },
+      web: { code: 'KeyT', modifiers: ['primary', 'alt'] },
+    },
+    action: 'open-table',
+  },
+  {
     id: 'code-workspace.gesture-definition',
     kind: 'gesture',
     labelKey: 'gestureDefinition',

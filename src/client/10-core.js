@@ -439,6 +439,10 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    // The symbol last clicked in the code view: `{path, line, symbol}`. The
+    // keyboard shortcut for 「复制引用回对话」 has no pointer to read it from, so
+    // the click leaves it here instead of keeping it inside the context menu.
+    lastSymbol: null,
     codeSymbolMenu: null,
     /** The file-tree context menu, or null: `{ path, isDir, x, y }`. */
     treeMenu: null,
@@ -1328,6 +1332,19 @@ function ideCreateStore(refs) {
     patchMenu('codeMenu', menu)
   }
 
+  /** Remember the symbol just clicked, for shortcuts that act on it later. */
+  function setLastSymbol(entry) {
+    const next = entry === undefined || entry === null
+      ? null
+      : { path: String(entry.path ?? ''), line: Number(entry.line) || 0, symbol: String(entry.symbol ?? '') }
+    if (next !== null && (next.path === '' || next.symbol === '')) return
+    const current = getState().lastSymbol
+    const same = current !== null && next !== null
+      && current.path === next.path && current.line === next.line && current.symbol === next.symbol
+    if (current === next || same) return
+    patch({ lastSymbol: next })
+  }
+
   /** Open or close the context menu of one symbol in the source. */
   function setCodeSymbolMenu(menu) {
     patchMenu('codeSymbolMenu', menu)
@@ -1654,6 +1671,7 @@ function ideCreateStore(refs) {
     setTreePopup,
     setCodeMenu,
     setCodeSymbolMenu,
+    setLastSymbol,
     toggleAnnotate,
     closeOtherTabs,
     closeAllTabs,

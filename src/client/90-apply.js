@@ -390,6 +390,69 @@ function apply(ctx) {
   }
 
   /**
+   * The `#L<line> <symbol>` tail for a reference, when the last clicked symbol is
+   * still the file being referenced.
+   *
+   * Kept pure so the shortcut's one interesting decision is testable: a symbol
+   * from another file, or a file nobody clicked in, must produce no tail at all.
+   */
+  function ideReferenceSuffix(state, path) {
+    const last = state?.lastSymbol
+    if (last === null || last === undefined) return ''
+    if (typeof path !== 'string' || path === '' || last.path !== path) return ''
+    const line = Number(last.line) || 0
+    const symbol = typeof last.symbol === 'string' ? last.symbol : ''
+    if (line <= 0 || symbol === '') return ''
+    return `#L${line} ${symbol}`
+  }
+
+  /**
+   * 「复制引用回对话」 as a shortcut: the active tab, plus the symbol last clicked
+   * in it.
+   *
+   * The context menu knows which symbol it was opened on; a keystroke does not,
+   * so `state.lastSymbol` — written by every symbol gesture and symbol menu — is
+   * what makes the two paths produce the same reference.
+   */
+  async function copyReferenceShortcut() {
+    const state = store.getState()
+    const path = state.activePath ?? ''
+    if (path === '') {
+      store.setNotice(translate('shortcutNeedsFile'))
+      return
+    }
+    if (String(state.tabs?.find((tab) => tab.path === path)?.kind) === 'jar') {
+      store.setNotice(translate('shortcutJarNoReference'))
+      return
+    }
+    await referenceToChat(path, false, ideReferenceSuffix(state, path))
+  }
+
+  /**
+   * 「在数据窗口打开表」 as a shortcut: parse `@TableName` off the active tab.
+   *
+   * It runs the same helper the file-tree menu runs, so both entries behave the
+   * same way (including every failure notice).
+   */
+  function openTableShortcut() {
+    const state = store.getState()
+    const path = state.activePath ?? ''
+    if (path === '') {
+      store.setNotice(translate('shortcutNeedsFile'))
+      return
+    }
+    if (!ideDataWindowAvailable()) {
+      store.setNotice(translate('dataWindowNotInstalled'))
+      return
+    }
+    if (!/\.(java|kt)$/i.test(path)) {
+      store.setNotice(translate('dataWindowNoTableName'))
+      return
+    }
+    void ideDataWindowOpenEntity(store, translate, state.rootPath, path)
+  }
+
+  /**
    * Collect both sides of the log and put the report on the clipboard.
    *
    * The client entries are sent first so the Host appends them to its file: a
@@ -995,6 +1058,8 @@ function apply(ctx) {
         if (command.action === 'toggle') openPanel()
         else if (command.action === 'back') selectPanel(null)
         else if (command.action === 'screenshot') void startScreenshot()
+        else if (command.action === 'copy-reference') void copyReferenceShortcut()
+        else if (command.action === 'open-table') openTableShortcut()
         return
       }
     }, true)

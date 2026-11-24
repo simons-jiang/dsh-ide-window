@@ -263,5 +263,9 @@
   "dataWindowOpening": "正在打开数据窗口…",
   "dataWindowQueryFailed": "在数据窗口执行失败",
   "dataWindowFailed": "数据窗口跳转失败",
-  "symbolMenuOpenTableInDataWindow": "在数据窗口打开表"
+  "symbolMenuOpenTableInDataWindow": "在数据窗口打开表",
+  "shortcutCopyReference": "复制引用回对话",
+  "shortcutOpenTable": "在数据窗口打开表",
+  "shortcutNeedsFile": "先在代码工作区打开一个文件",
+  "shortcutJarNoReference": "依赖源码不是工作区文件，无法生成引用"
 }

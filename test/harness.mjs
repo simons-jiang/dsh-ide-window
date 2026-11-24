@@ -1713,9 +1713,31 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 // ---- the single shortcut registry ------------------------------------------
 {
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
-  check(Array.isArray(registry) && registry.length === 8, 'the registry holds every code-workspace shortcut', String(registry?.length))
+  check(Array.isArray(registry) && registry.length === 10, 'the registry holds every code-workspace shortcut', String(registry?.length))
   const kinds = registry.map((entry) => entry.kind)
-  check(kinds.filter((kind) => kind === 'key').length === 4, 'four keyboard commands (toggle, back, ⌘P, screenshot)', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'key').length === 6,
+    'six keyboard commands (toggle, back, ⌘P, screenshot, copy reference, open table)', kinds.join(','))
+  const copyReference = registry.find((entry) => entry.action === 'copy-reference')
+  check(copyReference?.kind === 'key' && copyReference?.defaults?.desktop?.code === 'KeyC',
+    '复制引用回对话 is a bindable key', JSON.stringify(copyReference?.defaults))
+  check(copyReference?.defaults?.web?.modifiers?.includes('alt') === true,
+    'the web binding avoids the browser inspector (Ctrl+Shift+C)', JSON.stringify(copyReference?.defaults?.web))
+  const openTable = registry.find((entry) => entry.action === 'open-table')
+  check(openTable?.kind === 'key' && openTable?.defaults?.desktop?.code === 'KeyT',
+    '在数据窗口打开表 is a bindable key', JSON.stringify(openTable?.defaults))
+  for (const entry of [copyReference, openTable]) {
+    check(typeof entry?.labelKey === 'string' && entry.labelKey !== '', 'the new shortcut carries a label key', String(entry?.labelKey))
+  }
+
+  // The shortcut has no pointer, so the tail comes from the last clicked symbol.
+  const suffixOf = new Function(`${grabSource('ideReferenceSuffix', '90-apply.js')}\nreturn ideReferenceSuffix`)()
+  check(suffixOf({ lastSymbol: { path: 'a/B.java', line: 58, symbol: 'selectPage' } }, 'a/B.java') === '#L58 selectPage',
+    'the shortcut reuses the clicked symbol', String(suffixOf({ lastSymbol: { path: 'a/B.java', line: 58, symbol: 'selectPage' } }, 'a/B.java')))
+  check(suffixOf({ lastSymbol: { path: 'a/B.java', line: 58, symbol: 'selectPage' } }, 'a/C.java') === '',
+    'a symbol from another file is ignored')
+  check(suffixOf({ lastSymbol: null }, 'a/B.java') === '', 'no clicked symbol means no tail')
+  check(suffixOf({ lastSymbol: { path: 'a/B.java', line: 0, symbol: 'x' } }, 'a/B.java') === '',
+    'a symbol without a line produces no tail')
   check(kinds.filter((kind) => kind === 'gesture').length === 3, 'three are pointer gestures', kinds.join(','))
   check(kinds.filter((kind) => kind === 'sequence').length === 1, 'one is a double-press sequence (double Shift)', kinds.join(','))
   check(kinds.every((kind) => kind !== 'fixed'), 'every shortcut is editable', kinds.join(','))

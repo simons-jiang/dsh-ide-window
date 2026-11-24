@@ -219,6 +219,9 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **Code Vision**：可见的**方法**声明行尾显示「N 个用法 · M 个实现」和该行最后提交人（`simon · 2026/11/3`）；只认类体层级（缩进 ≤4）的方法声明，字段与局部变量都不会出现；计数用 2 次 LSP 查询、作者用 1 次 `git blame`，都按文件版本缓存，滚动不重查；LSP 不可用时只显示作者，失败的查询不写缓存（不会显示假的 0）
 
 - **源码里的符号右键菜单**：在方法名、字段、类名等任意符号上右键 →「复制名称」/「复制引用」/「复制引用回对话」。引用是 DSH 的 `@相对路径` **加行号和符号名**：`@…/FlowService.java#L58 selectPage`（目录带尾斜杠、含空格时加引号，规则与 DSH 的 reference codec 一致）。**只给文件路径是信息缺失**——对方只能知道是哪个类，不知道是哪个方法；行号由符号 span 上的 `data-iw-line`、名字由 `data-iw-sym` 一起进菜单（`anchor = #L{n}`，`lineSuffix = anchor + ' ' + 名字`）。插入对话时 chip 必须保持是 chip，`#L58 selectPage` 在 chip 之后另打字补上；jar 源码标签页只有「复制名称」，因为 jar 内的路径不是工作区路径
+- **两条快捷键（不只是右键菜单）**：`⌘⇧C` = 复制引用回对话，`⌘⌥T` = 在数据窗口打开表；两者都作用在**当前标签页**
+  - 复制引用的尾部 `#L<行> <符号>` 来自 `state.lastSymbol`——每一次符号手势（双击/⌘+单击/⌥+单击）和符号右键都会写它，所以快捷键与右键菜单产出**同一条引用**；符号属于别的文件时只给文件路径，不瞎带行号（`ideReferenceSuffix` 是纯函数，有用例）
+  - 打开表走 `ideDataWindowOpenEntity`，与文件树菜单同一个实现：`@TableName` 解析、数据窗口未安装/无表名等提示都一致；jar 源码标签页给「依赖源码不是工作区文件」的提示
 - **复制引用回对话**：直接回到对话，并把 `@引用` **追加**到草稿末尾——已有文本和附件一律不动，插入的是真正的引用芯片（不是纯文本）。实现方式：对话输入框是 Lexical 编辑器，`@` 触发菜单，只有从菜单里选中候选才会变成芯片，所以按「人打字」的顺序逐段输入（Tab 进入目录、最后一段回车确认），每一步都核对菜单候选；任何一步对不上就退化成纯文本 `@相对路径`，绝不选错文件。目录无法用芯片表达，直接插入 `@目录/` 文本
 
 ### 4.2.1 截图编辑器
@@ -266,6 +269,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - 数据窗口激活时设置 `window.__DSH_DATA_WINDOW_BRIDGE__ = { v: 1 }`；本插件只在标记存在时显示菜单项；
 - 请求 `dsh-data-window:request`（`openTable` / `openSql`），回执 `dsh-data-window:response`，按 `id` 匹配，2s 超时；
 - 文件树右键 Java/Kotlin 文件 → 解析 `@TableName` 发 `openTable`；编辑器符号右键 → Mapper 方法发 `openSql`（`@Select` 等注解优先，其次按 namespace 在 XML 里找 statement，动态 SQL 会带注释提示原文粘贴）；
+- MyBatis 动态 SQL 会先转成可执行 SQL：`<foreach>` 展开 3 条默认值、`#{}`/`${}` 按方法签名里的参数类型填默认值（数字 `1`、字符串 `'demo'`、日期时间），SQL 头部注释列出默认参数；XML 的 `<if>/<where>/<set>/<trim>/<choose>` 会展开成静态 SQL。仍不自动执行，用户在数据窗口里改值后自己跑。
 - 本插件只解析、不执行 SQL；定位库、只读校验都在数据窗口与它的 Host 里。
 
 ### 4.4 与对话联动
@@ -288,6 +292,8 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 | `code-workspace.search-everywhere` | sequence | 双击 `Shift`（窗口 400ms） |
 | `code-workspace.file-search` | key | `⌘P` |
 | `code-workspace.screenshot` | key | `⌘⇧S`（Windows `Ctrl+Shift+S`） |
+| `code-workspace.copy-reference-to-chat` | key | 桌面 `⌘⇧C`；Web `⌘⌥C`（`Ctrl+Shift+C` 是浏览器审查元素） |
+| `code-workspace.open-table` | key | `⌘⌥T`（Windows `Ctrl+Alt+T`） |
 | `code-workspace.gesture-definition` | gesture | 双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击 |
 | `code-workspace.gesture-usages` | gesture | 同上（互斥） |
 | `code-workspace.gesture-chain` | gesture | ⌥+单击（三个动作互斥） |

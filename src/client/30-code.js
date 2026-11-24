@@ -1178,6 +1178,11 @@ function IdeCodeView({ tab, tr, store, navigate }) {
 
   /** Run the action a gesture is bound to against the symbol under the pointer. */
   const runGestureAction = (action, hit, event) => {
+    // 「复制引用回对话」 as a keyboard shortcut has no pointer: remember which
+    // symbol the last navigation act was about.
+    if (typeof store.setLastSymbol === 'function') {
+      store.setLastSymbol({ path: tab.path, symbol: hit.name, line: (Number(hit.position?.line) || 0) + 1 })
+    }
     if (action === 'definition') void jumpToDefinition(hit.name, hit.position, event)
     else if (action === 'usages') void showUsages(hit.name, hit.position, event)
     else if (action === 'chain') void showChain(hit.name, hit.position, event)
@@ -1434,6 +1439,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
         const symbol = target.closest('[data-iw-sym]')
         if (symbol !== null) {
           event.preventDefault()
+          // Remember it for the shortcuts that act on "the symbol you meant".
+          store.setLastSymbol({
+            path: tab.path,
+            symbol: symbol.getAttribute('data-iw-sym') ?? '',
+            line: Number(symbol.getAttribute('data-iw-line')) || 0,
+          })
           store.setCodeSymbolMenu({
             path: tab.path,
             symbol: symbol.getAttribute('data-iw-sym') ?? '',

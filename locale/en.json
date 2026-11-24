@@ -263,5 +263,9 @@
   "dataWindowOpening": "Opening the data window…",
   "dataWindowQueryFailed": "The data window query failed",
   "dataWindowFailed": "Opening the data window failed",
-  "symbolMenuOpenTableInDataWindow": "Open table in data window"
+  "symbolMenuOpenTableInDataWindow": "Open table in data window",
+  "shortcutCopyReference": "Copy reference to chat",
+  "shortcutOpenTable": "Open table in data window",
+  "shortcutNeedsFile": "Open a file in the code workspace first",
+  "shortcutJarNoReference": "A dependency source is not a workspace file, so it cannot be referenced"
 }

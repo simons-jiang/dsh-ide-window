@@ -179,7 +179,7 @@ function ideDataWindowAnnotationSql(text, symbol, line) {
     .replace(/\\"/g, '"')
     .replace(/\\n/g, '\n')
     .replace(/\\t/g, '\t'))
-  return literals.join('').trim()
+  return literals.join(' ').trim()
 }
 
 /** Decode the XML entities a mapper statement can contain. */
@@ -215,11 +215,167 @@ async function ideDataWindowXmlSql(root, fqcn, symbol) {
   if (match === null) return null
   const body = match[2]
   if (body.trim() === '') return null
-  const dynamic = /<\s*(if|foreach|choose|when|otherwise|include|bind|set|where|trim)\b/i.test(body)
-  const decoded = ideDataWindowDecodeXml(body).trim()
-  return dynamic
-    ? `-- MyBatis 动态 SQL，已按 XML 原文粘贴，请按需调整\n${decoded}`
-    : decoded
+  return ideDataWindowDecodeXml(body).trim()
+}
+
+/** Parse the attributes of one XML-ish tag, single or double quoted. */
+function ideDataWindowXmlAttrs(text) {
+  const attrs = {}
+  for (const match of String(text ?? '').matchAll(/([A-Za-z_][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g)) {
+    attrs[match[1]] = match[3] ?? match[4] ?? ''
+  }
+  return attrs
+}
+
+/** Split a parameter list on commas that are not inside generics or parentheses. */
+function ideDataWindowSplitParams(body) {
+  const parts = []
+  let depth = 0
+  let current = ''
+  for (const char of String(body ?? '')) {
+    if (char === '<' || char === '(' || char === '[') depth += 1
+    if (char === '>' || char === ')' || char === ']') depth = Math.max(0, depth - 1)
+    if (char === ',' && depth === 0) {
+      parts.push(current)
+      current = ''
+      continue
+    }
+    current += char
+  }
+  if (current.trim() !== '') parts.push(current)
+  return parts
+}
+
+/** Method parameters as `name -> declared type`, from the interface source. */
+function ideDataWindowMethodParams(text, offset) {
+  const params = {}
+  if (offset < 0) return params
+  const open = text.indexOf('(', offset)
+  if (open < 0) return params
+  const close = ideDataWindowCloseParen(text, open)
+  if (close < 0) return params
+  for (const part of ideDataWindowSplitParams(text.slice(open + 1, close))) {
+    const named = /@Param\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/.exec(part)
+    const cleaned = part.replace(/@[\w.]+(\s*\([^)]*\))?/g, ' ').trim()
+    if (cleaned === '') continue
+    const tokens = cleaned.split(/\s+/)
+    const name = named !== null ? named[1] : tokens[tokens.length - 1]
+    const type = tokens.slice(0, -1).join(' ')
+    if (name !== undefined && name !== '') params[name] = type
+  }
+  return params
+}
+
+/** A runnable default for one parameter type. */
+function ideDataWindowDefaultValue(type, index) {
+  const declared = String(type ?? '')
+  if (/string|char/i.test(declared)) return "'demo'"
+  if (/date|time/i.test(declared)) return "'2026-01-01 00:00:00'"
+  if (/bool/i.test(declared)) return '1'
+  void index
+  return '1'
+}
+
+/** Value for one `#{...}` expression; a foreach item takes the iteration index. */
+function ideDataWindowValueFor(expr, params, index, item) {
+  const name = String(expr ?? '').split(',')[0].trim()
+  const key = name.split('.')[0]
+  if (item !== '' && (key === item || name.startsWith(`${item}.`))) return String(index)
+  return ideDataWindowDefaultValue(params[key] ?? '', index)
+}
+
+/** Expand `<foreach>` into three default rows so the SQL can run as-is. */
+function ideDataWindowExpandForeach(sql, params) {
+  let result = String(sql ?? '')
+  const pattern = /<foreach\b([^>]*)>([\s\S]*?)<\/foreach>/i
+  let match
+  while ((match = pattern.exec(result)) !== null) {
+    const attrs = ideDataWindowXmlAttrs(match[1])
+    const item = String(attrs.item ?? 'item')
+    const separator = attrs.separator ?? ','
+    const open = attrs.open ?? ''
+    const close = attrs.close ?? ''
+    const inner = match[2].replace(/,\s*$/, '')
+    const rows = []
+    for (let index = 1; index <= 3; index += 1) {
+      rows.push(inner.replace(/\$\{([^}]+)\}|#\{([^}]+)\}/g, (whole, dollar, hash) => (
+        ideDataWindowValueFor(dollar ?? hash, params, index, item)
+      )).trim())
+    }
+    const delimiter = separator.trim() === '' ? ',' : `${separator.trim()} `
+    result = result.slice(0, match.index) + open.trim() + rows.join(delimiter) + close.trim() + result.slice(match.index + match[0].length)
+  }
+  return result
+}
+
+/** Remove the MyBatis dynamic tags, keeping the SQL they contain. */
+function ideDataWindowStripTags(sql) {
+  let result = String(sql ?? '')
+  result = result.replace(/<\s*script\b[^>]*>/gi, '').replace(/<\s*\/\s*script\s*>/gi, '')
+  result = result.replace(/<choose\b[^>]*>([\s\S]*?)<\/choose>/gi, (whole, body) => {
+    const when = /<when\b[^>]*>([\s\S]*?)<\/when>/i.exec(body)
+    const otherwise = /<otherwise\b[^>]*>([\s\S]*?)<\/otherwise>/i.exec(body)
+    return when !== null ? when[1] : otherwise !== null ? otherwise[1] : ''
+  })
+  result = result.replace(/<where\b[^>]*>([\s\S]*?)<\/where>/gi, (whole, body) => (
+    ` WHERE ${body.replace(/^\s*(and|or)\b/i, '')} `
+  ))
+  result = result.replace(/<set\b[^>]*>([\s\S]*?)<\/set>/gi, (whole, body) => (
+    ` SET ${body.replace(/,\s*$/, '')} `
+  ))
+  result = result.replace(/<trim\b([^>]*)>([\s\S]*?)<\/trim>/gi, (whole, attrText, body) => {
+    const attrs = ideDataWindowXmlAttrs(attrText)
+    let inner = body
+    for (const prefix of String(attrs.prefixOverrides ?? '').split('|')) {
+      const text = prefix.trim()
+      if (text !== '') inner = inner.replace(new RegExp(`^\\s*${ideDataWindowEscape(text)}`, 'i'), '')
+    }
+    for (const suffix of String(attrs.suffixOverrides ?? '').split('|')) {
+      const text = suffix.trim()
+      if (text !== '') inner = inner.replace(new RegExp(`${ideDataWindowEscape(text)}\\s*$`, 'i'), '')
+    }
+    return `${String(attrs.prefix ?? '').trim()} ${inner} ${String(attrs.suffix ?? '').trim()}`
+  })
+  for (const tag of ['if', 'when', 'otherwise']) {
+    const pattern = new RegExp(`<\\s*${tag}\\b[^>]*>([\\s\\S]*?)<\\s*/\\s*${tag}\\s*>`, 'gi')
+    result = result.replace(pattern, '$1')
+  }
+  result = result.replace(/<bind\b[^>]*\/?\s*>/gi, '')
+  result = result.replace(/<include\b[^>]*\/?\s*>/gi, '')
+  // Anything left (foreach is already expanded) is an unsupported tag: drop it.
+  result = result.replace(/<[^>]+>/g, '')
+  // `<where>` may have wrapped its leading AND/OR inside a stripped `<if>`.
+  result = result.replace(/\bWHERE\s+(AND|OR)\b/gi, 'WHERE')
+  return result
+}
+
+/** Fill `#{...}` / `${...}` with runnable defaults. */
+function ideDataWindowFillParams(sql, params) {
+  return String(sql ?? '').replace(/\$\{([^}]+)\}|#\{([^}]+)\}/g, (whole, dollar, hash) => (
+    ideDataWindowValueFor(dollar ?? hash, params, 1, '')
+  ))
+}
+
+/** One-line summary of the values baked into the SQL, for the header comment. */
+function ideDataWindowDefaultSummary(params) {
+  return Object.entries(params).map(([name, type]) => {
+    const value = /list|collection|\[\]/i.test(type) ? '1, 2, 3' : ideDataWindowDefaultValue(type, 1)
+    return `${name}=${value}`
+  }).join('; ')
+}
+
+/** Turn a MyBatis statement into SQL that runs without the framework. */
+function ideDataWindowExecutableSql(raw, params) {
+  const expanded = ideDataWindowExpandForeach(raw, params)
+  const stripped = ideDataWindowStripTags(expanded)
+  const filled = ideDataWindowFillParams(stripped, params)
+  return filled
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .filter((line) => line !== '')
+    .join('\n')
+    .replace(/\b(IN|in)\s*\(/g, 'IN (')
+    .trim()
 }
 
 /** Right-click a mapper method: resolve its statement and paste it. */
@@ -242,17 +398,22 @@ async function ideDataWindowOpenMapper(store, tr, root, path, symbol, line) {
   const typeMatch = /\b(?:interface|class|enum)\s+(\w+)/.exec(text)
   const typeName = typeMatch === null ? ideBasename(path).replace(/\.(java|kt)$/i, '') : typeMatch[1]
   const fqcn = packageMatch === null ? typeName : `${packageMatch[1]}.${typeName}`
-  const sql = ideDataWindowAnnotationSql(text, name, line)
+  const methodOffset = ideDataWindowMethodOffset(text, name, line)
+  const params = ideDataWindowMethodParams(text, methodOffset)
+  const raw = ideDataWindowAnnotationSql(text, name, line)
     || await ideDataWindowXmlSql(root, fqcn, name)
-  if (typeof sql !== 'string' || sql.trim() === '') {
+  const sql = typeof raw === 'string' ? ideDataWindowExecutableSql(raw, params) : ''
+  if (sql === '') {
     store.setNotice(tr('dataWindowNoSql'))
     return
   }
+  const defaults = ideDataWindowDefaultSummary(params)
+  const header = defaults === '' ? '' : `-- defaults: ${defaults}\n`
   store.setNotice(tr('dataWindowOpening'))
   const ack = await ideDataWindowRequest({
     action: 'openSql',
     root,
-    sql,
+    sql: `${header}${sql}`,
     title: `${typeName}.${name}`,
   })
   ideDataWindowNotice(store, tr, ack, `${typeName}.${name}`)
