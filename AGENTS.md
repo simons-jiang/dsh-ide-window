@@ -300,6 +300,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - `/` 三节：**添加**（文件→转 `@`、目标、计划、反馈）、**指令**（压缩、权限、模型→打开模型菜单、下载日志，外加 Host 里其他指令）、**技能**（`ctx.remote.skills.list({ sessionId })`——**这里要传对象**，传字符串拿不到）。前四项是编辑器动作，其余走 `binding.session.command('/name')`；名称/说明用本插件 locale（`floatCmdGoal`/`floatCmdGoalDesc`…），因为 Host 那份目录只有英文 name/description
   - `@` 两节：**文件与文件夹**（`workspaceFiles.list(sessionId, dir)`，`'.'` 是根、其余相对路径、条目只有 `{name,type}`）+ **对话**（按标题过滤其他会话，选中即切换悬浮卡的会话）
   - ↑/↓ 选、Enter/Tab 选中、Esc 关，目录**下钻**成 `@dir/`、文件变引用 chip、技能插入 `/<名字> `。菜单绝对定位在输入框上方（`.iw-float-input` 必须是 `position: relative`）
+- **浮层挂在触发器上**：会话列表从标题 ▾ 向下、权限与模型从各自 chip 向上。菜单曾是卡片的 flex 子节点，于是点模型菜单会跑到卡片顶部——现在 `useLayoutEffect` 按触发器与卡片的 rect 算出 `left/top` 或 `right/bottom`，再用内联样式粘上去（卡片可缩放，写死偏移会漂）。`useLayoutEffect` 要记得在 `build.mjs` 的解构里导出
 - **输入区 = DSH 的 composer**：一个 16px 圆角容器（内边距 `10px 10px 8px 14px`），里面是无边框 textarea（占位文案同 DSH）与底行 `＋（圆形）/ 权限 pill（锁+文字+⌄）/ 空隙 / 思考等级 / 模型 chip / 圆形发送键（↑，运行中变 ■）`；引用是蓝色 chip，粘贴图片走剪贴板 `image/*`（≤4 张、单张 8 MB），发送 `prompt([image…, {text: refs + 正文}])`
 - **表头只留**：`▾` 标题（46% 截断）、`＋` 新建、`–`/`×`（模型与思考等级在输入区，别重复）
 - **每次打开 DSH 都从「收起来」开始**：卡片存在，但只占一个 44px 圆球（`floatCollapsed` 初值 `true`，不持久化）；球**由 CSS 钉在窗口右下角**（`right/bottom: 20px`，`left/top: auto`），窗口放大缩小都在原位——早先用卡片坐标算，最大化后还停在旧尺寸的位置，看着像跑到屏幕中间
@@ -421,7 +422,6 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 | 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
 | 截图编辑器画出巨大的实心色块 | 操作对象里 `width` 同时被当成"笔宽"和"矩形宽度"，`lineWidth` 变成几百像素 | 笔宽叫 `stroke`、几何叫 `width/height`；`ideShotDrawOp` 只从 `stroke` 取线宽 |
-| 截图画框后的操作条是白底白字、字体也不对 | 编辑器渲染在 `shell.overlay`，不在 `.iw-root` 里：① 面板组件才注入 `IdeStyles`，浮层没注入 → 全部 `.iw-*` 规则失效，掉回浏览器默认按钮；② `[data-dsh-theme]` 只在面板根节点上 → 浮层拿不到工作区调色板，用宿主 token | 浮层自己 `h(IdeStyles)` + 自带 `data-dsh-theme` 与字体变量；按钮复用 `.iw-btn` 而不是自造一套 |
 | 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
 | 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 质量阶梯 80→40 直到 ≤1 MB；仍超标才降分辨率（1 → 1/1.25 → 1/1.5 → 1/2）。**不预设 1080p**：抓屏与导出都保持设备像素 |
 | 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |

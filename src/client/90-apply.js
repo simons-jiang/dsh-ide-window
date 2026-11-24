@@ -364,6 +364,26 @@ function apply(ctx) {
    * The existing draft is never replaced: the caret is moved to its end first,
    * so text and attachments the user already had stay untouched.
    */
+  /**
+   * DSH executes `/goal`-style commands in the Conversation's own front-end, not
+   * through `session.command()` (that promise simply never settles for them).
+   * So the card fills the Conversation's composer instead: DSH opens its own
+   * palette and the user only presses Enter.
+   */
+  async function composeInChat(text) {
+    backToChat()
+    const editor = await waitForProbe(() => composerEditor(), 2000)
+    if (editor === null) {
+      ideLogRecord('warn', 'compose', 'composer not found', text)
+      store.setNotice(translate('floatCommandNoEditor'))
+      return false
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    caretToEnd(editor)
+    document.execCommand('insertText', false, text)
+    return true
+  }
+
   async function referenceToChat(path, isDir, suffix = '') {
     const relative = ideRelativeTo(store.getState().rootPath, path)
     const mention = ideReferenceMention(relative, isDir)
@@ -1222,6 +1242,7 @@ function apply(ctx) {
       // An open question can only be answered in the Conversation; the card's
       // button sends the user there instead of faking an answer.
       goToChat: () => backToChat(),
+      composeText: (text) => composeInChat(text),
       // The card's file chips open files exactly like the conversation's file
       // cards do: one workspace tab, one panel selection, no preview pane.
       openInWorkspace: (path) => {

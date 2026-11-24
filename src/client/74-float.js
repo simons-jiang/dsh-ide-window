@@ -504,6 +504,15 @@ function ideFloatEntryOf(raw, dir) {
  * The `/` menu, in the conversation's own order. `action` rows are composer
  * features (insert an `@`, open the model picker); the rest are Host commands.
  */
+/**
+ * Commands whose visible half lives in the Conversation (a goal dialog, a plan
+ * banner, the compact divider). Running them from the card and staying put
+ * looks like nothing happened, so picking one also navigates back.
+ */
+const IDE_FLOAT_CHAT_COMMANDS = new Set(['goal', 'plan', 'feedback'])
+/** Host commands the card runs itself; the rest belong to the Conversation UI. */
+const IDE_FLOAT_HOST_COMMANDS = new Set(['compact', 'export', 'permission'])
+
 const IDE_FLOAT_SLASH = [
   { name: 'file', labelKey: 'floatCmdFile', section: 'add', action: 'mention' },
   { name: 'goal', labelKey: 'floatCmdGoal', descKey: 'floatCmdGoalDesc', section: 'add' },
@@ -537,6 +546,7 @@ function ideFloatSlashItems(catalog, skills, query, translate) {
       alias: entry.name,
       description,
       section: entry.section,
+      icon: entry.name,
     })
   }
   const builtin = new Set(IDE_FLOAT_SLASH.map((entry) => entry.name))
@@ -544,12 +554,12 @@ function ideFloatSlashItems(catalog, skills, query, translate) {
     const name = String(raw?.name ?? '')
     if (name === '' || builtin.has(name)) continue
     if (needle !== '' && !name.toLowerCase().includes(needle)) continue
-    items.push({ kind: 'command', id: name, label: name, alias: '', description: String(raw?.description ?? ''), section: 'command' })
+    items.push({ kind: 'command', id: name, label: name, alias: '', description: String(raw?.description ?? ''), section: 'command', icon: 'command' })
   }
   for (const raw of Array.isArray(skills) ? skills : []) {
     const name = String(raw?.name ?? '')
     if (name === '' || (needle !== '' && !name.toLowerCase().includes(needle))) continue
-    items.push({ kind: 'skill', id: name, label: name, alias: '', description: String(raw?.description ?? ''), section: 'skill' })
+    items.push({ kind: 'skill', id: name, label: name, alias: '', description: String(raw?.description ?? ''), section: 'skill', icon: 'skill' })
   }
   return items
 }
@@ -1160,7 +1170,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, commandList, workspaceList, skillList }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, composeText, commandList, workspaceList, skillList }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -1187,6 +1197,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const suggestSeq = useRef(0)
   const commandCache = useRef(null)
   const skillCache = useRef(null)
+  const [plusItems, setPlusItems] = useState([])
   const directoryCache = useRef(new Map())
   const [pictures, setPictures] = useState({})
   // The picture the user is looking at.
@@ -1195,6 +1206,13 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   picturesRef.current = pictures
   const [projectedPreset, setProjectedPreset] = useState('')
   const cardRef = useRef(null)
+  const titleBtnRef = useRef(null)
+  const permChipRef = useRef(null)
+  const modelChipRef = useRef(null)
+  const effortChipRef = useRef(null)
+  // Where a popup opens: measured from the trigger, so a menu never lands at the
+  // top of the card the way a flex child did.
+  const [popup, setPopup] = useState(null)
   // An Enter that confirms an IME candidate must only commit the text, never
   // send: the conversation's composer behaves the same way. Some IMEs fire
   // `compositionend` just before that keydown, so the timestamp covers them.
@@ -1396,11 +1414,155 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
   }, [binding])
 
+  // Menus are positioned from their trigger every time one opens: the card is
+  // resizable and the chips sit at its bottom, so a static offset drifts.
+  useLayoutEffect(() => {
+    if (menu === '') { setPopup(null); return }
+    const card = cardRef.current
+    const chip = menu === 'sessions'
+      ? titleBtnRef.current
+      : (menu === 'model' ? modelChipRef.current : (menu === 'effort' ? effortChipRef.current : null))
+    const perm = menu === 'perm' ? permChipRef.current : chip
+    const trigger = perm ?? card
+    if (card === null || trigger === null) return
+    const outer = card.getBoundingClientRect()
+    const inner = trigger.getBoundingClientRect()
+    setPopup(menu === 'sessions'
+      ? { left: Math.round(inner.left - outer.left), top: Math.round(inner.bottom - outer.top + 6) }
+      : { right: Math.round(outer.right - inner.right), bottom: Math.round(outer.bottom - inner.top + 6) })
+  }, [menu])
+
   const permission = projectedPreset !== '' ? projectedPreset : (preset !== '' ? preset : ideFloatPermissionOf(entries))
+
+  /**
+   * The three popups hang off their own trigger (the title, the permission chip,
+   * the model chip). Before, they were flex children of the card, so a menu
+   * opened at the top of the card — nowhere near the control that opened it.
+   */
+  const renderSessionsMenu = () => (menu !== 'sessions' || popup === null
+    ? null
+    : h('div', {
+      key: 'sessions',
+      className: 'iw-float-menu iw-float-sessions',
+      ref: menuRef,
+      style: { left: `${popup.left ?? 0}px`, top: `${popup.top ?? 0}px`, right: 'auto', bottom: 'auto' },
+    }, [
+      h('button', {
+        key: 'new',
+        type: 'button',
+        className: 'iw-float-menu-item iw-float-menu-new',
+        onClick: () => {
+          setMenu('')
+          if (typeof startSession === 'function') startSession()
+        },
+      }, `＋ ${tr('floatNewSession')}`),
+      sessionRows.length === 0
+        ? h('div', { key: 'empty', className: 'iw-float-menu-empty' }, tr('floatSessionEmpty'))
+        : sessionGroups.map((group) => h('div', {
+          key: `g:${group.cwd}`,
+          className: group.current ? 'iw-float-group-current' : undefined,
+        }, [
+          h('div', { key: 'head', className: 'iw-float-group-head', title: group.cwd }, [
+            h('span', { key: 'n', className: 'iw-float-group-name' }, group.title),
+            group.current ? h('span', { key: 'c', className: 'iw-float-group-badge' }, tr('floatCurrentWorkspace')) : null,
+          ]),
+          ...group.sessions.slice(0, 30).map((row) => h('button', {
+            key: row.sessionId,
+            type: 'button',
+            className: `iw-float-menu-item${row.sessionId === sessionId ? ' on' : ''}`,
+            title: row.cwd === '' ? row.title : row.cwd,
+            onClick: () => {
+              setMenu('')
+              if (typeof openSession === 'function') openSession(row.sessionId)
+            },
+          }, [
+            h('span', { key: 't', className: 'iw-float-menu-label' }, row.title),
+            row.running ? h('span', { key: 'r', className: 'iw-float-menu-group' }, tr('floatRunning')) : null,
+          ])),
+        ])),
+    ]))
+
+  const renderEffortMenu = () => (menu !== 'effort' || popup === null
+    ? null
+    : h('div', {
+      key: 'efforts',
+      className: 'iw-float-menu',
+      style: { right: `${popup.right ?? 0}px`, bottom: `${popup.bottom ?? 0}px`, left: 'auto', top: 'auto', minWidth: '140px' },
+    }, [
+      h('div', { key: 'head', className: 'iw-float-menu-head' }, tr('floatEffort')),
+      ...[{ id: '', label: tr('floatEffortDefault') }, ...efforts].map((entry) => h('button', {
+        key: `e:${entry.id}`,
+        type: 'button',
+        className: `iw-float-menu-item${entry.id === (effort ?? '') ? ' on' : ''}`,
+        onClick: () => { void chooseEffort(entry.id) },
+      }, entry.label)),
+    ]))
+
+  const renderPermissionMenu = () => (menu !== 'perm' || popup === null
+    ? null
+    : h('div', {
+      key: 'permmenu',
+      className: 'iw-float-menu',
+      style: { right: `${popup.right ?? 0}px`, bottom: `${popup.bottom ?? 0}px`, left: 'auto', top: 'auto', minWidth: '160px' },
+    },
+      IDE_FLOAT_PERMISSIONS.map((entry) => h('button', {
+        key: entry.id,
+        type: 'button',
+        className: `iw-float-menu-item${entry.id === permission ? ' on' : ''}`,
+        onClick: () => { void choosePermission(entry.id) },
+      }, tr(entry.labelKey)))))
+
+  const renderModelMenu = () => (menu !== 'model' || popup === null
+    ? null
+    : h('div', {
+      key: 'models',
+      className: 'iw-float-menu',
+      style: { right: `${popup.right ?? 0}px`, bottom: `${popup.bottom ?? 0}px`, left: 'auto', top: 'auto', minWidth: '240px' },
+    }, options.length === 0
+      ? h('div', { key: 'none', className: 'iw-float-menu-empty' }, tr('floatModelEmpty'))
+      : options.map((option) => h('button', {
+        key: option.key,
+        type: 'button',
+        className: `iw-float-menu-item${option.model === models?.current?.model ? ' on' : ''}`,
+        onClick: () => { void chooseModel(option) },
+      }, [
+        h('span', { key: 'l', className: 'iw-float-menu-label' }, option.label),
+        h('span', { key: 'g', className: 'iw-float-menu-group' }, option.group),
+      ]))))
 
   // `/` and `@` suggestions, recomputed whenever the draft changes. The lists
   // come from the Host (`commands.list` / `workspaceFiles.list`), which is the
   // same pair the conversation composer reads.
+  useEffect(() => {
+    // The `+` button opens the same catalogue as typing `/`: DSH words its
+    // tooltip 「添加文件或调用指令」 for exactly that reason. No cancellation on
+    // re-render here — the io callbacks arrive as fresh closures, so cancelling
+    // would keep losing the race with the fetch.
+    if (menu !== 'attach') return
+    // An empty Session has no catalogue yet: the Host waits for one, so fall
+    // back to the rows the card can offer on its own instead of hanging.
+    if (sessionId === '' || sessionId === undefined) {
+      setPlusItems(ideFloatSlashItems([], [], '', tr))
+      return
+    }
+    const load = async () => {
+      if (commandCache.current === null) {
+        const result = typeof commandList === 'function' ? await commandList(sessionId) : { value: [] }
+        if (result?.error !== undefined) {
+          store.setNotice(`${tr('floatSuggestFailed')}: ${String(result.error)}`)
+          return
+        }
+        commandCache.current = Array.isArray(result?.value) ? result.value : []
+      }
+      if (skillCache.current === null) {
+        const result = typeof skillList === 'function' ? await skillList(sessionId) : { value: [] }
+        skillCache.current = result?.error === undefined && Array.isArray(result?.value) ? result.value : []
+      }
+      setPlusItems(ideFloatSlashItems(commandCache.current, skillCache.current, '', tr))
+    }
+    void load().catch((error) => store.setNotice(`${tr('floatSuggestFailed')}: ${error?.message ?? error}`))
+  }, [menu, sessionId])
+
   useEffect(() => {
     if (binding === null || sessionId === '') { setSuggest(null); return }
     const token = ideFloatTrigger(draft, draft.length)
@@ -1462,13 +1624,13 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         .filter((entry) => needle === '' || entry.name.toLowerCase().includes(needle))
         .sort((left, right) => (left.isDir === right.isDir ? left.name.localeCompare(right.name) : left.isDir ? -1 : 1))
         .slice(0, 40)
-        .map((entry) => ({ kind: entry.isDir ? 'dir' : 'file', id: entry.path, label: entry.name, alias: '', description: '', section: 'file' }))
+        .map((entry) => ({ kind: entry.isDir ? 'dir' : 'file', id: entry.path, label: entry.name, alias: '', description: '', section: 'file', icon: entry.isDir ? 'folder' : 'file' }))
       // The conversation's `@` list also offers other conversations.
       const chats = sessionRows
         .filter((row) => row.sessionId !== sessionId)
         .filter((row) => needle === '' || String(row.title ?? '').toLowerCase().includes(needle))
         .slice(0, 8)
-        .map((row) => ({ kind: 'session', id: row.sessionId, label: row.title, alias: '', description: '', section: 'chat' }))
+        .map((row) => ({ kind: 'session', id: row.sessionId, label: row.title, alias: '', description: '', section: 'chat', icon: 'chat' }))
       setSuggest({ sign: '@', token, items: [...files, ...chats], index: 0, dir })
     }
     void run()
@@ -1512,11 +1674,23 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       setDraft(`${cut}/${item.id} `)
       return
     }
+    // `/goal`, `/plan` and `/feedback` open DSH's own dialogs: fill the
+    // Conversation's composer so its palette takes over.
+    if (IDE_FLOAT_CHAT_COMMANDS.has(item.id) && typeof composeText === 'function') {
+      Promise.resolve(composeText(`/${item.id}`)).catch((error) => {
+        store.setNotice(`${tr('floatCommandFailed')}: ${error?.message ?? error}`)
+      })
+      return
+    }
     const command = binding?.session?.command
     if (typeof command !== 'function') return
+    // A dialog-driven command (`/goal`, `/plan`) stays pending until the user
+    // closes its UI, so this must not wait on the promise: run it, land on the
+    // Conversation where its half lives, and only report an outright rejection.
     Promise.resolve(command(`/${item.id}`)).then((result) => {
-      const failed = result?.ok === false || result?.value?.matched === false
-      if (failed) store.setNotice(`${tr('floatCommandFailed')}: ${item.id}`)
+      if (result?.ok === false || result?.value?.matched === false) {
+        store.setNotice(`${tr('floatCommandFailed')}: ${item.id}`)
+      }
     }).catch((error) => {
       store.setNotice(`${tr('floatCommandFailed')}: ${error?.message ?? error}`)
     })
@@ -1915,6 +2089,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       h('button', {
         key: 'name',
         type: 'button',
+        ref: titleBtnRef,
         className: 'iw-float-title iw-float-title-btn',
         title: `${tr('floatSessions')} · ${state.rootPath ?? ''}`,
         onClick: () => setMenu(menu === 'sessions' ? '' : 'sessions'),
@@ -1952,60 +2127,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         }, '×'),
       ]),
     ]),
-    menu === 'sessions'
-      ? h('div', { key: 'sessions', className: 'iw-float-menu iw-float-sessions', ref: menuRef }, [
-        h('button', {
-          key: 'new',
-          type: 'button',
-          className: 'iw-float-menu-item iw-float-menu-new',
-          onClick: () => {
-            setMenu('')
-            if (typeof startSession === 'function') startSession()
-          },
-        }, `＋ ${tr('floatNewSession')}`),
-        sessionRows.length === 0
-          ? h('div', { key: 'empty', className: 'iw-float-menu-empty' }, tr('floatSessionEmpty'))
-          : sessionGroups.map((group) => h('div', {
-            key: `g:${group.cwd}`,
-            className: group.current ? 'iw-float-group-current' : undefined,
-          }, [
-            h('div', {
-              key: 'head',
-              className: 'iw-float-group-head',
-              title: group.cwd,
-            }, [
-              h('span', { key: 'n', className: 'iw-float-group-name' }, group.title),
-              group.current ? h('span', { key: 'c', className: 'iw-float-group-badge' }, tr('floatCurrentWorkspace')) : null,
-            ]),
-            ...group.sessions.slice(0, 30).map((row) => h('button', {
-              key: row.sessionId,
-              type: 'button',
-              className: `iw-float-menu-item${row.sessionId === sessionId ? ' on' : ''}`,
-              title: row.cwd === '' ? row.title : row.cwd,
-              onClick: () => {
-                setMenu('')
-                if (typeof openSession === 'function') openSession(row.sessionId)
-              },
-            }, [
-              h('span', { key: 't', className: 'iw-float-menu-label' }, row.title),
-              row.running ? h('span', { key: 'r', className: 'iw-float-menu-group' }, tr('floatRunning')) : null,
-            ])),
-          ])),
-      ])
-      : null,
-    menu === 'model'
-      ? h('div', { key: 'models', className: 'iw-float-menu' }, options.length === 0
-        ? h('div', { key: 'none', className: 'iw-float-menu-empty' }, tr('floatModelEmpty'))
-        : options.map((option) => h('button', {
-          key: option.key,
-          type: 'button',
-          className: `iw-float-menu-item${option.model === models?.current?.model ? ' on' : ''}`,
-          onClick: () => { void chooseModel(option) },
-        }, [
-          h('span', { key: 'l', className: 'iw-float-menu-label' }, option.label),
-          h('span', { key: 'g', className: 'iw-float-menu-group' }, option.group),
-        ])))
-      : null,
+    renderSessionsMenu(),
+    renderEffortMenu(),
+    renderModelMenu(),
+    renderPermissionMenu(),
     h('div', {
       key: 'body',
       className: 'iw-float-body',
@@ -2080,34 +2205,41 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           }, '×'),
         ])),
       ]),
-      menu === 'effort'
-        ? h('div', { key: 'efforts', className: 'iw-float-menu' }, [
-          h('div', { key: 'head', className: 'iw-float-menu-head' }, tr('floatEffort')),
-          ...[{ id: '', label: tr('floatEffortDefault') }, ...efforts].map((entry) => h('button', {
-            key: `e:${entry.id}`,
-            type: 'button',
-            className: 'iw-float-menu-item',
-            onClick: () => { void chooseEffort(entry.id) },
-          }, entry.label)),
-        ])
-        : null,
       menu === 'attach'
-        ? h('div', { key: 'attachmenu', className: 'iw-float-menu' }, [
-          h('button', {
-            key: 'ref',
-            type: 'button',
-            className: 'iw-float-menu-item',
-            onClick: referenceOpenFile,
-          }, tr('floatAttachReference')),
-        ])
-        : null,
-      menu === 'perm'
-        ? h('div', { key: 'permmenu', className: 'iw-float-menu' }, IDE_FLOAT_PERMISSIONS.map((entry) => h('button', {
-          key: entry.id,
-          type: 'button',
-          className: `iw-float-menu-item${entry.id === permission ? ' on' : ''}`,
-          onClick: () => { void choosePermission(entry.id) },
-        }, tr(entry.labelKey))))
+        ? h('div', { key: 'attachmenu', className: 'iw-float-suggest', role: 'listbox' },
+          [
+            // The card's own extra: the file currently open in the workspace.
+            h('button', {
+              key: 'plus-current',
+              type: 'button',
+              role: 'option',
+              className: 'iw-float-suggest-item',
+              onMouseDown: (event) => { event.preventDefault(); referenceOpenFile() },
+            }, [
+              h('span', { key: 'i', className: 'iw-float-suggest-icon' }, h(IdeMenuGlyph, { kind: 'file', size: 14 })),
+              h('span', { key: 'n', className: 'iw-float-suggest-name' }, tr('floatAttachReference')),
+            ]),
+          ].concat(plusItems.map((item, index) => {
+            const previous = index === 0 ? '' : (plusItems[index - 1]?.section ?? '')
+            const titleKey = item.section !== previous ? ideFloatSectionKey(item.section) : ''
+            return h(React.Fragment, { key: `plus:${item.kind}:${item.id}` }, [
+              titleKey === ''
+                ? null
+                : h('div', { key: 'section', className: 'iw-float-suggest-section', role: 'presentation' }, tr(titleKey)),
+              h('button', {
+                key: 'row',
+                type: 'button',
+                role: 'option',
+                className: 'iw-float-suggest-item',
+                onMouseDown: (event) => { event.preventDefault(); setMenu(''); pickSuggest(item) },
+              }, [
+                h('span', { key: 'i', className: 'iw-float-suggest-icon' }, h(IdeMenuGlyph, { kind: item.icon ?? 'file', size: 14 })),
+                h('span', { key: 'n', className: 'iw-float-suggest-name' }, item.label),
+                item.alias === '' ? null : h('span', { key: 'a', className: 'iw-float-suggest-alias' }, item.alias),
+                h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
+              ]),
+            ])
+          })))
         : null,
       suggest === null || suggest.items.length === 0
         ? null
@@ -2127,10 +2259,14 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
                 className: `iw-float-suggest-item${index === suggest.index ? ' on' : ''}`,
                 onMouseDown: (event) => { event.preventDefault(); pickSuggest(item) },
               }, [
+                h('span', { key: 'i', className: 'iw-float-suggest-icon' }, h(IdeMenuGlyph, { kind: item.icon ?? 'file', size: 14 })),
                 h('span', { key: 'n', className: 'iw-float-suggest-name' }, item.label),
                 item.alias === '' ? null : h('span', { key: 'a', className: 'iw-float-suggest-alias' }, item.alias),
-                item.kind === 'dir' ? h('span', { key: 'd', className: 'iw-float-suggest-hint' }, tr('floatSuggestEnterDir')) : null,
-                item.description === '' ? null : h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
+                h('span', { key: 'desc', className: 'iw-float-suggest-desc' }, item.description),
+                // Directories advertise the Tab key that drills in, like DSH's keycap.
+                item.kind !== 'dir'
+                  ? null
+                  : h('span', { key: 'd', className: 'iw-float-suggest-trailing' }, h('kbd', { key: 'k', className: 'iw-float-suggest-key' }, 'Tab')),
               ]),
             ])
           })),
@@ -2191,6 +2327,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         h('button', {
           key: 'perm',
           type: 'button',
+          ref: permChipRef,
           className: 'iw-float-perm',
           title: `${tr('floatPermission')}: ${ideFloatPermissionLabel(permission, tr)}`,
           onClick: () => setMenu(menu === 'perm' ? '' : 'perm'),
@@ -2203,6 +2340,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         efforts.length === 0 ? null : h('button', {
           key: 'effort',
           type: 'button',
+          ref: effortChipRef,
           className: 'iw-float-foot-chip',
           title: `${tr('floatEffort')}: ${effortLabel}`,
           onClick: () => setMenu(menu === 'effort' ? '' : 'effort'),
@@ -2210,6 +2348,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         h('button', {
           key: 'model',
           type: 'button',
+          ref: modelChipRef,
           className: 'iw-float-foot-chip iw-float-foot-model',
           title: tr('floatModelHint'),
           onClick: () => setMenu(menu === 'model' ? '' : 'model'),

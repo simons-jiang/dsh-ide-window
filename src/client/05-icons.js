@@ -19,6 +19,44 @@ function ideSvg(size, children, strokeWidth = 1.3) {
   }, children)
 }
 
+/**
+ * The 14px glyphs the composer's `/` and `@` rows use. One switch keeps the
+ * set small; DSH draws these at 14px in `--dsw-alias-menu-icon`, so every path
+ * is authored on the same 16 grid and scaled down.
+ */
+function IdeMenuGlyph({ kind = 'file', size = 14 }) {
+  const paths = {
+    // 文件：别针夹一页纸
+    file: ['M5.2 4.4h3.6l2.4 2.4v4.8H5.2z', 'M5.2 8.6h5.4'],
+    // 目标：同心圆 + 十字
+    goal: ['M8 13.4A5.4 5.4 0 1 0 8 2.6a5.4 5.4 0 0 0 0 10.8z', 'M8 9.9A1.9 1.9 0 1 0 8 6.1a1.9 1.9 0 0 0 0 3.8z'],
+    // 计划：勾选清单
+    plan: ['M3.2 4.2h.01M5.6 4.2h7.2', 'M3.2 8h.01M5.6 8h7.2', 'M3.2 11.8h.01M5.6 11.8h7.2'],
+    // 反馈：纸飞机
+    feedback: ['M13.4 2.6 2.6 7.1l4.2 1.6 1.6 4.2z', 'M13.4 2.6 8.8 8.7'],
+    // 压缩：向内收拢的两条线
+    compact: ['M8 2.8v3.4M8 9.8v3.4', 'M6.2 4.6 8 6.4l1.8-1.8', 'M6.2 11.4 8 9.6l1.8 1.8'],
+    // 权限：盾牌
+    permission: ['M8 2.4 12.6 4v4.1c0 2.5-1.9 4.3-4.6 5.2-2.7-.9-4.6-2.7-4.6-5.2V4z', 'M6.1 7.9 7.4 9.2l2.6-2.6'],
+    // 模型：滑杆
+    model: ['M3 5.2h10M3 10.8h10', 'M6.2 3.5v3.4M10.4 9.1v3.4'],
+    // 下载日志：向下的箭头落到托盘
+    export: ['M8 2.8v6.4', 'M5.4 6.9 8 9.5l2.6-2.6', 'M3.4 12.6h9.2'],
+    // 技能：星芒
+    skill: ['M8 2.6l1.2 3.2 3.2 1.2-3.2 1.2L8 11.4 6.8 8.2 3.6 7l3.2-1.2z'],
+    // 对话：气泡
+    chat: ['M3.2 4.2h9.6v6.2H7.8L4.6 13V10.4H3.2z'],
+    // 文件夹
+    folder: ['M2.8 5h4l1.2 1.6h5.2V12H2.8z'],
+    // 命令（兜底）
+    command: ['M6.2 3.6 3.4 8l2.8 4.4', 'M9.8 3.6 12.6 8l-2.8 4.4'],
+    // 上下文 / 通用工具
+    tool: ['M8 2.8 13 8l-5 5.2L3 8z'],
+  }
+  const children = (paths[kind] ?? paths.file).map((d, index) => h('path', { key: `p${index}`, d }))
+  return ideSvg(size, children)
+}
+
 /** Terminal prompt (`>_`): marks a Tool step in the conversation. */
 function IdeTerminalIcon({ size = 15 }) {
   return ideSvg(size, [

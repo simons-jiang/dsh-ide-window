@@ -1821,6 +1821,23 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   const unanswered = transcriptOf(askLog.slice(0, 1))
   check(unanswered[0]?.role === 'question' && unanswered[0]?.answers?.length === 0, 'an unanswered question is still a card', JSON.stringify(unanswered[0]))
 
+  // Which `/` rows the card runs itself, and which belong to the Conversation UI.
+  const slashSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
+  const setOf = (name) => {
+    const at = slashSource.indexOf(`const ${name} = new Set([`)
+    if (at < 0) return []
+    const open = at + `const ${name} = new Set(`.length
+    const close = slashSource.indexOf('])', open)
+    if (close < 0) return []
+    return slashSource.slice(open + 1, close)
+      .split(',')
+      .map((part) => part.trim().replace(/'/g, ''))
+      .filter((part) => part !== '')
+  }
+  const slashSets = { chat: setOf('IDE_FLOAT_CHAT_COMMANDS'), host: setOf('IDE_FLOAT_HOST_COMMANDS') }
+  check(slashSets.chat.join(',') === 'goal,plan,feedback', 'dialog commands are routed to the composer', slashSets.chat.join(','))
+  check(slashSets.chat.every((name) => !slashSets.host.includes(name)), 'a command is either a dialog or a host command, never both', JSON.stringify(slashSets))
+
   // Tool calls collapse into one 「执行了命令」 line per batch, like the conversation.
   const stepKind = new Function(`${grabSource('ideFloatStepKind', '74-float.js')}\nreturn ideFloatStepKind`)()
   check(stepKind('bash') === 'commands' && stepKind('grep') === 'search' && stepKind('mystery') === 'tools',

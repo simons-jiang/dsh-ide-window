@@ -1263,54 +1263,113 @@ html.iw-select-code .iw-code .iw-vision {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The composer dropdown, measured off DSH's own menu: 4px padding, 34px rows,
+   a 14px glyph seat, the alias beside the title and the description flushed
+   right. */
 .iw-float-suggest {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
   z-index: 20;
   max-height: 240px;
-  overflow: auto;
+  overflow-y: auto;
   padding: 4px;
-  border-radius: 12px;
-  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12));
-  background: var(--dsw-alias-bg-layer-1, rgba(28, 30, 34, 0.98));
-  box-shadow: var(--dsw-elevation-prominent, 0 10px 24px rgba(0, 0, 0, 0.35));
+  border: 0;
+  border-radius: var(--dsw-radius-lg, 12px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1, #fff));
+  box-shadow: var(--dsw-elevation-prominent, 0 10px 24px rgba(0, 0, 0, 0.18));
 }
 .iw-float-suggest-item {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   width: 100%;
+  min-height: 34px;
   padding: 6px 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md, 8px);
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
   text-align: left;
   cursor: pointer;
 }
-.iw-float-suggest-item.on { background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.08)); }
+.iw-float-suggest-item.on { background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12)); }
+.iw-float-suggest-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-menu-icon, var(--dsw-alias-label-tertiary, #81858c));
+}
 .iw-float-suggest-section {
-  padding: 8px 8px 4px;
+  min-height: 23px;
+  padding: 5px 8px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-suggest-section:not(:first-child) { margin-top: 3px; }
+.iw-float-suggest-name {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-float-suggest-alias {
+  flex: none;
+  max-width: 20%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary, #81858c);
 }
-.iw-float-suggest-alias { flex: 0 0 auto; font-size: 12.5px; color: var(--dsw-alias-label-tertiary, #81858c); }
-.iw-float-suggest-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.iw-float-suggest-hint { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-suggest-desc {
-  flex: 1 1 auto;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--dsw-alias-label-tertiary, #81858c);
 }
+.iw-float-suggest-trailing {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+.iw-float-suggest-key {
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-xs, 4px);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12));
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-tertiary, #81858c));
+  font-size: 10px;
+  line-height: 16px;
+}
+/* A popup belongs to its trigger: the card used to lay menus out in its own
+   column, so a menu opened at the top of the card, far from the chip. The
+   coordinates are measured per open; this only takes the menu out of the flow. */
+.iw-float-menu {
+  position: absolute;
+  z-index: 24;
+}
+/* A menu row must keep its name on one line: the card is narrow, the model
+   names are not. */
+.iw-float-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .iw-float-menu {
   display: flex;
   flex-direction: column;
@@ -1328,9 +1387,11 @@ html.iw-select-code .iw-code .iw-vision {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
+  min-height: 30px;
+  font-size: 13px;
+  padding: 6px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-md, 8px);
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
   font: inherit;
@@ -1340,7 +1401,8 @@ html.iw-select-code .iw-code .iw-vision {
   cursor: pointer;
 }
 .iw-float-menu-item:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
-.iw-float-menu-item.on { color: var(--dsw-alias-state-success-primary, #3fa55a); }
+/* The current entry reads as a selected row, the way DSH's own menus do. */
+.iw-float-menu-item.on { background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12)); }
 .iw-float-menu-group { font-size: 12px; color: var(--dsw-alias-label-tertiary, inherit); white-space: nowrap; }
 .iw-float-menu-empty { padding: 8px 10px; font-size: 14px; color: var(--dsw-alias-label-tertiary, inherit); }
 /* Markdown tables: full width, scrolls sideways only when it must. */

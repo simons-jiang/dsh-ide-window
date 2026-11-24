@@ -38,7 +38,7 @@ window.__ModuleLoader__.load({
   id: ${JSON.stringify(pkg.name)},
   factory(require) {
     const React = require('react')
-    const { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } = React
+    const { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } = React
     const h = React.createElement
 ${await dictionary('en')}
 ${await dictionary('zh')}
