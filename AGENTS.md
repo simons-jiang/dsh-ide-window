@@ -293,6 +293,9 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - **已回答** → 右对齐蓝气泡：header 12.5px 三级色、问题 14px 二级色、选中项 14px 一级色（上边距 4px）
   - **未回答** → 整张卡（和对话里那张同一套度量）：eyebrow 11px 三级色、标题 16px、选项行 12px 圆角 + 序号徽标 20×20（radius 4，`bg-layer-3`）+ 14px 标签 + 13px 说明；卡片本身 `bg-layer-1` + `0 0 0 0.5px border-l1` 细环 + 两层软阴影（对话那张卡没有边框）；底部一行提示 + 「去对话作答」
   - **作答只能在对话里**：宿主 `ctx.remote.userQuestions.answer` 对前台问题返回 `false`（作答权由 DSH 自己的卡片持有），所以卡片的按钮走 `goToChat()` 切回对话，不假装能在这里答
+- **审批（`approval/asked`）也进卡片**：`role: 'approval'` 自成一卡（eyebrow「等待审批 / 审批结果」+ 工具名 + reason + 底部一行），compact 模式下**永不被隐藏**（和未作答的问题卡同一规则），`approval/decided` 按 `id` 回填到同一张卡（`allowed-once / rejected / cancelled / unavailable` → 已允许这一次 / 已拒绝 / 已取消 / 没有可用的审批人）。发生时先 `flushBatch()`，免得那张卡跑到正在等批的命令上面。
+  - **为什么不在卡里做「允许/拒绝」**：DSH 的审批请求是 `approval/request` **waterfall** 远程事件，唯一的作答者是 `dsh-client-ui-approval` 插件——它把审批卡挂在对话的输入区，返回的 promise 就是决定本身。插件再注册一个监听器要么抢先消费（对话那张卡消失，卡片一收起审批就彻底没人能答），要么根本轮不到，所以卡片只展示 + 「去对话处理」（`goToChat()`）。别改成「假装有按钮」或「自己 register 一个 handler」。
+  - 收起成球时球上点一个告警点（`iw-float-ball-dot`，`ideFloatPendingApprovals(rows) > 0`），tooltip 是「有审批在等，点开处理」。
 - **图片点开预览**：点缩略图开卡内全屏层（`Esc` 关、`复制图片` 走 canvas→PNG）
 - **能选中**：卡片与 `.iw-md` 要列进 `html.iw-select-code` 的白名单
 - **中文输入法组词时按 Enter 只上屏、不发送**：keydown 里先看 `composingRef`（`compositionstart/end` 维护）、`event.isComposing`、`keyCode === 229`，再看 `compositionend` 之后 80ms 内的那次 Enter（部分输入法先发 end 再发 keydown）；三条任一命中就交给输入法。**只判断 `isComposing` 不够**——踩过，用户组词按 Enter 直接把半句话发了出去

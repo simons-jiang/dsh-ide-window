@@ -1917,9 +1917,10 @@ function floatTranscriptSource() {
     { event: { type: 'mystery/thing', seq: 11, data: { a: 1 } } },
   ]
   const noticeRows = transcriptOf(noticeLog)
-  check(noticeRows.every((row) => row.role === 'notice'), 'every readable event is a notice row', JSON.stringify(noticeRows.map((row) => row.role)))
+  check(noticeRows[0]?.role === 'approval' && noticeRows.slice(1).every((row) => row.role === 'notice'),
+    'an approval is a card, every other readable event is a notice row', JSON.stringify(noticeRows.map((row) => row.role)))
   check(noticeRows.length === 8, 'bookkeeping events and completed turns paint nothing', String(noticeRows.length))
-  check(noticeRows[0]?.labelKey === 'floatNoticeApproval' && noticeRows[0]?.text.includes('bash'),
+  check(noticeRows[0]?.role === 'approval' && noticeRows[0]?.tool === 'bash',
     'an approval names the tool', JSON.stringify(noticeRows[0]))
   check(noticeRows[1]?.labelKey === 'floatNoticeRetry' && noticeRows[1]?.text.includes('SERVER'),
     'a retry keeps its cause', JSON.stringify(noticeRows[1]))
@@ -1952,6 +1953,26 @@ function floatTranscriptSource() {
   check(asked[0]?.answers?.join('、') === '蓝色', 'the picked option lands on the card', JSON.stringify(asked[0]?.answers))
   const unanswered = transcriptOf(askLog.slice(0, 1))
   check(unanswered[0]?.role === 'question' && unanswered[0]?.answers?.length === 0, 'an unanswered question is still a card', JSON.stringify(unanswered[0]))
+
+  // Approvals are their own card: the conversation owns the answer, the card
+  // shows what is being asked and (when settled) how it went.
+  const approvalLog = [
+    { event: { type: 'tool/call', seq: 1, data: { name: 'plugin_manager', callId: 'c1', arguments: '{"action":"list_bundles"}' } } },
+    { event: { type: 'approval/asked', seq: 2, data: { id: 'a1', toolName: 'plugin_manager', callId: 'c1', reason: 'escalate sandbox to danger-full-access' } } },
+    { event: { type: 'approval/decided', seq: 3, data: { id: 'a1', outcome: 'allowed-once' } } },
+  ]
+  const approvalRows = transcriptOf(approvalLog)
+  const approvalRow = approvalRows.find((row) => row.role === 'approval')
+  check(approvalRows[0]?.role === 'step' && approvalRows[1]?.role === 'approval',
+    'the waiting command is flushed above the approval card', approvalRows.map((row) => row.role).join(','))
+  check(approvalRow?.pending === false && approvalRow?.outcome === 'allowed-once',
+    'a decided approval settles on its own row', JSON.stringify(approvalRow))
+  check(approvalRow?.tool === 'plugin_manager' && approvalRow.reason.includes('danger-full-access'),
+    'the approval row keeps the tool and the reason', JSON.stringify(approvalRow))
+  check(transcriptOf(approvalLog.slice(0, 2)).find((row) => row.role === 'approval')?.pending === true,
+    'an undecided approval stays pending', 'pending')
+  check(approvalRows.every((row) => row.role !== 'notice'),
+    'an approval never degrades into a notice row', approvalRows.map((row) => row.role).join(','))
 
   // No hook may sit below the card's `if (!open) return null`: toggling the card
   // off and on would then change the hook count, and React tears the overlay
@@ -2021,6 +2042,20 @@ function floatTranscriptSource() {
       { key: 'a1', role: 'assistant', text: '完成' },
     ]
     check(visibleOf(files).map((row) => row.key).join(',') === 'u1,p1,a1', 'the edited file list stays next to the answer', visibleOf(files).map((row) => row.key).join(','))
+    const waiting = [
+      { key: 'u1', role: 'user', text: '发布' },
+      { key: 'ap1', role: 'approval', tool: 'plugin_manager', reason: 'x', pending: true },
+      { key: 'a1', role: 'assistant', text: '等你批一下' },
+    ]
+    check(visibleOf(waiting).map((row) => row.key).join(',') === 'u1,ap1,a1',
+      'a pending approval is never hidden', visibleOf(waiting).map((row) => row.key).join(','))
+    const settledOld = [
+      { key: 'ap1', role: 'approval', tool: 'plugin_manager', reason: 'x', pending: false, outcome: 'allowed-once' },
+      { key: 'u1', role: 'user', text: '第二轮' },
+      { key: 'a1', role: 'assistant', text: '好' },
+    ]
+    check(visibleOf(settledOld).map((row) => row.key).join(',') === 'u1,a1',
+      'a settled approval from an earlier turn stays in the conversation', visibleOf(settledOld).map((row) => row.key).join(','))
     const noise = [
       { key: 'u1', role: 'user', text: '发布' },
       { key: 'n1', role: 'notice', labelKey: 'floatNoticeJob', text: 'bash · ls' },
@@ -2335,6 +2370,73 @@ function floatTranscriptSource() {
     } finally {
       globalThis.document = savedDocument
     }
+  }
+
+  const approvalOutcomeOf = new Function(`${grabSource('ideFloatApprovalOutcome', '74-float.js')}\nreturn ideFloatApprovalOutcome`)()
+  const approvalTr = (key) => key
+  check(approvalOutcomeOf('allowed-once', approvalTr) === 'floatApprovalAllowed', 'an allowed approval says so')
+  check(approvalOutcomeOf('rejected', approvalTr) === 'floatApprovalRejected', 'a rejection says so')
+  check(approvalOutcomeOf('cancelled', approvalTr) === 'floatApprovalCancelled', 'a cancelled request says so')
+  check(approvalOutcomeOf('brand-new', approvalTr).includes('brand-new'), 'an unknown outcome is shown verbatim', approvalOutcomeOf('brand-new', approvalTr))
+  const pendingCountOf = new Function(`${grabSource('ideFloatPendingApprovals', '74-float.js')}\nreturn ideFloatPendingApprovals`)()
+  check(pendingCountOf([
+    { role: 'approval', pending: true },
+    { role: 'approval', pending: false },
+    { role: 'assistant' },
+  ]) === 1, 'the collapsed ball only counts approvals that are still waiting')
+  check(pendingCountOf(undefined) === 0 && pendingCountOf([]) === 0, 'no rows means nothing waiting')
+  check(bundle.includes('iw-float-ball-dot') && bundle.includes('floatApprovalBallHint'),
+    'the collapsed ball carries the waiting-approval dot and its tooltip')
+  check(bundle.includes('iw-float-approval') && bundle.includes('floatApprovalHint'),
+    'the approval card ships its styles and its 「go to the conversation」 hint')
+
+  // 渲染路径也要过一遍：审批卡在卡片里长什么样、按钮把人送回对话。
+  {
+    const rowSource = grabSource('ideFloatRow', '74-float.js')
+    const referenced = [...new Set([...rowSource.matchAll(/\b((?:Ide|ide)[A-Z]\w*)/g)].map((match) => match[1]))]
+    const declared = new Set([...rowSource.matchAll(/(?:function|const|let|class)\s+((?:Ide|ide)\w+)/g)].map((match) => match[1]))
+    const stubs = referenced.filter((name) => !declared.has(name))
+    let chats = 0
+    const h = (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(4) })
+    const rowOf = new Function('h', 'tr', 'io', `${stubs.map((name) => `const ${name} = () => null`).join('\n')}\n${rowSource}\nreturn ideFloatRow`)(
+      h,
+      (key) => key,
+      { setViewing: () => {}, store: { setNotice: () => {} }, pictures: {}, detail: false, goToChat: () => { chats += 1 } },
+    )
+    const tree = rowOf({ key: 'ap1', role: 'approval', tool: 'plugin_manager', reason: '需要 danger-full-access', pending: true }, (key) => key, {
+      setViewing: () => {},
+      store: { setNotice: () => {} },
+      pictures: {},
+      detail: false,
+      goToChat: () => { chats += 1 },
+    })
+    const flatten = (node, out = []) => {
+      if (node === null || node === undefined || typeof node !== 'object') return out
+      if (node.$$el !== true && node.type === undefined) return out
+      out.push(node)
+      for (const child of node.children ?? []) flatten(child, out)
+      return out
+    }
+    const nodes = flatten(tree)
+    const textOfNode = (node) => (node.children ?? []).map((child) => (typeof child === 'string' ? child : '')).join('')
+    const labels = nodes.map(textOfNode).filter((text) => text !== '')
+    check(labels.includes('floatApprovalPending'), 'a pending approval is labelled as waiting', labels.join('|'))
+    check(labels.some((text) => text.includes('plugin_manager')), 'the approval card names the tool', labels.join('|'))
+    check(labels.includes('需要 danger-full-access'), 'the approval card shows the reason', labels.join('|'))
+    check(labels.includes('floatApprovalHint'), 'the card says approvals are answered in the conversation', labels.join('|'))
+    const goButton = nodes.find((node) => node.type === 'button' && textOfNode(node) === 'floatApprovalGo')
+    check(goButton !== undefined, 'the pending approval offers the way back', labels.join('|'))
+    goButton?.props?.onClick?.()
+    check(chats === 1, 'the button switches to the conversation', String(chats))
+    const settledTree = rowOf({ key: 'ap2', role: 'approval', tool: 'plugin_manager', reason: 'x', pending: false, outcome: 'allowed-once' }, (key) => key, {
+      setViewing: () => {},
+      store: { setNotice: () => {} },
+      pictures: {},
+      detail: false,
+      goToChat: () => { chats += 1 },
+    })
+    const settledLabels = flatten(settledTree).map(textOfNode)
+    check(!settledLabels.includes('floatApprovalGo'), 'a decided approval has nothing left to answer', settledLabels.join('|'))
   }
 
   // Reasoning efforts come from the model's own catalog entry.

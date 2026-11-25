@@ -1894,6 +1894,27 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-ask-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .iw-float-ask-hint { font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-ask-go { flex: 0 0 auto; }
+/* 审批卡：和问答卡同一张纸，只是多一段「为什么要批」的说明。 */
+.iw-float-approval-done { opacity: 0.9; }
+/* 收起成球时，等着的审批用一个小告警点表示。 */
+.iw-float-ball-btn { position: relative; }
+.iw-float-ball-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-warn-primary, #d97706);
+  box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-1, #ffffff);
+}
+.iw-float-approval-reason {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* The问答 card, borrowed from the conversation: the bubble is the user's own,
    header and question in the secondary colour, the picked answer in primary. */
 .iw-float-question { display: flex; flex-direction: column; }

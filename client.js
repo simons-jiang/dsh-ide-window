@@ -373,6 +373,17 @@ window.__ModuleLoader__.load({
     "floatNoticeAttempt": "Attempt failed",
     "floatNoticeRetry": "Model retry",
     "floatNoticeApproval": "Approval requested",
+    "floatApprovalPending": "Waiting for approval",
+    "floatApprovalSettled": "Approval result",
+    "floatApprovalTitle": "A tool asks for more access",
+    "floatApprovalTool": "Tool",
+    "floatApprovalHint": "Approvals are answered in the conversation",
+    "floatApprovalGo": "Go to the conversation",
+    "floatApprovalBallHint": "An approval is waiting — click to open",
+    "floatApprovalAllowed": "Allowed once",
+    "floatApprovalRejected": "Rejected",
+    "floatApprovalCancelled": "Cancelled",
+    "floatApprovalUnavailable": "No answerer available",
     "floatNoticeApprovalResult": "Approval result",
     "floatNoticeApprovalPolicy": "Approval policy",
     "floatNoticeWorkspace": "Workspace changed",
@@ -808,6 +819,17 @@ window.__ModuleLoader__.load({
     "floatNoticeAttempt": "模型尝试失败",
     "floatNoticeRetry": "模型重试",
     "floatNoticeApproval": "审批请求",
+    "floatApprovalPending": "等待审批",
+    "floatApprovalSettled": "审批结果",
+    "floatApprovalTitle": "工具请求更高权限",
+    "floatApprovalTool": "工具",
+    "floatApprovalHint": "审批只能在对话里作答",
+    "floatApprovalGo": "去对话处理",
+    "floatApprovalBallHint": "有审批在等，点开处理",
+    "floatApprovalAllowed": "已允许这一次",
+    "floatApprovalRejected": "已拒绝",
+    "floatApprovalCancelled": "已取消",
+    "floatApprovalUnavailable": "没有可用的审批人",
     "floatNoticeApprovalResult": "审批结果",
     "floatNoticeApprovalPolicy": "审批策略",
     "floatNoticeWorkspace": "文件变更",
@@ -2776,6 +2798,27 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-ask-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .iw-float-ask-hint { font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-tertiary, #81858c); }
 .iw-float-ask-go { flex: 0 0 auto; }
+/* 审批卡：和问答卡同一张纸，只是多一段「为什么要批」的说明。 */
+.iw-float-approval-done { opacity: 0.9; }
+/* 收起成球时，等着的审批用一个小告警点表示。 */
+.iw-float-ball-btn { position: relative; }
+.iw-float-ball-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-warn-primary, #d97706);
+  box-shadow: 0 0 0 2px var(--dsw-alias-bg-layer-1, #ffffff);
+}
+.iw-float-approval-reason {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* The问答 card, borrowed from the conversation: the bubble is the user's own,
    header and question in the secondary colour, the picked answer in primary. */
 .iw-float-question { display: flex; flex-direction: column; }
@@ -14243,6 +14286,24 @@ function ideFloatCallsDetail(calls) {
   }).join('\n\n')
 }
 
+/** 还没决定的审批数量：折叠成球时靠它在球上点一个告警点。 */
+function ideFloatPendingApprovals(rows) {
+  return Array.isArray(rows) ? rows.filter((row) => row?.role === 'approval' && row.pending === true).length : 0
+}
+
+/** 审批结果的一句话说法；后续版本出现新结果时原样显示，不吞掉。 */
+function ideFloatApprovalOutcome(outcome, tr) {
+  const value = String(outcome ?? '')
+  const labels = {
+    'allowed-once': 'floatApprovalAllowed',
+    rejected: 'floatApprovalRejected',
+    cancelled: 'floatApprovalCancelled',
+    unavailable: 'floatApprovalUnavailable',
+  }
+  const key = labels[value]
+  return key === undefined ? `${tr('floatApprovalSettled')} · ${value}`.trim() : tr(key)
+}
+
 function ideFloatRow(row, tr, io) {
   const { setViewing, store, pictures } = io
   // Compact (the default) is about WHICH rows show, not about cutting the text:
@@ -14301,6 +14362,35 @@ function ideFloatRow(row, tr, io) {
   // Questions cannot be answered here: DSH only accepts the answer in the
   // Conversation, so the card's button navigates there instead.
   const goToChat = typeof io.goToChat === 'function' ? io.goToChat : () => {}
+  // 审批也一样：`approval/request` 是 waterfall 事件，唯一的作答入口是 DSH 自己的
+  // 审批插件（它把审批卡挂在对话的输入区）。插件再抢这份事件会把对话那张卡顶掉，
+  // 一旦卡片被收起，审批就彻底没人能答。所以这里只展示 + 把人送回对话。
+  if (row.role === 'approval') {
+    const settled = row.pending !== true
+    return h('div', { key: row.key, className: 'iw-float-row' }, [
+      h('div', { key: 'card', className: `iw-float-ask iw-float-approval${settled ? ' iw-float-approval-done' : ''}` }, [
+        h('div', { key: 'head', className: 'iw-float-ask-head' }, [
+          h('div', { key: 'e', className: 'iw-float-ask-eyebrow' },
+            settled ? tr('floatApprovalSettled') : tr('floatApprovalPending')),
+          h('div', { key: 't', className: 'iw-float-ask-title' },
+            row.tool === '' ? tr('floatApprovalTitle') : `${tr('floatApprovalTool')} · ${row.tool}`),
+        ]),
+        row.reason === '' ? null : h('div', { key: 'r', className: 'iw-float-approval-reason' }, row.reason),
+        h('div', { key: 'foot', className: 'iw-float-ask-foot' }, [
+          h('span', { key: 'hint', className: 'iw-float-ask-hint' },
+            settled ? ideFloatApprovalOutcome(row.outcome, tr) : tr('floatApprovalHint')),
+          settled
+            ? null
+            : h('button', {
+              key: 'go',
+              type: 'button',
+              className: 'iw-btn primary iw-float-ask-go',
+              onClick: () => { goToChat() },
+            }, tr('floatApprovalGo')),
+        ]),
+      ]),
+    ])
+  }
   if (row.role === 'files') {
     return h('div', { key: row.key, className: 'iw-float-row iw-float-files' }, [
       h('span', { key: 'who', className: 'iw-float-who' }, tr('floatFiles')),
@@ -14566,10 +14656,6 @@ function ideFloatNotice(event) {
         labelKey: 'floatNoticeRetry',
         text: ideFloatDetail(`第 ${data.retry ?? '?'} / ${data.maxRetries ?? '?'} 次\n${data.failure?.code ?? ''} ${data.failure?.message ?? ''}`.trim()),
       }
-    case 'approval/asked':
-      return { labelKey: 'floatNoticeApproval', text: ideFloatDetail(`${data.toolName ?? ''}\n${data.reason ?? ''}`.trim()) }
-    case 'approval/decided':
-      return { labelKey: 'floatNoticeApprovalResult', text: String(data.outcome ?? '') }
     case 'approval/policy':
       return { labelKey: 'floatNoticeApprovalPolicy', text: String(data.policy ?? '') }
     case 'workspace/changes':
@@ -14722,6 +14808,33 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
       }
       continue
     }
+    // 审批请求自成一卡：它发生在某个工具调用「等批」期间，先把这一批收口，
+    // 免得「等待审批」跑到那条命令上面去。
+    if (event.type === 'approval/asked') {
+      flushBatch()
+      rows.push({
+        key: `ap${event.seq}`,
+        role: 'approval',
+        text: '',
+        images: [],
+        tool: String(event.data?.toolName ?? ''),
+        reason: String(event.data?.reason ?? ''),
+        approvalId: String(event.data?.id ?? ''),
+        pending: true,
+        time: Number(event.time ?? 0),
+        seq: event.seq,
+      })
+      continue
+    }
+    if (event.type === 'approval/decided') {
+      const approvalId = String(event.data?.id ?? '')
+      const settled = rows.find((row) => row.role === 'approval' && row.approvalId === approvalId)
+      if (settled !== undefined) {
+        settled.pending = false
+        settled.outcome = String(event.data?.outcome ?? '')
+      }
+      continue
+    }
     // The conversation's own question card: `ask_user_question` is a tool call,
     // and its answer comes back as the tool result with matching ids.
     if (event.type === 'tool/call' && event.data?.name === 'ask_user_question') {
@@ -14782,8 +14895,10 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  */
 function ideFloatVisibleRows(rows, running, detail) {
   if (!Array.isArray(rows)) return []
-  // 还没作答的问题卡片不管在哪个位置都要露出来，否则用户永远看不到「要你选」。
+  // 还没作答的问题卡片、还没决定的审批不管在哪个位置都要露出来，否则用户永远
+  // 看不到「要你选 / 要你批」。
   const pendingQuestion = (row) => row?.role === 'question' && !(Array.isArray(row?.answers) && row.answers.length > 0)
+  const pendingApproval = (row) => row?.role === 'approval' && row.pending === true
   if (detail !== true) {
     // The card is a status board for the current turn: what you last said, then
     // every line the agent printed after it. An agent narrates between Tool calls
@@ -14813,14 +14928,14 @@ function ideFloatVisibleRows(rows, running, detail) {
         }
       }
       rows.forEach((row, index) => {
-        if (pendingQuestion(row)) keep.add(index)
+        if (pendingQuestion(row) || pendingApproval(row)) keep.add(index)
       })
       return [...keep].sort((left, right) => left - right).map((index) => rows[index])
     }
     const keep = new Set([lastUser])
     rows.forEach((row, index) => {
-      if (index > lastUser && (row?.role === 'assistant' || row?.role === 'files' || pendingQuestion(row))) keep.add(index)
-      else if (index < lastUser && pendingQuestion(row)) keep.add(index)
+      if (index > lastUser && (row?.role === 'assistant' || row?.role === 'files' || row?.role === 'approval' || pendingQuestion(row))) keep.add(index)
+      else if (index < lastUser && (pendingQuestion(row) || pendingApproval(row))) keep.add(index)
     })
     return [...keep].sort((left, right) => left - right).map((index) => rows[index])
   }
@@ -17007,14 +17122,19 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   if (collapsed) {
     // The ball is anchored to the window's bottom-right corner by CSS, so a
     // window resize can never leave it stranded mid-screen.
+    // 收起来时审批不会自己跳出来，球上点一个告警点，别让人错过要批的东西。
+    const waiting = ideFloatPendingApprovals(entries)
     return shell([h('button', {
       key: 'b',
       type: 'button',
       className: 'iw-float-ball-btn',
       onClick: () => store.setFloatCollapsed(false),
-      title: tr('floatExpand'),
-      'aria-label': tr('floatExpand'),
-    }, 'AI')], 'iw-float-collapsed', { width: IDE_FLOAT_BALL, height: IDE_FLOAT_BALL })
+      title: waiting > 0 ? tr('floatApprovalBallHint') : tr('floatExpand'),
+      'aria-label': waiting > 0 ? tr('floatApprovalBallHint') : tr('floatExpand'),
+    }, [
+      'AI',
+      waiting > 0 ? h('span', { key: 'dot', className: 'iw-float-ball-dot' }) : null,
+    ])], 'iw-float-collapsed', { width: IDE_FLOAT_BALL, height: IDE_FLOAT_BALL })
   }
 
   return shell([
