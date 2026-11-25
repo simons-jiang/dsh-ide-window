@@ -1821,6 +1821,19 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   const unanswered = transcriptOf(askLog.slice(0, 1))
   check(unanswered[0]?.role === 'question' && unanswered[0]?.answers?.length === 0, 'an unanswered question is still a card', JSON.stringify(unanswered[0]))
 
+  // No hook may sit below the card's `if (!open) return null`: toggling the card
+  // off and on would then change the hook count, and React tears the overlay
+  // down instead of re-rendering it (the card never came back after re-enabling
+  // it in Settings).
+  {
+    const floatSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
+    const guard = floatSource.indexOf('if (!open) return null')
+    check(guard > 0, 'the card keeps an open guard', String(guard))
+    const tail = floatSource.slice(guard)
+    const hookUse = /\b(useState|useEffect|useLayoutEffect|useRef|useMemo|useCallback|useSyncExternalStore)\s*\(/u.exec(tail)
+    check(hookUse === null, 'no React hook runs after the open guard', hookUse === null ? '' : hookUse[0])
+  }
+
   // Which `/` rows the card runs itself, and which belong to the Conversation UI.
   const slashSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
   const setOf = (name) => {

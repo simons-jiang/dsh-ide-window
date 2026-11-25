@@ -1210,6 +1210,10 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const permChipRef = useRef(null)
   const modelChipRef = useRef(null)
   const effortChipRef = useRef(null)
+  const inputRef = useRef(null)
+  // Where the `/`, `@` and `+` menu paints. It is fixed to the viewport so a
+  // short card cannot clip it down to a single row.
+  const [suggestPos, setSuggestPos] = useState(null)
   // Where a popup opens: measured from the trigger, so a menu never lands at the
   // top of the card the way a flex child did.
   const [popup, setPopup] = useState(null)
@@ -1413,6 +1417,25 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       if (typeof off === 'function') off()
     }
   }, [binding])
+
+  useLayoutEffect(() => {
+    const open = suggest !== null || menu === 'attach'
+    const input = inputRef.current
+    if (!open || input === null) { setSuggestPos(null); return }
+    const rect = input.getBoundingClientRect()
+    const viewportHeight = globalThis.innerHeight ?? 0
+    const viewportWidth = globalThis.innerWidth ?? 0
+    // A narrow card would squeeze names and descriptions into three words each;
+    // the menu may grow wider than the composer as long as it stays on screen.
+    const width = Math.round(Math.min(440, Math.max(rect.width, 340)))
+    const left = Math.round(Math.min(Math.max(12, rect.left), Math.max(12, viewportWidth - width - 12)))
+    setSuggestPos({
+      left,
+      width,
+      bottom: Math.round(viewportHeight - rect.top + 4),
+      maxHeight: Math.round(Math.min(320, Math.max(140, rect.top - 16))),
+    })
+  }, [suggest, menu])
 
   // Menus are positioned from their trigger every time one opens: the card is
   // resizable and the chips sit at its bottom, so a static offset drifts.
@@ -1759,6 +1782,15 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return 0
   })()
 
+  // Maximising the window moves both card and ball: nothing else re-renders
+  // this component on resize, so the coordinates would stay at the old size.
+  const [, setViewportTick] = useState(0)
+  useEffect(() => {
+    const onResize = () => setViewportTick((tick) => tick + 1)
+    globalThis.addEventListener('resize', onResize)
+    return () => globalThis.removeEventListener('resize', onResize)
+  }, [])
+
   if (!open) return null
 
   // The header names the conversation, not the folder: that is what the menu
@@ -1768,14 +1800,6 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const workspace = ideBasename(state.rootPath ?? '') || tr('floatNoWorkspace')
   const sessionTitle = currentRow?.title
     ?? (workspace === '' || workspace === tr('floatNoWorkspace') ? tr('floatNoSession') : workspace)
-  // Maximising the window moves both card and ball: nothing else re-renders
-  // this component on resize, so the coordinates would stay at the old size.
-  const [, setViewportTick] = useState(0)
-  useEffect(() => {
-    const onResize = () => setViewportTick((tick) => tick + 1)
-    globalThis.addEventListener('resize', onResize)
-    return () => globalThis.removeEventListener('resize', onResize)
-  }, [])
 
   const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth
   const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
@@ -2182,7 +2206,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         }, tr('floatCloseViewer')),
       ]),
     ]),
-    h('div', { key: 'input', className: 'iw-float-input' }, [
+    h('div', { key: 'input', className: 'iw-float-input', ref: inputRef }, [
       refs.length === 0 && images.length === 0 ? null : h('div', { key: 'chips', className: 'iw-float-chips' }, [
         ...refs.map((ref, index) => h('span', { key: `ref:${ref}`, className: 'iw-float-chip-ref' }, [
           h('span', { key: 't', className: 'iw-float-chip-ref-text' }, ref.replace(/^@/, '')),
@@ -2195,7 +2219,13 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           }, '×'),
         ])),
         ...images.map((image) => h('span', { key: image.key, className: 'iw-float-chip-image', title: image.name ?? '' }, [
-          h('img', { key: 'i', src: image.preview, alt: '' }),
+          // Same as an attachment in the conversation: a click shows it full size.
+          h('img', {
+            key: 'i',
+            src: image.preview,
+            alt: '',
+            onClick: () => setViewing({ url: image.preview, name: image.name ?? '' }),
+          }),
           h('button', {
             key: 'x',
             type: 'button',
@@ -2206,7 +2236,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         ])),
       ]),
       menu === 'attach'
-        ? h('div', { key: 'attachmenu', className: 'iw-float-suggest', role: 'listbox' },
+        ? h('div', {
+          key: 'attachmenu',
+          className: 'iw-float-suggest',
+          role: 'listbox',
+          style: suggestPos === null ? undefined : { position: 'fixed', left: `${suggestPos.left}px`, width: `${suggestPos.width}px`, bottom: `${suggestPos.bottom}px`, maxHeight: `${suggestPos.maxHeight}px` },
+        },
           [
             // The card's own extra: the file currently open in the workspace.
             h('button', {
@@ -2243,7 +2278,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         : null,
       suggest === null || suggest.items.length === 0
         ? null
-        : h('div', { key: 'suggest', className: 'iw-float-suggest', role: 'listbox' },
+        : h('div', {
+          key: 'suggest',
+          className: 'iw-float-suggest',
+          role: 'listbox',
+          style: suggestPos === null ? undefined : { position: 'fixed', left: `${suggestPos.left}px`, width: `${suggestPos.width}px`, bottom: `${suggestPos.bottom}px`, maxHeight: `${suggestPos.maxHeight}px` },
+        },
           suggest.items.map((item, index) => {
             const previous = index === 0 ? '' : (suggest.items[index - 1]?.section ?? '')
             const titleKey = item.section !== previous ? ideFloatSectionKey(item.section) : ''

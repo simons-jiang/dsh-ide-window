@@ -421,11 +421,12 @@ dsh plugin --profile desktop add link:~/dev/dsh-ide-window
 | 右键菜单离鼠标很远，飘在面板上方 | 用「条目数 × 28」估高度，估小了就 `y - 估计高度`，真实菜单更高、被夹到面板底边后整体上移 | 高度必须挂载后实测：放不下时让菜单**底边贴在指针**（`top = y - height`），不要用估算值；`useLayoutEffect` 在首帧前算好并保持 `visibility: hidden` 直到定位完成 |
 | 切到浅色主题后代码看不清（深色语法色仍在用） | 语法高亮是写死的深色配色，没有跟着主题走 | 语法色走 `--iw-syn-*` 变量，每套主题各给一组并按对比度校验（正文类 ≥4.5:1，注释 ≥3.5:1）；`test/theme.mjs` 断言每套主题都有这 8 个变量 |
 | 截图点了没反应，或只给一句「失败」 | `screencapture` 在 macOS 未授权时报 `could not create image from display`；浏览器侧也拿不到屏幕（DSH 把 `setDisplayMediaRequestHandler` 设成 `callback({})` 直接拒绝） | 截图只能由宿主用系统工具做；失败按文案归类成 `no-screen-permission`，弹层给「打开系统设置」深链 + 系统化指引 |
-| 截图编辑器画出巨大的实心色块 | 操作对象里 `width` 同时被当成"笔宽"和"矩形宽度"，`lineWidth` 变成几百像素 | 笔宽叫 `stroke`、几何叫 `width/height`；`ideShotDrawOp` 只从 `stroke` 取线宽 |
 | 编辑器里拖拽完全没反应（或选框永远是全屏） | ① `setPointerCapture` 对合成 pointerId 抛错，异常发生在设置拖动状态之前；② 预设了全屏选框，按下点永远"命中选框内部"，只能移动不能重画 | ① `setPointerCapture` 包 try/catch，且放在状态设置之后；② **不预设选框**，第一下按下-拖动就是画框；① 的检查同理适用于所有合成指针测试 |
-| 截图附件太大（1 MB 以上） | 直接塞原图：Retina 全屏 5120×2880、PNG 1.2 MB | 质量阶梯 80→40 直到 ≤1 MB；仍超标才降分辨率（1 → 1/1.25 → 1/1.5 → 1/2）。**不预设 1080p**：抓屏与导出都保持设备像素 |
 | 想只加一张图却把草稿弄乱 | 直接改输入框内容会动到用户已有的文字/引用/附件 | 合成 `ClipboardEvent('paste')` + `DataTransfer` + `File` 派发给 Lexical 输入框，让 DSH 自己处理粘贴；**不要**写 editor 的 `innerHTML`/`textContent`（`test/screenshot.mjs` 会断言这一点） |
 | 想在悬浮框里直接答题 | 宿主 `remote.userQuestions.answer` 需要 `inject: ['remote.userQuestions']` 才拿得到，且对前台问题一律回 `false`（作答权在 DSH 自己的问答卡上，`publishContinuedQuestions` 只接管已延续的批次） | 悬浮框只渲染题目（读 `tool/call` 的 arguments），提交按钮引导回对话，不伪造作答 |
+| 点「×」关掉悬浮框后，⌥+空格再也叫不出来（也不提示） | 关闭写 `floatClosed`，只重置于重启；而 `toggleFloat` 的判断只看 `floatOpen`，于是每次都走「设为可见」但 `floatClosed` 仍是 true | `toggleFloat` 命中 `floatClosed` 时先 `setFloatClosed(false)` 再展开——快捷键就是用来叫回卡片的 |
+| 卡片缩到最小后 `/` 菜单只剩一行；菜单还半透明，代码从底下透出来 | ① 菜单绝对定位在 `.iw-float-input` 里，卡片 `overflow: hidden` 把超出部分裁掉；② 底色用 `--dsw-specific-menu`，那是 `#fcfdfeb3`（DSH 靠背后模糊，卡片没有 backdrop-filter） | 菜单改成 `position: fixed` 并按输入框的 rect 算 `left/width/bottom/max-height`（fixed 不被祖先 overflow 裁），宽度至少 340 保证名称/说明不被挤；底色用不透明的 `--dsw-alias-bg-layer-1` 加细边框 |
+| 设置里关掉悬浮框再打开，卡片再也出不来（快捷键也没用） | `74-float.js` 把 `useState`/`useEffect`（resize 重渲染）写在了 `if (!open) return null` **之后**：关掉时少跑两个 hook，再打开时多跑两个 → 「Rendered more hooks than during the previous render」，`shell.overlay` 把整张卡卸掉 | **所有 hook 必须在 `if (!open) return null` 之前**；`test/harness.mjs` 里有一条源码断言盯着早退之后不许出现 hook |
 | 悬浮卡整张没了（重启后明显），控制台没报错 | 行渲染里把图片节点也起名 `pictures`，遮住了上层的 `pictures`（附件 id → URL），`pictures[id]` 读到 null → 含图片的消息一渲染就抛错，`shell.overlay` 插槽把整个浮层卸掉 | 行渲染抽成 `ideFloatRow`，变量不重名（图片节点叫 `pics`）；**每行 try/catch**，一行坏数据不连坐整张卡 |
 | 两个插件（代码工作区 + git 窗口）配色不一致 | 各自注入 CSS、各自用 DSH token，主题是本插件私有的 | 把主题做成跨插件约定：`localStorage['dsh-theme']` + `dsh-theme` 事件 + `[data-dsh-theme]` 选择器；对方只读这三样。只在 `.iw-root` 上作用域的选择器无法共享，必须用通用属性 |
 

@@ -1127,6 +1127,15 @@ function apply(ctx) {
       store.setNotice(translate('floatToggleDisabled'))
       return
     }
+    // `×` hides the card until DSH restarts, but this shortcut is the one the
+    // user presses to call it back: reopening has to clear that flag, otherwise
+    // nothing happens and the card looks broken.
+    if (look.floatClosed === true) {
+      store.setFloatClosed(false)
+      store.setFloatOpen(true)
+      store.setFloatCollapsed(false)
+      return
+    }
     const visible = look.floatOpen === true && look.floatClosed !== true
     if (!visible) {
       store.setFloatOpen(true)

@@ -1275,9 +1275,12 @@ html.iw-select-code .iw-code .iw-vision {
   max-height: 240px;
   overflow-y: auto;
   padding: 4px;
-  border: 0;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: var(--dsw-radius-lg, 12px);
-  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-1, #fff));
+  /* --dsw-specific-menu is translucent (#fcfdfeb3) because DSH blurs what is
+     behind it; the card has no backdrop filter, so on its own the menu would
+     let the code show through. Opaque layer + border instead. */
+  background: var(--dsw-alias-bg-layer-1, #fff);
   box-shadow: var(--dsw-elevation-prominent, 0 10px 24px rgba(0, 0, 0, 0.18));
 }
 .iw-float-suggest-item {
@@ -1380,7 +1383,7 @@ html.iw-select-code .iw-code .iw-vision {
   padding: 5px;
   border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.14));
   border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2, rgba(20, 21, 24, 0.98));
+  background: var(--dsw-alias-bg-layer-1, #fff);
 }
 .iw-float-menu-item {
   display: flex;
