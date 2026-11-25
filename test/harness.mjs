@@ -2309,6 +2309,34 @@ function floatTranscriptSource() {
   const paragraphInTable = markdownOf('| **a** | b |\n| --- | --- |')[0]
   check(paragraphInTable.head[0] === '**a**', 'inline markers inside a cell survive parsing', paragraphInTable.head[0])
 
+  // A local image has to go through DSH's own file route: a bare `/tmp/x.jpg` in
+  // `<img src>` resolves against the page origin and renders as a broken icon with
+  // the alt text (the card showed 「⧉ 选择数据库（深色）」 instead of the screenshot).
+  {
+    const savedDocument = globalThis.document
+    globalThis.document = { baseURI: 'http://127.0.0.1:57999/' }
+    try {
+      const fileUrlOf = new Function(`${grabSource('ideFloatFileUrl', '74-float.js')}\nreturn ideFloatFileUrl`)()
+      const inlineOf = new Function('h', `${grabSource('ideFloatSafeUrl', '74-float.js')}\n${grabSource('ideFloatFileUrl', '74-float.js')}\n${grabSource('ideFloatInline', '74-float.js')}\nreturn ideFloatInline`)(
+        (type, props, ...children) => ({ type, props, children }),
+      )
+      const localImage = inlineOf('![选择数据库（深色）](/tmp/dw-schema-picker.jpg)')[0]
+      check(localImage?.type === 'img'
+        && localImage.props.src === 'http://127.0.0.1:57999/api/file?path=%2Ftmp%2Fdw-schema-picker.jpg',
+        'a local image is served by the DSH file route', String(localImage?.props?.src))
+      const remoteImage = inlineOf('![x](https://cdn.example.com/a.png)')[0]
+      check(remoteImage?.props?.src === 'https://cdn.example.com/a.png', 'a remote image is untouched', String(remoteImage?.props?.src))
+      check(fileUrlOf('./shot.jpg') === '' && fileUrlOf('https://a/b.png') === '', 'only absolute paths take the file route')
+      check(fileUrlOf('C:\\shots\\a.png').includes('api/file?path=C%3A%5Cshots%5Ca.png'),
+        'a Windows path is encoded the same way', fileUrlOf('C:\\shots\\a.png'))
+      const localLink = inlineOf('[截图](/tmp/dw-schema-picker.jpg)')[0]
+      check(localLink?.type === 'a' && localLink.props.href.includes('api/file?path=%2Ftmp%2F'),
+        'a local link opens the same route', String(localLink?.props?.href))
+    } finally {
+      globalThis.document = savedDocument
+    }
+  }
+
   // Reasoning efforts come from the model's own catalog entry.
   const effortsOf = new Function(`${grabSource('ideFloatModelEfforts', '74-float.js')}\nreturn ideFloatModelEfforts`)()
   const catalog = {

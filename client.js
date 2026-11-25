@@ -15472,6 +15472,28 @@ function ideFloatSafeUrl(url, image = false) {
   return ''
 }
 
+/**
+ * 本地绝对路径的图片走 DSH 自己的 `api/file` 路由——对话里就是这么显示的。
+ *
+ * 直接把 `/tmp/x.jpg` 塞进 `<img src>` 会变成「相对当前页面」的地址，浏览器只会
+ * 拿到 404 和一张裂图标（alt 文字旁边那个 ⧉）。`https?` 与 `dsh-app:` 两种部署
+ * 下都能用同一个相对路由，和 DSH 客户端自己的 `fileMediaUrl` 规则一致。
+ */
+function ideFloatFileUrl(path) {
+  const text = String(path ?? '').trim()
+  if (text === '') return ''
+  // 只认绝对路径：Windows 的 `C:\x`、UNC 的 `\\host\share`、POSIX 的 `/tmp/x`。
+  if (!/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(text)) return ''
+  const base = typeof document !== 'undefined' && typeof document.baseURI === 'string' ? document.baseURI : ''
+  if (base === '') return ''
+  if (!/^https?:/i.test(base) && !base.startsWith('dsh-app://')) return ''
+  try {
+    return new URL(`api/file?path=${encodeURIComponent(text)}`, base).href
+  } catch (error) {
+    return ''
+  }
+}
+
 /** One inline markdown run: code, bold, emphasis, strike, links, images, autolinks. */
 function ideFloatInline(text, prefix = '') {
   const nodes = []
@@ -15509,12 +15531,14 @@ function ideFloatInline(text, prefix = '') {
       nodes.push(h('code', { key, className: 'iw-float-md-code' }, token.slice(ticks, -ticks).replace(/^ | $/g, '')))
     } else if (token.startsWith('![')) {
       const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(token)
-      const src = image === null ? '' : ideFloatSafeUrl(image[2], true)
+      const localImage = image === null ? '' : ideFloatFileUrl(image[2])
+      const src = localImage !== '' ? localImage : image === null ? '' : ideFloatSafeUrl(image[2], true)
       if (src === '') pushText(image === null ? token : image[1])
       else nodes.push(h('img', { key, className: 'iw-float-md-img', src, alt: image[1] }))
     } else if (token.startsWith('[')) {
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
-      const href = link === null ? '' : ideFloatSafeUrl(link[2])
+      const localLink = link === null ? '' : ideFloatFileUrl(link[2])
+      const href = localLink !== '' ? localLink : link === null ? '' : ideFloatSafeUrl(link[2])
       if (href === '') pushText(link === null ? token : link[1])
       else nodes.push(h('a', { key, className: 'iw-float-md-link', href, target: '_blank', rel: 'noreferrer' }, link[1]))
     } else if (token.startsWith('<http')) {
