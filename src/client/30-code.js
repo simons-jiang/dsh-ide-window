@@ -634,6 +634,20 @@ function ideIsMarkdownPath(path) {
 
 function IdeCodeView({ tab, tr, store, navigate }) {
   const scrollRef = useRef(null)
+  // The scrolling element is not the same element for the whole life of this
+  // view: a freshly opened tab first paints the "loading" placeholder and only
+  // then the source, and the Markdown preview swaps the container too. Effects
+  // that read `scrollRef.current` once would keep listening to an element that
+  // is no longer on screen (the scroll listener never attached at all for a
+  // file opened in this session), so the offset was never remembered and
+  // returning to the window put the reader back at line 1. Mirroring the
+  // element into state gives those effects a dependency that changes whenever
+  // the real container does.
+  const [scrollHost, setScrollHost] = useState(null)
+  const holdScroll = useCallback((element) => {
+    scrollRef.current = element
+    setScrollHost(element)
+  }, [])
   // While this view is on screen, the page outside it is not selectable, so
   // Cmd+A answers with the file instead of the whole shell.
   useEffect(() => {
@@ -1295,6 +1309,8 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   // remembered offset — otherwise returning to a tab would always jump to the top.
   const reveal = tab.reveal
   useEffect(() => {
+    // Read the ref rather than the state: the ref is attached during commit,
+    // so the first paint already lands on the remembered line.
     const element = scrollRef.current
     if (element === null || tab.status !== 'ready') return
     if (typeof reveal === 'number' && reveal > 0 && tab.revealApplied !== reveal) {
@@ -1304,12 +1320,12 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       return
     }
     element.scrollTop = store.getState().scroll[tab.path] ?? 0
-  }, [tab.path, reveal, tab.revealApplied, tab.status, store])
+  }, [tab.path, reveal, tab.revealApplied, tab.status, store, scrollHost])
 
   // Persist the offset while reading, throttled so a scroll does not re-render
   // the whole panel on every frame.
   useEffect(() => {
-    const element = scrollRef.current
+    const element = scrollHost
     if (element === null) return undefined
     let timer
     const onScroll = () => {
@@ -1324,7 +1340,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       if (timer !== undefined) clearTimeout(timer)
       element.removeEventListener('scroll', onScroll)
     }
-  }, [tab.path, store])
+  }, [tab.path, store, scrollHost])
 
   // Enrich the declarations on screen (counts) and the file once (blame). Both
   // are cached per file version, so scrolling back costs nothing.
@@ -1388,7 +1404,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
 
   const code = h('div', {
     className: 'iw-code',
-    ref: scrollRef,
+    ref: holdScroll,
     tabIndex: 0,
     onClick: (event) => {
       // A licence page parked after an LSP refusal opens on the next gesture.
@@ -1506,7 +1522,7 @@ function IdeCodeView({ tab, tr, store, navigate }) {
     ])
     : null
   const markdownView = isMarkdown && tab.status === 'ready' && mdSource !== true
-    ? h('div', { key: 'md', className: 'iw-md', ref: scrollRef, tabIndex: 0 }, h('div', {
+    ? h('div', { key: 'md', className: 'iw-md', ref: holdScroll, tabIndex: 0 }, h('div', {
       key: 'body',
       className: 'iw-md-body',
     }, h(IdeFloatMarkdown, { text: tab.text, tr })))

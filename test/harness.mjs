@@ -1111,6 +1111,22 @@ check(store.getState().tabs[0]?.revealApplied === undefined, 'the jump line star
 store.setRevealApplied('Main.java', 5)
 check(store.getState().tabs[0]?.revealApplied === 5, 'an applied jump line is remembered', String(store.getState().tabs[0]?.revealApplied))
 
+// The editor's scrolling element is not the one it mounts with: a file opened
+// in this session paints the "loading" placeholder first, and the Markdown
+// preview swaps the container. The scroll listener therefore has to follow the
+// element — attached once to a `useRef` at mount, it listened to an element that
+// was never on screen, nothing was remembered, and the reload that runs when the
+// window regains focus put the reader back at line 1 on every return.
+{
+  const codeSource = readFileSync(new URL('../src/client/30-code.js', import.meta.url), 'utf8')
+  const containers = codeSource.match(/ref: holdScroll/gu) ?? []
+  check(containers.length === 2, 'both reading views attach the callback ref', String(containers.length))
+  const attach = codeSource.indexOf("element.addEventListener('scroll'")
+  const deps = codeSource.indexOf('}, [', attach)
+  check(attach > 0 && deps > attach && codeSource.slice(deps, deps + 80).includes('scrollHost'),
+    'the scroll listener follows the scrolling element', String(deps))
+}
+
 // ---- reference interception ----------------------------------------------
 // The claim is live from startup: references must reach this panel on a fresh
 // page, not only after the panel was opened once.
