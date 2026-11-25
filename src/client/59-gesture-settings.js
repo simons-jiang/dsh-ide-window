@@ -260,9 +260,45 @@ function IdeWorkspaceSettingsSection(props) {
           ])
           : null,
         h('div', { key: 'basic', className: 'iw-settings-group' }, tr('settingsBasic')),
+        h('div', { key: 'font', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            onClick: () => setFontsOpen(!fontsOpen),
+          }, fontsOpen ? tr('settingsCollapse') : `${codeSize} / ${treeSize} px`),
+        ]),
+        fontsOpen
+          ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
+            stepper('code', tr('settingsCodeFont'), codeSize, (next) => store.setCodeFontSize(next)),
+            stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
+          ])
+          : null,
+        h('div', { key: 'maven', className: 'iw-settings-maven' }, [
+          h('div', { key: 'row', className: 'iw-settings-maven-row' }, [
+            h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsMavenRepo')),
+            h('input', {
+              key: 'i',
+              className: 'iw-settings-input',
+              type: 'text',
+              spellCheck: false,
+              defaultValue: state.mavenRepo,
+              placeholder: tr('settingsMavenRepoAuto'),
+              title: tr('settingsMavenRepoHint'),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              },
+              onBlur: (event) => store.setMavenRepo(event.target.value),
+            }),
+          ]),
+          mavenRowHint(tr, state),
+        ]),
+        // 悬浮卡自己的那一组：启用、跟随、脱离、详细过程、默认大小，跟其它设置分开。
+        h('div', { key: 'floatgroup', className: 'iw-settings-group' }, tr('settingsFloatGroup')),
         // The floating card is on by default; this is where it is turned off.
         h('div', { key: 'float', className: 'iw-settings-item' }, [
-          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloat')),
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatEnable')),
           h('button', {
             key: 'b',
             type: 'button',
@@ -270,6 +306,17 @@ function IdeWorkspaceSettingsSection(props) {
             title: tr('settingsFloatHint'),
             onClick: () => store.setFloatEnabled(state.floatEnabled === false),
           }, state.floatEnabled !== false ? tr('settingsOn') : tr('settingsOff')),
+        ]),
+        // 默认跟随当前会话；关掉后 DSH 里切会话不带动卡片，只能在卡片里切。
+        h('div', { key: 'floatfollow', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatFollow')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: `iw-gesture-chip${state.floatFollow !== false ? ' on' : ''}`,
+            title: tr('settingsFloatFollowHint'),
+            onClick: () => store.setFloatFollow(state.floatFollow === false),
+          }, state.floatFollow !== false ? tr('settingsOn') : tr('settingsOff')),
         ]),
         // A card that lives on its own stays visible in other panels too.
         h('div', { key: 'floatdetach', className: 'iw-settings-item' }, [
@@ -316,42 +363,8 @@ function IdeWorkspaceSettingsSection(props) {
               (next) => store.setFloatDefaultSize(floatWidth, next)),
           ])
           : null,
-        h('div', { key: 'font', className: 'iw-settings-item' }, [
-          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
-          h('button', {
-            key: 'b',
-            type: 'button',
-            className: 'iw-gesture-chip',
-            onClick: () => setFontsOpen(!fontsOpen),
-          }, fontsOpen ? tr('settingsCollapse') : `${codeSize} / ${treeSize} px`),
-        ]),
-        fontsOpen
-          ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
-            stepper('code', tr('settingsCodeFont'), codeSize, (next) => store.setCodeFontSize(next)),
-            stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
-          ])
-          : null,
         // Dependency sources come from a Maven repository; the Host detects the
         // usual places, and this field covers repositories kept anywhere else.
-        h('div', { key: 'maven', className: 'iw-settings-maven' }, [
-          h('div', { key: 'row', className: 'iw-settings-maven-row' }, [
-            h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsMavenRepo')),
-            h('input', {
-              key: 'i',
-              className: 'iw-settings-input',
-              type: 'text',
-              spellCheck: false,
-              defaultValue: state.mavenRepo,
-              placeholder: tr('settingsMavenRepoAuto'),
-              title: tr('settingsMavenRepoHint'),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') event.currentTarget.blur()
-              },
-              onBlur: (event) => store.setMavenRepo(event.target.value),
-            }),
-          ]),
-          mavenRowHint(tr, state),
-        ]),
     ]),
   ])
 }

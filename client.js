@@ -341,6 +341,7 @@ window.__ModuleLoader__.load({
     "floatCollapse": "Collapse",
     "floatExpand": "Expand assistant",
     "floatEmpty": "Ask something; the answer lands in this session",
+    "floatLoadingOlder": "Loading earlier messages…",
     "floatNoSession": "No session bound yet",
     "floatNoWorkspace": "no workspace",
     "floatPlaceholder": "Message or create a task, / for commands, @ for files or chats",
@@ -420,6 +421,7 @@ window.__ModuleLoader__.load({
     "floatSessionFailed": "Switching the session failed",
     "floatCurrentWorkspace": "current",
     "settingsFloat": "Floating assistant",
+    "settingsFloatEnable": "Enable",
     "settingsFloatHint": "When off, the floating card no longer opens in the code workspace",
     "settingsOn": "On",
     "settingsOff": "Off",
@@ -449,6 +451,10 @@ window.__ModuleLoader__.load({
     "floatCloseViewer": "Close",
     "settingsFloatDetach": "Detach from the workspace",
     "settingsFloatDetachHint": "Keep the card on screen when you switch to another panel or back to the conversation",
+    "settingsFloatGroup": "Floating card",
+    "settingsFloatFollow": "Follow the current conversation",
+    "settingsFloatFollowHint": "When off, switching conversations in DSH leaves the card alone; switch inside the card's title menu instead",
+    "floatPinnedHint": "Not following DSH · pick a conversation below",
     "settingsFloatEvents": "Show full detail",
     "settingsFloatEventsHint": "List reasoning, context, Tool arguments and system events; off shows only the latest status line",
     "floatWrap": "Wrap lines",
@@ -787,6 +793,7 @@ window.__ModuleLoader__.load({
     "floatCollapse": "收起",
     "floatExpand": "展开助手",
     "floatEmpty": "问点什么，回答会出现在当前会话里",
+    "floatLoadingOlder": "正在加载更早的消息…",
     "floatNoSession": "还没有绑定会话",
     "floatNoWorkspace": "未选择工作区",
     "floatPlaceholder": "发消息或创建任务，/ 调用指令，@ 文件或对话",
@@ -866,6 +873,7 @@ window.__ModuleLoader__.load({
     "floatSessionFailed": "切换会话失败",
     "floatCurrentWorkspace": "当前",
     "settingsFloat": "悬浮助手卡",
+    "settingsFloatEnable": "启用",
     "settingsFloatHint": "关掉后进入代码工作区不再自动弹出悬浮卡",
     "settingsOn": "已启用",
     "settingsOff": "已关闭",
@@ -895,6 +903,10 @@ window.__ModuleLoader__.load({
     "floatCloseViewer": "关闭",
     "settingsFloatDetach": "脱离代码工作区",
     "settingsFloatDetachHint": "开启后悬浮框不再跟着代码工作区出现与消失：切到其他插件视图或回到对话时它依然在",
+    "settingsFloatGroup": "悬浮助手卡",
+    "settingsFloatFollow": "跟随当前会话",
+    "settingsFloatFollowHint": "关闭后，在 DSH 里切换会话不会带动悬浮卡；只能在悬浮卡标题菜单里手动切换",
+    "floatPinnedHint": "不跟随当前会话 · 在下面手动切换",
     "settingsFloatEvents": "显示详细过程",
     "settingsFloatEventsHint": "把思考、上下文注入、工具参数与系统事件全部列出来；关闭时只显示最新一条状态",
     "floatWrap": "自动换行",
@@ -2077,7 +2089,26 @@ html.iw-select-code .iw-code .iw-vision {
 /* Every child measures like the card, or a 100%-wide textarea with its own
    padding pokes through the right border (rounded on one side, square on the other). */
 .iw-float, .iw-float *, .iw-float *::before, .iw-float *::after { box-sizing: border-box; }
-.iw-float-head { display: flex; align-items: center; gap: 6px; cursor: grab; user-select: none; touch-action: none; }
+.iw-float-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+/* 左右两簇贴边，标题才能在整个表头里居中（而不是在剩余空隙里居中）。 */
+.iw-float-head > .iw-float-dot { position: absolute; left: 0; }
+.iw-float-head-right {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .iw-float-head:active { cursor: grabbing; }
 .iw-float-collapsed {
   padding: 4px;
@@ -2617,9 +2648,11 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-title-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   min-width: 0;
-  max-width: 46%;
+  /* 20 个字左右：标题是最能区分会话的东西，别只剩半截；但要给右侧按钮组让位。 */
+  max-width: min(calc(100% - 96px), 21em);
   flex: 0 1 auto;
   padding: 1px 4px;
   border: 0;
@@ -2632,11 +2665,30 @@ html.iw-select-code .iw-code .iw-vision {
   overflow: hidden;
 }
 /* The label truncates; the caret must never be the thing that gets clipped. */
-.iw-float-title-text {
+/* 两个类的选择器：基础 .iw-float-title 也落在这个 span 上，靠顺序会被它压回去。 */
+.iw-float-title-btn .iw-float-title-text {
   min-width: 0;
+  max-width: 100%;
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 0.1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 按工作区取色（--iw-float-hue），再和正文主色混，浅色/深色都压得住对比度。 */
+  color: color-mix(
+    in oklab,
+    hsl(var(--iw-float-hue, 214) 68% 52%) 72%,
+    var(--dsw-alias-label-primary, currentColor)
+  );
+}
+.iw-float-older {
+  flex: 0 0 auto;
+  padding: 2px 0 6px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
 }
 .iw-float-title-btn:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 /* A model row must be clickable across its whole width, not just on the text. */
@@ -2692,7 +2744,6 @@ html.iw-select-code .iw-code .iw-vision {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 150px;
 }
 .iw-float-model { font-size: 11px; color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-float-icon {
@@ -5077,6 +5128,10 @@ function ideCreateStore(refs) {
     floatEvents: prefs.floatEvents === true,
     // Detached cards stay on screen in every panel, not only the workspace.
     floatDetached: prefs.floatDetached === true,
+    // 跟随当前会话（默认）：关掉后，DSH 里切会话不再带动卡片，只能在卡片里手动切。
+    floatFollow: prefs.floatFollow !== false,
+    // 不跟随时卡片自己钉住的会话（只本次进程有效，重启回到当前会话）。
+    floatSessionId: null,
     floatClosed: false,
     // One reference waiting to be appended to the card's draft.
     floatInsert: null,
@@ -5579,6 +5634,25 @@ function ideCreateStore(refs) {
     patch({ floatDetached: next })
     // Turning it on while away from the workspace brings it back immediately.
     if (next) patch({ floatOpen: true, floatClosed: false })
+  }
+
+  /**
+   * 悬浮卡要不要跟着当前会话走（持久化，默认跟）。
+   * 关掉的瞬间把当前会话钉住，否则「当前会话」一变它又跟着跑了。
+   */
+  function setFloatFollow(floatFollow) {
+    const next = floatFollow !== false
+    if (state.floatFollow === next) return
+    ideWritePrefs({ floatFollow: next })
+    // 关掉时把当前会话钉住；重新打开跟随就把钉子清掉，避免下次关掉时用旧值。
+    patch(next ? { floatFollow: true, floatSessionId: null } : { floatFollow: false, floatSessionId: state.sessionId })
+  }
+
+  /** 不跟随时，卡片自己选中的会话（`null` = 还没有手动选过）。 */
+  function setFloatSessionId(floatSessionId) {
+    const next = typeof floatSessionId === 'string' && floatSessionId !== '' ? floatSessionId : null
+    if (state.floatSessionId === next) return
+    patch({ floatSessionId: next })
   }
 
   /** Turn the floating card on or off (persisted). */
@@ -6285,6 +6359,8 @@ function ideCreateStore(refs) {
     setFloatSize,
     setFloatDefaultSize,
     setFloatEnabled,
+    setFloatFollow,
+    setFloatSessionId,
     setFloatEvents,
     setFloatDetached,
     setFloatClosed,
@@ -9868,9 +9944,45 @@ function IdeWorkspaceSettingsSection(props) {
           ])
           : null,
         h('div', { key: 'basic', className: 'iw-settings-group' }, tr('settingsBasic')),
+        h('div', { key: 'font', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: 'iw-gesture-chip',
+            onClick: () => setFontsOpen(!fontsOpen),
+          }, fontsOpen ? tr('settingsCollapse') : `${codeSize} / ${treeSize} px`),
+        ]),
+        fontsOpen
+          ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
+            stepper('code', tr('settingsCodeFont'), codeSize, (next) => store.setCodeFontSize(next)),
+            stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
+          ])
+          : null,
+        h('div', { key: 'maven', className: 'iw-settings-maven' }, [
+          h('div', { key: 'row', className: 'iw-settings-maven-row' }, [
+            h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsMavenRepo')),
+            h('input', {
+              key: 'i',
+              className: 'iw-settings-input',
+              type: 'text',
+              spellCheck: false,
+              defaultValue: state.mavenRepo,
+              placeholder: tr('settingsMavenRepoAuto'),
+              title: tr('settingsMavenRepoHint'),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              },
+              onBlur: (event) => store.setMavenRepo(event.target.value),
+            }),
+          ]),
+          mavenRowHint(tr, state),
+        ]),
+        // 悬浮卡自己的那一组：启用、跟随、脱离、详细过程、默认大小，跟其它设置分开。
+        h('div', { key: 'floatgroup', className: 'iw-settings-group' }, tr('settingsFloatGroup')),
         // The floating card is on by default; this is where it is turned off.
         h('div', { key: 'float', className: 'iw-settings-item' }, [
-          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloat')),
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatEnable')),
           h('button', {
             key: 'b',
             type: 'button',
@@ -9878,6 +9990,17 @@ function IdeWorkspaceSettingsSection(props) {
             title: tr('settingsFloatHint'),
             onClick: () => store.setFloatEnabled(state.floatEnabled === false),
           }, state.floatEnabled !== false ? tr('settingsOn') : tr('settingsOff')),
+        ]),
+        // 默认跟随当前会话；关掉后 DSH 里切会话不带动卡片，只能在卡片里切。
+        h('div', { key: 'floatfollow', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatFollow')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: `iw-gesture-chip${state.floatFollow !== false ? ' on' : ''}`,
+            title: tr('settingsFloatFollowHint'),
+            onClick: () => store.setFloatFollow(state.floatFollow === false),
+          }, state.floatFollow !== false ? tr('settingsOn') : tr('settingsOff')),
         ]),
         // A card that lives on its own stays visible in other panels too.
         h('div', { key: 'floatdetach', className: 'iw-settings-item' }, [
@@ -9924,42 +10047,8 @@ function IdeWorkspaceSettingsSection(props) {
               (next) => store.setFloatDefaultSize(floatWidth, next)),
           ])
           : null,
-        h('div', { key: 'font', className: 'iw-settings-item' }, [
-          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFont')),
-          h('button', {
-            key: 'b',
-            type: 'button',
-            className: 'iw-gesture-chip',
-            onClick: () => setFontsOpen(!fontsOpen),
-          }, fontsOpen ? tr('settingsCollapse') : `${codeSize} / ${treeSize} px`),
-        ]),
-        fontsOpen
-          ? h('div', { key: 'fontbody', className: 'iw-settings-body' }, [
-            stepper('code', tr('settingsCodeFont'), codeSize, (next) => store.setCodeFontSize(next)),
-            stepper('tree', tr('settingsTreeFont'), treeSize, (next) => store.setTreeFontSize(next)),
-          ])
-          : null,
         // Dependency sources come from a Maven repository; the Host detects the
         // usual places, and this field covers repositories kept anywhere else.
-        h('div', { key: 'maven', className: 'iw-settings-maven' }, [
-          h('div', { key: 'row', className: 'iw-settings-maven-row' }, [
-            h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsMavenRepo')),
-            h('input', {
-              key: 'i',
-              className: 'iw-settings-input',
-              type: 'text',
-              spellCheck: false,
-              defaultValue: state.mavenRepo,
-              placeholder: tr('settingsMavenRepoAuto'),
-              title: tr('settingsMavenRepoHint'),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') event.currentTarget.blur()
-              },
-              onBlur: (event) => store.setMavenRepo(event.target.value),
-            }),
-          ]),
-          mavenRowHint(tr, state),
-        ]),
     ]),
   ])
 }
@@ -14147,6 +14236,8 @@ async function ideDataWindowOpenMapper(store, tr, root, path, symbol, line) {
 // everything but the last few rows off a long turn; the card scrolls, so the
 // whole tail of the log is worth keeping.
 const IDE_FLOAT_MESSAGES = 200
+/** 表头标题最多显示多少个字（超出加省略号）。 */
+const IDE_FLOAT_TITLE_CHARS = 20
 /** Longest text a folded row shows once opened; longer payloads are clipped. */
 const IDE_FLOAT_DETAIL_MAX = 6000
 /** How long after `compositionend` an Enter still counts as "confirm the IME". */
@@ -14289,6 +14380,41 @@ function ideFloatCallsDetail(calls) {
 /** 还没决定的审批数量：折叠成球时靠它在球上点一个告警点。 */
 function ideFloatPendingApprovals(rows) {
   return Array.isArray(rows) ? rows.filter((row) => row?.role === 'approval' && row.pending === true).length : 0
+}
+
+/**
+ * 卡片当前展示哪个会话。
+ *
+ * 默认跟随面板（`state.sessionId`）；设置里关掉「跟随当前会话」后，卡片只认自己
+ * 钉住的那个 `state.floatSessionId`，DSH 里怎么切都不动。
+ */
+function ideFloatTargetSession(state) {
+  const panel = typeof state?.sessionId === 'string' ? state.sessionId : ''
+  if (state?.floatFollow !== false) return panel
+  const pinned = typeof state?.floatSessionId === 'string' ? state.floatSessionId : ''
+  return pinned !== '' ? pinned : panel
+}
+
+/** 表头标题最多 `limit` 个字，超出用省略号——再长就分不清是哪个会话了。 */
+function ideFloatTitleText(text, limit = IDE_FLOAT_TITLE_CHARS) {
+  const value = String(text ?? '').trim()
+  const chars = [...value]
+  if (chars.length <= limit) return value
+  return `${chars.slice(0, limit).join('')}…`
+}
+
+/**
+ * 一个工作区固定一个色相：同一个目录永远是同一个颜色，不同工作区尽量分开。
+ * 只给表头标题上色，且和正文主色混合，浅色/深色主题下都保持可读。
+ */
+function ideFloatWorkspaceHue(path) {
+  const text = String(path ?? '').trim()
+  if (text === '') return 214
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 33 + text.charCodeAt(index)) % 360
+  }
+  return hash
 }
 
 /** 审批结果的一句话说法；后续版本出现新结果时原样显示，不吞掉。 */
@@ -14893,12 +15019,18 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * scrolls away, once where it stays. Finished batches stay in the transcript,
  * folded, because they are part of the record.
  */
-function ideFloatVisibleRows(rows, running, detail) {
+function ideFloatVisibleRows(rows, running, detail, history) {
   if (!Array.isArray(rows)) return []
   // 还没作答的问题卡片、还没决定的审批不管在哪个位置都要露出来，否则用户永远
   // 看不到「要你选 / 要你批」。
   const pendingQuestion = (row) => row?.role === 'question' && !(Array.isArray(row?.answers) && row.answers.length > 0)
   const pendingApproval = (row) => row?.role === 'approval' && row.pending === true
+  // 用户主动往回翻（滚到顶）：把整个已加载窗口里的对话铺开，否则补进来的历史会
+  // 被「只画本轮」过滤掉，看起来像什么都没加载。过程行（工具批次/思考/上下文/
+  // notice）仍然不画——那是对话的事。
+  if (detail !== true && history === true) {
+    return rows.filter((row) => row?.role !== 'step' && row?.role !== 'reasoning' && row?.role !== 'context' && row?.role !== 'notice')
+  }
   if (detail !== true) {
     // The card is a status board for the current turn: what you last said, then
     // every line the agent printed after it. An agent narrates between Tool calls
@@ -15945,6 +16077,15 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const bodyRef = useRef(null)
   // Whether the transcript should follow the newest line.
   const stickRef = useRef(true)
+  // 滚到顶时往回补历史：记录「正在加载」与补完要还原的滚动高度。
+  const olderRef = useRef({ busy: false, pending: false, height: 0 })
+  // 「＋ 新建会话」之后，不跟随时把卡片收养到新会话上（只认卡片自己发起的创建）。
+  const pinnedAdoptRef = useRef(false)
+  const [olderBusy, setOlderBusy] = useState(false)
+  // 卡片默认只画最后 200 行；用户主动往回翻时按步长放宽，别让补进来的行被裁掉。
+  const [rowLimit, setRowLimit] = useState(IDE_FLOAT_MESSAGES)
+  // 滚到顶 = 用户想看历史：整段对话铺开，直到发消息或切会话才回到「本轮状态板」。
+  const [historyMode, setHistoryMode] = useState(false)
   const [entries, setEntries] = useState([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -16043,6 +16184,72 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     stickRef.current = true
   }, [state.floatOpen])
 
+  // 不跟随时，第一次进入就把面板当前会话钉住；之后 DSH 里怎么切都不动。
+  useEffect(() => {
+    if (state.floatFollow !== false) return
+    if (state.floatSessionId !== undefined && state.floatSessionId !== null) return
+    if (typeof state.sessionId !== 'string' || state.sessionId === '') return
+    store.setFloatSessionId(state.sessionId)
+  }, [state.floatFollow, state.floatSessionId, state.sessionId, store])
+
+  // 卡片里点「＋ 新建会话」：新会话属于卡片自己，不跟随时也要跟过去。
+  useEffect(() => {
+    if (pinnedAdoptRef.current !== true) return
+    pinnedAdoptRef.current = false
+    if (state.floatFollow !== false) return
+    if (typeof state.sessionId !== 'string' || state.sessionId === '') return
+    store.setFloatSessionId(state.sessionId)
+  }, [state.sessionId, state.floatFollow, store])
+
+  // 滚到「更早」补一页：DSH 的会话窗口是分页的（首屏 ≥50 条消息、最多 500 条），
+  // 卡片自己不请求就只能看到那一屏。补完把滚动位置往下推同样高度，视觉上停在原处。
+  const loadOlderRows = async () => {
+    const session = binding?.session
+    const source = binding?.eventSource
+    if (olderRef.current.busy) return
+    const element = bodyRef.current
+    const taller = () => (element === null || element === undefined ? 0 : element.scrollHeight)
+    const hasMore = source?.getSnapshot()?.hasMore === true
+    const canLoad = session !== undefined && session !== null && typeof session.loadOlder === 'function'
+    // 已经到会话开头（或这条会话没有分页）：不用请求，只把历史展开，
+    // 让已经拿到的更早内容显示出来。
+    if (!hasMore || !canLoad) {
+      if (historyMode) return
+      olderRef.current.height = taller()
+      setHistoryMode(true)
+      olderRef.current.pending = true
+      return
+    }
+    olderRef.current.busy = true
+    olderRef.current.height = taller()
+    setOlderBusy(true)
+    if (!historyMode) setHistoryMode(true)
+    try {
+      await session.loadOlder()
+      // 窗口补进来了，但卡片只画最后 N 行；放宽上限，让补进来的行真的出现。
+      setRowLimit((current) => Math.min(current + IDE_FLOAT_MESSAGES, IDE_FLOAT_MESSAGES * 10))
+      olderRef.current.pending = true
+    } catch (error) {
+      ideLogRecord('warn', 'float', 'load older failed', error?.message ?? String(error))
+    } finally {
+      olderRef.current.busy = false
+      setOlderBusy(false)
+    }
+  }
+
+  // 新行渲染完再量高度：把滚动条往下推「长出来的那一段」，视线不跳。
+  useLayoutEffect(() => {
+    const older = olderRef.current
+    if (older.pending !== true) return
+    const element = bodyRef.current
+    if (element === null || element === undefined) return
+    const grown = element.scrollHeight - older.height
+    // 浏览器若已按 scroll anchoring 挪过位置，就保留它的结果，别把高度算两遍。
+    if (grown > 0) element.scrollTop = Math.max(element.scrollTop, grown)
+    older.height = element.scrollHeight
+    older.pending = false
+  })
+
   // The transcript shows the newest line: on mount, when it comes back into
   // view, and after every new message. `stickRef` follows the user, so reading
   // older content is not yanked back; sending forces the jump.
@@ -16059,7 +16266,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
   })
 
-  const sessionId = state.sessionId ?? ''
+  const sessionId = ideFloatTargetSession(state)
+  const follow = state.floatFollow !== false
   const open = state.floatOpen === true && state.floatEnabled !== false && state.floatClosed !== true
   const collapsed = state.floatCollapsed === true
 
@@ -16091,6 +16299,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   useEffect(() => {
     if (binding === null) {
       setEntries([])
+      setRowLimit((current) => (current === IDE_FLOAT_MESSAGES ? current : IDE_FLOAT_MESSAGES))
+      olderRef.current = { busy: false, pending: false, height: 0 }
+      setHistoryMode(false)
       return undefined
     }
     const source = binding.eventSource
@@ -16098,11 +16309,11 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       const raw = source.getSnapshot()?.entries
       // The transcript drops Tool calls; the progress line needs them.
       rawEntries.current = Array.isArray(raw) ? raw : []
-      setEntries(ideFloatTranscript(raw))
+      setEntries(ideFloatTranscript(raw, rowLimit))
     }
     read()
     return source.subscribe(read)
-  }, [binding])
+  }, [binding, rowLimit])
 
   // The session directory, for the switcher in the header. The Workspace snapshot
   // carries the archive set, which is what keeps archived conversations out.
@@ -16244,9 +16455,11 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         className: 'iw-float-menu-item iw-float-menu-new',
         onClick: () => {
           setMenu('')
+          pinnedAdoptRef.current = true
           if (typeof startSession === 'function') startSession()
         },
       }, `＋ ${tr('floatNewSession')}`),
+      follow ? null : h('div', { key: 'pin', className: 'iw-float-menu-head' }, tr('floatPinnedHint')),
       sessionRows.length === 0
         ? h('div', { key: 'empty', className: 'iw-float-menu-empty' }, tr('floatSessionEmpty'))
         : sessionGroups.map((group) => h('div', {
@@ -16264,7 +16477,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
             title: row.cwd === '' ? row.title : row.cwd,
             onClick: () => {
               setMenu('')
-              if (typeof openSession === 'function') openSession(row.sessionId)
+              // 不跟随：只换卡片自己的会话，不动 DSH 面板；跟随：照旧打开那个会话。
+              if (!follow) store.setFloatSessionId(row.sessionId)
+              else if (typeof openSession === 'function') openSession(row.sessionId)
             },
           }, [
             h('span', { key: 't', className: 'iw-float-menu-label' }, row.title),
@@ -16653,7 +16868,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
 
   // The transcript holds the conversation; the Tool log is live status pinned to
   // the card's footer, so it never scrolls away with the history.
-  const visibleEntries = ideFloatVisibleRows(entries, running, state.floatEvents === true)
+  const visibleEntries = ideFloatVisibleRows(entries, running, state.floatEvents === true, historyMode)
 
   // The live line reads the RAW entries: `entries` is already folded into rows,
   // and the streamed deltas live only in the window (they are not rows).
@@ -16898,6 +17113,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const text = draft.trim()
     const parts = ideFloatPromptParts(text, refs, images)
     if (parts.length === 0 || binding === null || sending) return
+    // 发新消息 = 回到实时状态板，不再停在历史视图里。
+    setHistoryMode(false)
     // Sending means the user wants to see their own message, wherever they were.
     stickRef.current = true
     setSending(true)
@@ -17116,6 +17333,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       width: `${box?.width ?? size.width}px`,
       height: `${box?.height ?? size.height}px`,
       fontSize: font,
+      // 表头标题按工作区取色；同一个目录永远同一个色相。
+      '--iw-float-hue': String(ideFloatWorkspaceHue(state.rootPath ?? '')),
     },
   }, children))
 
@@ -17149,40 +17368,45 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         type: 'button',
         ref: titleBtnRef,
         className: 'iw-float-title iw-float-title-btn',
-        title: `${tr('floatSessions')} · ${state.rootPath ?? ''}`,
+        // 悬停给完整标题 + 工作区路径：标题本身最多 20 个字。
+        title: `${sessionTitle} · ${state.rootPath ?? ''}`,
         onClick: () => setMenu(menu === 'sessions' ? '' : 'sessions'),
       }, [
-        h('span', { key: 'text', className: 'iw-float-title iw-float-title-text' }, sessionTitle),
+        h('span', { key: 'text', className: 'iw-float-title iw-float-title-text' }, ideFloatTitleText(sessionTitle)),
         h('span', { key: 'caret', className: 'iw-float-title-caret' }, '▾'),
       ]),
-      h('button', {
-        key: 'new',
-        type: 'button',
-        className: 'iw-float-new-btn',
-        title: tr('floatNewSession'),
-        'aria-label': tr('floatNewSession'),
-        onClick: () => {
-          setMenu('')
-          if (typeof startSession === 'function') startSession()
-        },
-      }, '＋'),
-      h('div', { key: 'actions', className: 'iw-float-actions' }, [
+      // 右侧按钮组绝对定位，标题才能在表头里真正居中。
+      h('div', { key: 'right', className: 'iw-float-head-right' }, [
         h('button', {
-          key: 'shrink',
+          key: 'new',
           type: 'button',
-          className: 'iw-float-icon',
-          title: tr('floatCollapse'),
-          'aria-label': tr('floatCollapse'),
-          onClick: () => store.setFloatCollapsed(true),
-        }, '–'),
-        h('button', {
-          key: 'close',
-          type: 'button',
-          className: 'iw-float-icon',
-          title: tr('floatClose'),
-          'aria-label': tr('floatClose'),
-          onClick: () => store.setFloatClosed(true),
-        }, '×'),
+          className: 'iw-float-new-btn',
+          title: tr('floatNewSession'),
+          'aria-label': tr('floatNewSession'),
+          onClick: () => {
+            setMenu('')
+            pinnedAdoptRef.current = true
+            if (typeof startSession === 'function') startSession()
+          },
+        }, '＋'),
+        h('div', { key: 'actions', className: 'iw-float-actions' }, [
+          h('button', {
+            key: 'shrink',
+            type: 'button',
+            className: 'iw-float-icon',
+            title: tr('floatCollapse'),
+            'aria-label': tr('floatCollapse'),
+            onClick: () => store.setFloatCollapsed(true),
+          }, '–'),
+          h('button', {
+            key: 'close',
+            type: 'button',
+            className: 'iw-float-icon',
+            title: tr('floatClose'),
+            'aria-label': tr('floatClose'),
+            onClick: () => store.setFloatClosed(true),
+          }, '×'),
+        ]),
       ]),
     ]),
     renderSessionsMenu(),
@@ -17196,8 +17420,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       onScroll: (event) => {
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
+        // 滚到最顶再往上拉：补一页更早的历史（没有更多时是空操作）。
+        if (element.scrollTop <= 4) void loadOlderRows()
       },
-    }, visibleEntries.length === 0 && running !== true
+    }, [
+      olderBusy ? h('div', { key: 'older', className: 'iw-float-older' }, tr('floatLoadingOlder')) : null,
+      visibleEntries.length === 0 && running !== true
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : visibleEntries.map((row) => {
         // One malformed event must not take the whole card down: a throw inside
@@ -17208,7 +17436,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           ideLogRecord('warn', 'float', 'row render failed', { key: row.key, error: String(error) })
           return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
-      })),
+      }),
+    ]),
     // The in-flight message renders in the transcript, exactly like the one the
     // conversation is printing — no separate 「正在输出」 step.
     streamRow === null

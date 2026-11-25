@@ -17,6 +17,8 @@
 // everything but the last few rows off a long turn; the card scrolls, so the
 // whole tail of the log is worth keeping.
 const IDE_FLOAT_MESSAGES = 200
+/** 表头标题最多显示多少个字（超出加省略号）。 */
+const IDE_FLOAT_TITLE_CHARS = 20
 /** Longest text a folded row shows once opened; longer payloads are clipped. */
 const IDE_FLOAT_DETAIL_MAX = 6000
 /** How long after `compositionend` an Enter still counts as "confirm the IME". */
@@ -159,6 +161,41 @@ function ideFloatCallsDetail(calls) {
 /** 还没决定的审批数量：折叠成球时靠它在球上点一个告警点。 */
 function ideFloatPendingApprovals(rows) {
   return Array.isArray(rows) ? rows.filter((row) => row?.role === 'approval' && row.pending === true).length : 0
+}
+
+/**
+ * 卡片当前展示哪个会话。
+ *
+ * 默认跟随面板（`state.sessionId`）；设置里关掉「跟随当前会话」后，卡片只认自己
+ * 钉住的那个 `state.floatSessionId`，DSH 里怎么切都不动。
+ */
+function ideFloatTargetSession(state) {
+  const panel = typeof state?.sessionId === 'string' ? state.sessionId : ''
+  if (state?.floatFollow !== false) return panel
+  const pinned = typeof state?.floatSessionId === 'string' ? state.floatSessionId : ''
+  return pinned !== '' ? pinned : panel
+}
+
+/** 表头标题最多 `limit` 个字，超出用省略号——再长就分不清是哪个会话了。 */
+function ideFloatTitleText(text, limit = IDE_FLOAT_TITLE_CHARS) {
+  const value = String(text ?? '').trim()
+  const chars = [...value]
+  if (chars.length <= limit) return value
+  return `${chars.slice(0, limit).join('')}…`
+}
+
+/**
+ * 一个工作区固定一个色相：同一个目录永远是同一个颜色，不同工作区尽量分开。
+ * 只给表头标题上色，且和正文主色混合，浅色/深色主题下都保持可读。
+ */
+function ideFloatWorkspaceHue(path) {
+  const text = String(path ?? '').trim()
+  if (text === '') return 214
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 33 + text.charCodeAt(index)) % 360
+  }
+  return hash
 }
 
 /** 审批结果的一句话说法；后续版本出现新结果时原样显示，不吞掉。 */
@@ -763,12 +800,18 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * scrolls away, once where it stays. Finished batches stay in the transcript,
  * folded, because they are part of the record.
  */
-function ideFloatVisibleRows(rows, running, detail) {
+function ideFloatVisibleRows(rows, running, detail, history) {
   if (!Array.isArray(rows)) return []
   // 还没作答的问题卡片、还没决定的审批不管在哪个位置都要露出来，否则用户永远
   // 看不到「要你选 / 要你批」。
   const pendingQuestion = (row) => row?.role === 'question' && !(Array.isArray(row?.answers) && row.answers.length > 0)
   const pendingApproval = (row) => row?.role === 'approval' && row.pending === true
+  // 用户主动往回翻（滚到顶）：把整个已加载窗口里的对话铺开，否则补进来的历史会
+  // 被「只画本轮」过滤掉，看起来像什么都没加载。过程行（工具批次/思考/上下文/
+  // notice）仍然不画——那是对话的事。
+  if (detail !== true && history === true) {
+    return rows.filter((row) => row?.role !== 'step' && row?.role !== 'reasoning' && row?.role !== 'context' && row?.role !== 'notice')
+  }
   if (detail !== true) {
     // The card is a status board for the current turn: what you last said, then
     // every line the agent printed after it. An agent narrates between Tool calls
@@ -1815,6 +1858,15 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const bodyRef = useRef(null)
   // Whether the transcript should follow the newest line.
   const stickRef = useRef(true)
+  // 滚到顶时往回补历史：记录「正在加载」与补完要还原的滚动高度。
+  const olderRef = useRef({ busy: false, pending: false, height: 0 })
+  // 「＋ 新建会话」之后，不跟随时把卡片收养到新会话上（只认卡片自己发起的创建）。
+  const pinnedAdoptRef = useRef(false)
+  const [olderBusy, setOlderBusy] = useState(false)
+  // 卡片默认只画最后 200 行；用户主动往回翻时按步长放宽，别让补进来的行被裁掉。
+  const [rowLimit, setRowLimit] = useState(IDE_FLOAT_MESSAGES)
+  // 滚到顶 = 用户想看历史：整段对话铺开，直到发消息或切会话才回到「本轮状态板」。
+  const [historyMode, setHistoryMode] = useState(false)
   const [entries, setEntries] = useState([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -1913,6 +1965,72 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     stickRef.current = true
   }, [state.floatOpen])
 
+  // 不跟随时，第一次进入就把面板当前会话钉住；之后 DSH 里怎么切都不动。
+  useEffect(() => {
+    if (state.floatFollow !== false) return
+    if (state.floatSessionId !== undefined && state.floatSessionId !== null) return
+    if (typeof state.sessionId !== 'string' || state.sessionId === '') return
+    store.setFloatSessionId(state.sessionId)
+  }, [state.floatFollow, state.floatSessionId, state.sessionId, store])
+
+  // 卡片里点「＋ 新建会话」：新会话属于卡片自己，不跟随时也要跟过去。
+  useEffect(() => {
+    if (pinnedAdoptRef.current !== true) return
+    pinnedAdoptRef.current = false
+    if (state.floatFollow !== false) return
+    if (typeof state.sessionId !== 'string' || state.sessionId === '') return
+    store.setFloatSessionId(state.sessionId)
+  }, [state.sessionId, state.floatFollow, store])
+
+  // 滚到「更早」补一页：DSH 的会话窗口是分页的（首屏 ≥50 条消息、最多 500 条），
+  // 卡片自己不请求就只能看到那一屏。补完把滚动位置往下推同样高度，视觉上停在原处。
+  const loadOlderRows = async () => {
+    const session = binding?.session
+    const source = binding?.eventSource
+    if (olderRef.current.busy) return
+    const element = bodyRef.current
+    const taller = () => (element === null || element === undefined ? 0 : element.scrollHeight)
+    const hasMore = source?.getSnapshot()?.hasMore === true
+    const canLoad = session !== undefined && session !== null && typeof session.loadOlder === 'function'
+    // 已经到会话开头（或这条会话没有分页）：不用请求，只把历史展开，
+    // 让已经拿到的更早内容显示出来。
+    if (!hasMore || !canLoad) {
+      if (historyMode) return
+      olderRef.current.height = taller()
+      setHistoryMode(true)
+      olderRef.current.pending = true
+      return
+    }
+    olderRef.current.busy = true
+    olderRef.current.height = taller()
+    setOlderBusy(true)
+    if (!historyMode) setHistoryMode(true)
+    try {
+      await session.loadOlder()
+      // 窗口补进来了，但卡片只画最后 N 行；放宽上限，让补进来的行真的出现。
+      setRowLimit((current) => Math.min(current + IDE_FLOAT_MESSAGES, IDE_FLOAT_MESSAGES * 10))
+      olderRef.current.pending = true
+    } catch (error) {
+      ideLogRecord('warn', 'float', 'load older failed', error?.message ?? String(error))
+    } finally {
+      olderRef.current.busy = false
+      setOlderBusy(false)
+    }
+  }
+
+  // 新行渲染完再量高度：把滚动条往下推「长出来的那一段」，视线不跳。
+  useLayoutEffect(() => {
+    const older = olderRef.current
+    if (older.pending !== true) return
+    const element = bodyRef.current
+    if (element === null || element === undefined) return
+    const grown = element.scrollHeight - older.height
+    // 浏览器若已按 scroll anchoring 挪过位置，就保留它的结果，别把高度算两遍。
+    if (grown > 0) element.scrollTop = Math.max(element.scrollTop, grown)
+    older.height = element.scrollHeight
+    older.pending = false
+  })
+
   // The transcript shows the newest line: on mount, when it comes back into
   // view, and after every new message. `stickRef` follows the user, so reading
   // older content is not yanked back; sending forces the jump.
@@ -1929,7 +2047,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
   })
 
-  const sessionId = state.sessionId ?? ''
+  const sessionId = ideFloatTargetSession(state)
+  const follow = state.floatFollow !== false
   const open = state.floatOpen === true && state.floatEnabled !== false && state.floatClosed !== true
   const collapsed = state.floatCollapsed === true
 
@@ -1961,6 +2080,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   useEffect(() => {
     if (binding === null) {
       setEntries([])
+      setRowLimit((current) => (current === IDE_FLOAT_MESSAGES ? current : IDE_FLOAT_MESSAGES))
+      olderRef.current = { busy: false, pending: false, height: 0 }
+      setHistoryMode(false)
       return undefined
     }
     const source = binding.eventSource
@@ -1968,11 +2090,11 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       const raw = source.getSnapshot()?.entries
       // The transcript drops Tool calls; the progress line needs them.
       rawEntries.current = Array.isArray(raw) ? raw : []
-      setEntries(ideFloatTranscript(raw))
+      setEntries(ideFloatTranscript(raw, rowLimit))
     }
     read()
     return source.subscribe(read)
-  }, [binding])
+  }, [binding, rowLimit])
 
   // The session directory, for the switcher in the header. The Workspace snapshot
   // carries the archive set, which is what keeps archived conversations out.
@@ -2114,9 +2236,11 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         className: 'iw-float-menu-item iw-float-menu-new',
         onClick: () => {
           setMenu('')
+          pinnedAdoptRef.current = true
           if (typeof startSession === 'function') startSession()
         },
       }, `＋ ${tr('floatNewSession')}`),
+      follow ? null : h('div', { key: 'pin', className: 'iw-float-menu-head' }, tr('floatPinnedHint')),
       sessionRows.length === 0
         ? h('div', { key: 'empty', className: 'iw-float-menu-empty' }, tr('floatSessionEmpty'))
         : sessionGroups.map((group) => h('div', {
@@ -2134,7 +2258,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
             title: row.cwd === '' ? row.title : row.cwd,
             onClick: () => {
               setMenu('')
-              if (typeof openSession === 'function') openSession(row.sessionId)
+              // 不跟随：只换卡片自己的会话，不动 DSH 面板；跟随：照旧打开那个会话。
+              if (!follow) store.setFloatSessionId(row.sessionId)
+              else if (typeof openSession === 'function') openSession(row.sessionId)
             },
           }, [
             h('span', { key: 't', className: 'iw-float-menu-label' }, row.title),
@@ -2523,7 +2649,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
 
   // The transcript holds the conversation; the Tool log is live status pinned to
   // the card's footer, so it never scrolls away with the history.
-  const visibleEntries = ideFloatVisibleRows(entries, running, state.floatEvents === true)
+  const visibleEntries = ideFloatVisibleRows(entries, running, state.floatEvents === true, historyMode)
 
   // The live line reads the RAW entries: `entries` is already folded into rows,
   // and the streamed deltas live only in the window (they are not rows).
@@ -2768,6 +2894,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const text = draft.trim()
     const parts = ideFloatPromptParts(text, refs, images)
     if (parts.length === 0 || binding === null || sending) return
+    // 发新消息 = 回到实时状态板，不再停在历史视图里。
+    setHistoryMode(false)
     // Sending means the user wants to see their own message, wherever they were.
     stickRef.current = true
     setSending(true)
@@ -2986,6 +3114,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       width: `${box?.width ?? size.width}px`,
       height: `${box?.height ?? size.height}px`,
       fontSize: font,
+      // 表头标题按工作区取色；同一个目录永远同一个色相。
+      '--iw-float-hue': String(ideFloatWorkspaceHue(state.rootPath ?? '')),
     },
   }, children))
 
@@ -3019,40 +3149,45 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         type: 'button',
         ref: titleBtnRef,
         className: 'iw-float-title iw-float-title-btn',
-        title: `${tr('floatSessions')} · ${state.rootPath ?? ''}`,
+        // 悬停给完整标题 + 工作区路径：标题本身最多 20 个字。
+        title: `${sessionTitle} · ${state.rootPath ?? ''}`,
         onClick: () => setMenu(menu === 'sessions' ? '' : 'sessions'),
       }, [
-        h('span', { key: 'text', className: 'iw-float-title iw-float-title-text' }, sessionTitle),
+        h('span', { key: 'text', className: 'iw-float-title iw-float-title-text' }, ideFloatTitleText(sessionTitle)),
         h('span', { key: 'caret', className: 'iw-float-title-caret' }, '▾'),
       ]),
-      h('button', {
-        key: 'new',
-        type: 'button',
-        className: 'iw-float-new-btn',
-        title: tr('floatNewSession'),
-        'aria-label': tr('floatNewSession'),
-        onClick: () => {
-          setMenu('')
-          if (typeof startSession === 'function') startSession()
-        },
-      }, '＋'),
-      h('div', { key: 'actions', className: 'iw-float-actions' }, [
+      // 右侧按钮组绝对定位，标题才能在表头里真正居中。
+      h('div', { key: 'right', className: 'iw-float-head-right' }, [
         h('button', {
-          key: 'shrink',
+          key: 'new',
           type: 'button',
-          className: 'iw-float-icon',
-          title: tr('floatCollapse'),
-          'aria-label': tr('floatCollapse'),
-          onClick: () => store.setFloatCollapsed(true),
-        }, '–'),
-        h('button', {
-          key: 'close',
-          type: 'button',
-          className: 'iw-float-icon',
-          title: tr('floatClose'),
-          'aria-label': tr('floatClose'),
-          onClick: () => store.setFloatClosed(true),
-        }, '×'),
+          className: 'iw-float-new-btn',
+          title: tr('floatNewSession'),
+          'aria-label': tr('floatNewSession'),
+          onClick: () => {
+            setMenu('')
+            pinnedAdoptRef.current = true
+            if (typeof startSession === 'function') startSession()
+          },
+        }, '＋'),
+        h('div', { key: 'actions', className: 'iw-float-actions' }, [
+          h('button', {
+            key: 'shrink',
+            type: 'button',
+            className: 'iw-float-icon',
+            title: tr('floatCollapse'),
+            'aria-label': tr('floatCollapse'),
+            onClick: () => store.setFloatCollapsed(true),
+          }, '–'),
+          h('button', {
+            key: 'close',
+            type: 'button',
+            className: 'iw-float-icon',
+            title: tr('floatClose'),
+            'aria-label': tr('floatClose'),
+            onClick: () => store.setFloatClosed(true),
+          }, '×'),
+        ]),
       ]),
     ]),
     renderSessionsMenu(),
@@ -3066,8 +3201,12 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       onScroll: (event) => {
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
+        // 滚到最顶再往上拉：补一页更早的历史（没有更多时是空操作）。
+        if (element.scrollTop <= 4) void loadOlderRows()
       },
-    }, visibleEntries.length === 0 && running !== true
+    }, [
+      olderBusy ? h('div', { key: 'older', className: 'iw-float-older' }, tr('floatLoadingOlder')) : null,
+      visibleEntries.length === 0 && running !== true
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : visibleEntries.map((row) => {
         // One malformed event must not take the whole card down: a throw inside
@@ -3078,7 +3217,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           ideLogRecord('warn', 'float', 'row render failed', { key: row.key, error: String(error) })
           return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
-      })),
+      }),
+    ]),
     // The in-flight message renders in the transcript, exactly like the one the
     // conversation is printing — no separate 「正在输出」 step.
     streamRow === null

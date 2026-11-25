@@ -483,6 +483,10 @@ function ideCreateStore(refs) {
     floatEvents: prefs.floatEvents === true,
     // Detached cards stay on screen in every panel, not only the workspace.
     floatDetached: prefs.floatDetached === true,
+    // 跟随当前会话（默认）：关掉后，DSH 里切会话不再带动卡片，只能在卡片里手动切。
+    floatFollow: prefs.floatFollow !== false,
+    // 不跟随时卡片自己钉住的会话（只本次进程有效，重启回到当前会话）。
+    floatSessionId: null,
     floatClosed: false,
     // One reference waiting to be appended to the card's draft.
     floatInsert: null,
@@ -985,6 +989,25 @@ function ideCreateStore(refs) {
     patch({ floatDetached: next })
     // Turning it on while away from the workspace brings it back immediately.
     if (next) patch({ floatOpen: true, floatClosed: false })
+  }
+
+  /**
+   * 悬浮卡要不要跟着当前会话走（持久化，默认跟）。
+   * 关掉的瞬间把当前会话钉住，否则「当前会话」一变它又跟着跑了。
+   */
+  function setFloatFollow(floatFollow) {
+    const next = floatFollow !== false
+    if (state.floatFollow === next) return
+    ideWritePrefs({ floatFollow: next })
+    // 关掉时把当前会话钉住；重新打开跟随就把钉子清掉，避免下次关掉时用旧值。
+    patch(next ? { floatFollow: true, floatSessionId: null } : { floatFollow: false, floatSessionId: state.sessionId })
+  }
+
+  /** 不跟随时，卡片自己选中的会话（`null` = 还没有手动选过）。 */
+  function setFloatSessionId(floatSessionId) {
+    const next = typeof floatSessionId === 'string' && floatSessionId !== '' ? floatSessionId : null
+    if (state.floatSessionId === next) return
+    patch({ floatSessionId: next })
   }
 
   /** Turn the floating card on or off (persisted). */
@@ -1691,6 +1714,8 @@ function ideCreateStore(refs) {
     setFloatSize,
     setFloatDefaultSize,
     setFloatEnabled,
+    setFloatFollow,
+    setFloatSessionId,
     setFloatEvents,
     setFloatDetached,
     setFloatClosed,

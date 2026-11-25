@@ -334,7 +334,10 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - ↑/↓ 选、Enter/Tab 选中、Esc 关，目录**下钻**成 `@dir/`、文件变引用 chip、技能插入 `/<名字> `。菜单绝对定位在输入框上方（`.iw-float-input` 必须是 `position: relative`）
 - **浮层挂在触发器上**：会话列表从标题 ▾ 向下、权限与模型从各自 chip 向上。菜单曾是卡片的 flex 子节点，于是点模型菜单会跑到卡片顶部——现在 `useLayoutEffect` 按触发器与卡片的 rect 算出 `left/top` 或 `right/bottom`，再用内联样式粘上去（卡片可缩放，写死偏移会漂）。`useLayoutEffect` 要记得在 `build.mjs` 的解构里导出
 - **输入区 = DSH 的 composer**：一个 16px 圆角容器（内边距 `10px 10px 8px 14px`），里面是无边框 textarea（占位文案同 DSH）与底行 `＋（圆形）/ 权限 pill（锁+文字+⌄）/ 空隙 / 思考等级 / 模型 chip / 圆形发送键（↑，运行中变 ■）`；引用是蓝色 chip，粘贴图片走剪贴板 `image/*`（≤4 张、单张 8 MB），发送 `prompt([image…, {text: refs + 正文}])`
-- **表头只留**：`▾` 标题（46% 截断）、`＋` 新建、`–`/`×`（模型与思考等级在输入区，别重复）
+- **跟随当前会话（`floatFollow`，默认开，持久化）**：`ideFloatTargetSession(state)` 决定卡片展示哪个会话——跟随用 `state.sessionId`；关掉后用卡片自己的 `state.floatSessionId`（只本次进程有效），DSH 里怎么切都不动。卡片标题菜单里点会话：跟随时照旧 `openSession()`，不跟随时只 `store.setFloatSessionId()`（不动面板）；不跟随时菜单顶部有「不跟随当前会话 · 在下面手动切换」提示。卡片里点「＋ 新建会话」用 `pinnedAdoptRef` 收养新会话，避免不跟随时新建完还停在旧会话。重新打开跟随会清掉钉子
+- **表头**：`▾` 标题 **居中、16px、最多 20 个字**（超出加省略号，悬停给完整标题 + 工作区路径），标题颜色按**工作区**取色相（`ideFloatWorkspaceHue(path)` → `--iw-float-hue`，再和正文主色 `color-mix` 混，浅色/深色都压得住对比度）；右侧 `＋` 与 `–`/`×` 放在绝对定位的 `.iw-float-head-right` 里，标题才会在整条表头里真正居中
+- **滚到顶 = 翻历史**：正文滚到顶部时（`scrollTop <= 4`）调用 `binding.session.loadOlder()` 补一页（DSH 的会话窗口是分页的：首屏 ≥50 条消息、最多 500 条），同时打开 `historyMode`——**否则补进来的旧行会被「只画本轮」过滤掉，看起来像没加载**。historyMode 下 `ideFloatVisibleRows(..., history)` 铺开整个已加载窗口的对话（`step`/`reasoning`/`context`/`notice` 仍然不画）。补完把 `scrollTop` 推到「长出来的高度」，视线不跳；`rowLimit` 每次 +200（上限 2000）让补进来的行真的出现。发消息或切会话回到「本轮状态板」；没有更多历史时滚到顶只展开已加载的历史，不再请求
+- **表头按钮**：`＋` 新建、`–` 收起、`×` 关闭（模型与思考等级在输入区，别重复）
 - **每次打开 DSH 都从「收起来」开始**：卡片存在，但只占一个 44px 圆球（`floatCollapsed` 初值 `true`，不持久化）；球**由 CSS 钉在窗口右下角**（`right/bottom: 20px`，`left/top: auto`），窗口放大缩小都在原位——早先用卡片坐标算，最大化后还停在旧尺寸的位置，看着像跑到屏幕中间
 - **窗口尺寸变化要重渲染**：`resize` 监听里 `setViewportTick` 一次，否则卡片坐标还是旧视口的夹取结果
 - **`⌥`+空格**（`dsh-ide-window.float-toggle`，可改键）：不可见→展开、球→展开、展开→收球；设置里关掉悬浮框时给一条提示而不是假装切了
@@ -353,8 +356,9 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 
 - **它是设置左侧导航里的独立一页**（`settings.section`，id `dsh-ide-window`，order 70，排在「归档管理」这一层），不再塞进「通用设置」里当一行——那样既挤又得先点「查看」才能看到内容。导航标签来自 `locale` 的 `settingsNav`（代码工作区 / Code workspace），由 `label: () => translate('settingsNav')` 提供
 - **快捷键**（8 条，全部可改，点「修改」直接按新键；「恢复默认」逐条重置）；手势三条是下拉（双击 / ⌘+单击 / Ctrl+单击（仅 macOS）/ ⌥+单击，互斥）
+- **分组**：`快捷键` → `基础设置`（字号、Maven 本地仓库）→ `悬浮助手卡`（启用、跟随当前会话、脱离代码工作区、显示详细过程、默认大小）。悬浮卡相关单独成组，别塞回「基础设置」
 - **基础设置 → 字号**：代码字号（默认 12.5）、文件树字号（默认 14.5），10–24px 步进 0.5，行高按比例联动
-- **悬浮框**：启用开关、脱离代码工作区开关、默认大小（744×560）±20 步进
+- **悬浮助手卡**：启用开关（行标签叫「启用」，组头已经叫「悬浮助手卡」，别重复）、**跟随当前会话**（`floatFollow`，默认开、持久化；关掉后 DSH 里切会话不带动卡片，只能在卡片标题菜单里手动切；关掉那一刻把当前会话钉住）、脱离代码工作区开关、显示详细过程、默认大小（744×560）±20 步进
 - **Maven 本地仓库**：留空=自动检测，下面一行直接显示当前在用的路径
 - 整页样式走 `.iw-settings-section`（max-width 720px、上下留白），`IdeStyles` 由组件自己渲染（设置弹窗不在 `.iw-root` 里）
 

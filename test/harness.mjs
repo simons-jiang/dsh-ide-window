@@ -2056,6 +2056,20 @@ function floatTranscriptSource() {
     ]
     check(visibleOf(settledOld).map((row) => row.key).join(',') === 'u1,a1',
       'a settled approval from an earlier turn stays in the conversation', visibleOf(settledOld).map((row) => row.key).join(','))
+    // 往回翻历史：整个已加载窗口铺开，过程行仍然不画。
+    const browsing = [
+      { key: 'u0', role: 'user', text: '更早的话' },
+      { key: 'a0', role: 'assistant', text: '更早的回答' },
+      { key: 's0', role: 'step', kinds: ['commands'] },
+      { key: 'n0', role: 'notice', labelKey: 'floatNoticeJob', text: 'bash · ls' },
+      { key: 'u1', role: 'user', text: '这一轮' },
+      { key: 'a1', role: 'assistant', text: '现在的回答' },
+    ]
+    check(visibleOf(browsing, false, false, true).map((row) => row.key).join(',') === 'u0,a0,u1,a1',
+      'scrolling back turns the card into the conversation, without the process rows',
+      visibleOf(browsing, false, false, true).map((row) => row.key).join(','))
+    check(visibleOf(browsing).map((row) => row.key).join(',') === 'u1,a1',
+      'the status board stays the default until you scroll back')
     const noise = [
       { key: 'u1', role: 'user', text: '发布' },
       { key: 'n1', role: 'notice', labelKey: 'floatNoticeJob', text: 'bash · ls' },
@@ -2387,6 +2401,27 @@ function floatTranscriptSource() {
   check(pendingCountOf(undefined) === 0 && pendingCountOf([]) === 0, 'no rows means nothing waiting')
   check(bundle.includes('iw-float-ball-dot') && bundle.includes('floatApprovalBallHint'),
     'the collapsed ball carries the waiting-approval dot and its tooltip')
+
+  // 表头：标题最多 20 个字、按工作区取色；滚到顶往回补历史。
+  {
+    const titleOf = new Function(`${grabSource('IDE_FLOAT_TITLE_CHARS', '74-float.js')}\n${grabSource('ideFloatTitleText', '74-float.js')}\nreturn ideFloatTitleText`)()
+    check(titleOf('短标题') === '短标题', 'a short title is shown whole')
+    check(titleOf('一'.repeat(20)) === '一'.repeat(20), '20 characters still fit')
+    check(titleOf('一'.repeat(21)) === `${'一'.repeat(20)}…`, 'the 21st character becomes an ellipsis', titleOf('一'.repeat(21)))
+    check(titleOf('  ') === '' && titleOf(undefined) === '', 'a blank title stays blank')
+    const hueOf = new Function(`${grabSource('ideFloatWorkspaceHue', '74-float.js')}\nreturn ideFloatWorkspaceHue`)()
+    const hueA = hueOf('/Users/simon/Documents/myWorkspace/杂项/dsh-ide-window')
+    check(hueA === hueOf('/Users/simon/Documents/myWorkspace/杂项/dsh-ide-window'), 'one workspace keeps one hue', String(hueA))
+    check(hueA !== hueOf('/Users/simon/Documents/workspace/bluewhale-order-service'), 'two workspaces differ', `${hueA} vs ${hueOf('/Users/simon/Documents/workspace/bluewhale-order-service')}`)
+    check(hueA >= 0 && hueA < 360, 'a hue stays in range', String(hueA))
+    check(hueOf('') === 214, 'no workspace falls back to a neutral hue', String(hueOf('')))
+    check(bundle.includes('session.loadOlder()') && bundle.includes('floatLoadingOlder'),
+      'the card asks the session for one older page and says so while loading')
+    check(bundle.includes('setHistoryMode(true)') && bundle.includes('ideFloatVisibleRows(entries, running, state.floatEvents === true, historyMode)'),
+      'reaching the top reveals the loaded history and asks for one more page')
+    check(bundle.includes('iw-float-head-right') && bundle.includes('iw-float-older'),
+      'the header cluster and the loading row ship their styles')
+  }
   check(bundle.includes('iw-float-approval') && bundle.includes('floatApprovalHint'),
     'the approval card ships its styles and its 「go to the conversation」 hint')
 
@@ -2837,6 +2872,36 @@ sandbox.innerWidth = 1440
   check(caseFold.join(',') === 'A.js,b.js', 'names sort case-insensitively', caseFold.join(','))
   const numeric = [{ name: 'file10.txt', type: 'file' }, { name: 'file2.txt', type: 'file' }].sort(order).map((entry) => entry.name)
   check(numeric.join(',') === 'file2.txt,file10.txt', 'numbers sort naturally', numeric.join(','))
+}
+
+// ---- floating card: follow the current conversation ------------------------
+{
+  const targetOf = new Function(
+    `${sourceFunction('ideFloatTargetSession', '74-float.js')}\nreturn ideFloatTargetSession`,
+  )()
+  check(targetOf({ sessionId: 's-panel', floatFollow: true, floatSessionId: 's-pin' }) === 's-panel',
+    'following shows the panel conversation, pinned or not')
+  check(targetOf({ sessionId: 's-panel' }) === 's-panel', 'the default is to follow')
+  check(targetOf({ sessionId: 's-panel', floatFollow: false, floatSessionId: 's-pin' }) === 's-pin',
+    'not following keeps the conversation the card pinned', targetOf({ sessionId: 's-panel', floatFollow: false, floatSessionId: 's-pin' }))
+  check(targetOf({ sessionId: 's-panel', floatFollow: false, floatSessionId: null }) === 's-panel',
+    'before anything is pinned the card starts from the panel conversation')
+
+  const before = store.getState()
+  check(before.floatFollow === true, 'follow starts on', String(before.floatFollow))
+  store.setFloatFollow(false)
+  check(store.getState().floatFollow === false, 'the switch turns following off')
+  store.setFloatSessionId('s-card')
+  check(store.getState().floatSessionId === 's-card', 'the card can pin its own conversation', String(store.getState().floatSessionId))
+  check(targetOf(store.getState()) === 's-card', 'the pinned conversation wins while following is off')
+  store.setFloatFollow(true)
+  check(store.getState().floatFollow === true && store.getState().floatSessionId === null,
+    'turning following back on clears the pin', JSON.stringify({ follow: store.getState().floatFollow, pinned: store.getState().floatSessionId }))
+
+  const bundleText = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  check(bundleText.includes('settingsFloatGroup') && bundleText.includes('settingsFloatFollow'),
+    'the settings page ships the card group and the follow switch')
+  check(bundleText.includes('floatPinnedHint'), 'the card menu explains why it is not following DSH')
 }
 
 store.dispose()

@@ -1173,7 +1173,26 @@ html.iw-select-code .iw-code .iw-vision {
 /* Every child measures like the card, or a 100%-wide textarea with its own
    padding pokes through the right border (rounded on one side, square on the other). */
 .iw-float, .iw-float *, .iw-float *::before, .iw-float *::after { box-sizing: border-box; }
-.iw-float-head { display: flex; align-items: center; gap: 6px; cursor: grab; user-select: none; touch-action: none; }
+.iw-float-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+/* 左右两簇贴边，标题才能在整个表头里居中（而不是在剩余空隙里居中）。 */
+.iw-float-head > .iw-float-dot { position: absolute; left: 0; }
+.iw-float-head-right {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .iw-float-head:active { cursor: grabbing; }
 .iw-float-collapsed {
   padding: 4px;
@@ -1713,9 +1732,11 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-title-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   min-width: 0;
-  max-width: 46%;
+  /* 20 个字左右：标题是最能区分会话的东西，别只剩半截；但要给右侧按钮组让位。 */
+  max-width: min(calc(100% - 96px), 21em);
   flex: 0 1 auto;
   padding: 1px 4px;
   border: 0;
@@ -1728,11 +1749,30 @@ html.iw-select-code .iw-code .iw-vision {
   overflow: hidden;
 }
 /* The label truncates; the caret must never be the thing that gets clipped. */
-.iw-float-title-text {
+/* 两个类的选择器：基础 .iw-float-title 也落在这个 span 上，靠顺序会被它压回去。 */
+.iw-float-title-btn .iw-float-title-text {
   min-width: 0;
+  max-width: 100%;
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 0.1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 按工作区取色（--iw-float-hue），再和正文主色混，浅色/深色都压得住对比度。 */
+  color: color-mix(
+    in oklab,
+    hsl(var(--iw-float-hue, 214) 68% 52%) 72%,
+    var(--dsw-alias-label-primary, currentColor)
+  );
+}
+.iw-float-older {
+  flex: 0 0 auto;
+  padding: 2px 0 6px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
 }
 .iw-float-title-btn:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 /* A model row must be clickable across its whole width, not just on the text. */
@@ -1788,7 +1828,6 @@ html.iw-select-code .iw-code .iw-vision {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 150px;
 }
 .iw-float-model { font-size: 11px; color: var(--dsw-alias-label-tertiary, inherit); }
 .iw-float-icon {
