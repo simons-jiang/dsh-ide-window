@@ -479,6 +479,8 @@ function ideCreateStore(refs) {
     // The card's lifetime controls: `floatEnabled` is a preference, `floatClosed`
     // lasts until DSH restarts (the user asked for "stay closed until restart").
     floatEnabled: prefs.floatEnabled !== false,
+    // System events are noise for most reads; the switch in Settings turns them on.
+    floatEvents: prefs.floatEvents === true,
     // Detached cards stay on screen in every panel, not only the workspace.
     floatDetached: prefs.floatDetached === true,
     floatClosed: false,
@@ -986,6 +988,13 @@ function ideCreateStore(refs) {
   }
 
   /** Turn the floating card on or off (persisted). */
+  function setFloatEvents(floatEvents) {
+    const next = floatEvents === true
+    if (state.floatEvents === next) return
+    ideWritePrefs({ floatEvents: next })
+    patch({ floatEvents: next })
+  }
+
   function setFloatEnabled(floatEnabled) {
     const next = floatEnabled === true
     if (state.floatEnabled === next) return
@@ -1682,6 +1691,7 @@ function ideCreateStore(refs) {
     setFloatSize,
     setFloatDefaultSize,
     setFloatEnabled,
+    setFloatEvents,
     setFloatDetached,
     setFloatClosed,
     setFloatInsert,

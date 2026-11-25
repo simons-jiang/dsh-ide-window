@@ -1219,6 +1219,64 @@ html.iw-select-code .iw-code .iw-vision {
   white-space: nowrap;
 }
 .iw-float-step.live .iw-float-step-text { color: var(--dsw-alias-label-primary, #1a1a1a); }
+/* The live Tool line is pinned under the scroll box, not part of the
+   transcript: it truncates instead of widening the card. */
+.iw-float-live .iw-float-step-text { min-width: 0; }
+
+/* Folded rows: reasoning, context injections, finished Tool batches and every
+   other log event — one line each, opened on demand. Without this the card
+   showed the tool's name and nothing else. */
+.iw-float-fold { display: flex; flex-direction: column; }
+.iw-float-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-float-fold-head:hover { color: var(--dsw-alias-label-primary, #1a1a1a); }
+.iw-float-fold-icon,
+.iw-float-fold-chevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-fold-label { flex: 0 0 auto; }
+.iw-float-fold-reasoning .iw-float-fold-label { color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-fold-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+}
+.iw-float-fold-chevron { transition: transform 120ms ease; }
+.iw-float-fold.open .iw-float-fold-chevron { transform: rotate(180deg); }
+.iw-float-fold-body { margin: 2px 0 6px 21px; }
+.iw-float-fold-pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.08));
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 19px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
 .iw-float-thinking { display: flex; gap: 6px; padding: 2px 0; }
 .iw-float-thinking-text { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary, #61666b); }
 

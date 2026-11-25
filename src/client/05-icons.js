@@ -280,6 +280,30 @@ function IdeStopMarkIcon({ size = 12 }) {
   return ideSvg(size, [h('rect', { key: 'a', x: 4, y: 4, width: 8, height: 8, rx: 1.6, fill: 'currentColor', stroke: 'none' })])
 }
 
+/** Thinking: a speech bubble with a murmur of dots. */
+function IdeThinkIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M3 3.8h10v6.2H7.6L4.8 12.6V10H3z' }),
+    h('path', { key: 'b', d: 'M6.1 6.9h.01M8 6.9h.01M9.9 6.9h.01' }),
+  ])
+}
+
+/** Context injection: a square bracket pair, the "this was supplied" mark. */
+function IdeContextIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M6 3.6H4.2v8.8H6' }),
+    h('path', { key: 'b', d: 'M10 3.6h1.8v8.8H10' }),
+  ])
+}
+
+/** Any other log event: a small flag. */
+function IdeNoticeIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M4.6 2.8v10.4' }),
+    h('path', { key: 'b', d: 'M4.6 3.8h7.2L10 6.4l1.8 2.6H4.6z' }),
+  ])
+}
+
 /** Queue: messages stacked up for the next turn. */
 function IdeQueueIcon({ size = 14 }) {
   return ideSvg(size, [

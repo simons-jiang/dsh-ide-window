@@ -1777,12 +1777,21 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
   check(sequenceLabel({ key: 'Control' }) === '双击 Control', 'a rebound sequence is labelled too', sequenceLabel({ key: 'Control' }))
 }
 
+/** Every fragment `ideFloatTranscript` needs, in one place (two tests build it). */
+function floatTranscriptSource() {
+  const parts = [
+    'IDE_FLOAT_MESSAGES', 'IDE_FLOAT_DETAIL_MAX', 'IDE_FLOAT_CONTEXT_LABELS', 'IDE_FLOAT_SILENT_EVENTS',
+    'ideFloatTextOf', 'ideFloatImagesOf', 'ideFloatPreview', 'ideFloatDetail', 'ideFloatArgumentsText',
+    'ideFloatToolResults', 'ideFloatAttemptFailure', 'ideFloatTodoText', 'ideFloatNotice',
+    'ideFloatAnswers', 'ideFloatQuestionsOf', 'ideFloatStepKind', 'ideFloatCallDetail', 'ideFloatTranscript',
+  ]
+  return parts.map((name) => grabSource(name, '74-float.js')).join('\n')
+}
+
 // ---- the floating assistant card -------------------------------------------
 {
   const textOf = new Function(`${grabSource('ideFloatTextOf', '74-float.js')}\nreturn ideFloatTextOf`)()
-  const transcriptOf = new Function(
-    `${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\nconst ideLogRecord = () => {};\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatStepKind', '74-float.js')}\n${grabSource('ideFloatCallDetail', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`,
-  )()
+  const transcriptOf = new Function(`const ideLogRecord = () => {};\n${floatTranscriptSource()}\nreturn ideFloatTranscript`)()
 
   check(textOf([{ type: 'text', text: 'a' }, { type: 'reasoning', text: 'x' }, { type: 'text', text: 'b' }]) === 'a\nb',
     'only text blocks reach the card')
@@ -1793,11 +1802,89 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     { type: 'event', event: { type: 'assistant/message', seq: 4, data: { message: { content: [{ type: 'reasoning', text: '想' }, { type: 'text', text: '答案' }] } } } },
   ]
   const rows = transcriptOf(log)
-  check(rows.length === 2, 'context injections and tool calls are not conversation rows', JSON.stringify(rows))
-  check(rows[0]?.role === 'user' && rows[0]?.text === '问题', 'the prompt becomes a user row', JSON.stringify(rows[0]))
-  check(rows[1]?.role === 'assistant' && rows[1]?.text === '答案', 'the reply becomes an assistant row', JSON.stringify(rows[1]))
+  check(rows.length === 4, 'context, prompt, reasoning and the reply each keep a row', JSON.stringify(rows.map((row) => row.role)))
+  check(rows[0]?.role === 'context' && rows[0]?.kind === 'runtime-context' && rows[0]?.text === 'ctx',
+    'a context injection is a row of its kind, not silence', JSON.stringify(rows[0]))
+  check(rows[1]?.role === 'user' && rows[1]?.text === '问题', 'the prompt becomes a user row', JSON.stringify(rows[1]))
+  check(rows[2]?.role === 'reasoning' && rows[2]?.text === '想', 'the reasoning block becomes its own row', JSON.stringify(rows[2]))
+  check(rows[3]?.role === 'assistant' && rows[3]?.text === '答案', 'the reply becomes an assistant row', JSON.stringify(rows[3]))
   check(transcriptOf(log, 1).length === 1, 'the card keeps only the newest rows', String(transcriptOf(log, 1).length))
   check(transcriptOf(undefined).length === 0, 'an empty log renders no rows')
+
+  // 流式增量（transient）不是事件：以前每条 chunk 都变成一行「事件 {attemptId…}」。
+  {
+    const streamLog = [
+      { type: 'transient', event: { type: 'assistant/live-chunk', data: { attemptId: 'a1', chunk: { type: 'text-delta', index: 0, text: '你' } } } },
+      { type: 'transient', event: { type: 'assistant/live-chunk', data: { attemptId: 'a1', chunk: { type: 'text-delta', index: 0, text: '好' } } } },
+    ]
+    check(transcriptOf(streamLog).length === 0, 'a streamed delta never becomes a row', JSON.stringify(transcriptOf(streamLog)))
+
+    const streamOf = new Function(`${grabSource('ideFloatLiveStream', '74-float.js')}\nreturn ideFloatLiveStream`)()
+    const activityOf = new Function(`${grabSource('ideFloatLiveStream', '74-float.js')}\n${grabSource('ideFloatLiveStep', '74-float.js')}\n${grabSource('ideFloatLiveActivity', '74-float.js')}\nreturn ideFloatLiveActivity`)()
+    const log = [
+      { event: { type: 'tool/call', seq: 1, data: { callId: 'c1', name: 'bash', arguments: '{}' } } },
+      { type: 'transient', event: { type: 'assistant/live-chunk', data: { attemptId: 'a1', chunk: { type: 'reasoning-delta', index: 0, text: '想一' } } } },
+      { type: 'transient', event: { type: 'assistant/live-chunk', data: { attemptId: 'a1', chunk: { type: 'reasoning-delta', index: 0, text: '想二' } } } },
+    ]
+    const live = streamOf(log)
+    check(live?.kind === 'reasoning' && live?.text === '想一想二', 'the live tail joins the newest attempt deltas', JSON.stringify(live))
+    const activity = activityOf([{ key: 's1', role: 'step', open: true }], log)
+    check(activity?.kind === 'reasoning' && activity?.text === '想一想二',
+      'a running stream wins the live line over the batch', JSON.stringify(activity))
+    const batchOnly = activityOf([{ key: 's1', role: 'step', open: true }], [{ event: { type: 'tool/call', seq: 1, data: {} } }])
+    check(batchOnly?.kind === 'tool' && batchOnly?.step?.key === 's1', 'a Tool call keeps the batch line', JSON.stringify(batchOnly))
+    const settled = activityOf([{ key: 's1', role: 'step', open: true }], [{ event: { type: 'assistant/message', seq: 1, data: {} } }])
+    check(settled === null, 'a settled message clears the live line instead of keeping an old batch', JSON.stringify(settled))
+    check(streamOf([{ event: { type: 'tool/call', seq: 1, data: {} } }]) === null, 'no stream, no live tail')
+    const mixed = streamOf([
+      { type: 'transient', event: { type: 'assistant/live-chunk', data: { attemptId: 'a1', chunk: { type: 'text-delta', index: 0, text: '旧' } } } },
+      { event: { type: 'assistant/message', seq: 2, data: { message: { content: [{ type: 'text', text: '定稿' }] } } } },
+    ])
+    check(mixed === null, 'a settled message ends the stream, so no stale tail is painted', JSON.stringify(mixed))
+  }
+
+  // 工具批次要把参数和结果一起带上，否则"工具调用"只剩一个名字。
+  const toolLog = [
+    { event: { type: 'tool/call', seq: 1, data: { callId: 'c1', name: 'bash', arguments: JSON.stringify({ command: 'ls' }) } } },
+    { event: { type: 'tool/result', seq: 2, data: { message: { toolCallId: 'c1', content: [{ type: 'text', text: 'a.txt' }] }, meta: {} } } },
+    { event: { type: 'assistant/message', seq: 3, data: { message: { content: [{ type: 'text', text: '好了' }] } } } },
+  ]
+  const toolRows = transcriptOf(toolLog)
+  const stepRow = toolRows.find((row) => row.role === 'step')
+  check(stepRow?.calls?.length === 1, 'a batch keeps its calls', JSON.stringify(stepRow?.calls))
+  check(stepRow?.calls?.[0]?.argumentsText?.includes('"command": "ls"') === true,
+    'the call keeps its arguments, pretty printed', String(stepRow?.calls?.[0]?.argumentsText))
+  check(stepRow?.calls?.[0]?.resultText === 'a.txt', 'the call keeps its result', String(stepRow?.calls?.[0]?.resultText))
+  check(stepRow?.calls?.[0]?.isError === false, 'a settled call is not marked failed', String(stepRow?.calls?.[0]?.isError))
+
+  // 其余事件一律成行：审批、后台作业、重试、压缩、待办、模型/权限切换、未知类型。
+  const noticeLog = [
+    { event: { type: 'approval/asked', seq: 1, data: { id: 'ap1', toolName: 'bash', reason: '需要写权限' } } },
+    { event: { type: 'llm/retry', seq: 2, data: { retry: 1, maxRetries: 5, failure: { code: 'SERVER', message: '500' } } } },
+    { event: { type: 'todo/write', seq: 3, data: { todos: [{ content: '写测试', status: 'completed' }, { content: '跑测试', status: 'in_progress' }] } } },
+    { event: { type: 'job/settled', seq: 4, data: { kind: 'bash', label: 'ls' } } },
+    { event: { type: 'compaction/prune', seq: 5, data: { shadowedTokenCount: 6179 } } },
+    { event: { type: 'model/selection', seq: 6, data: { provider: 'p', model: 'm' } } },
+    { event: { type: 'turn/end', seq: 7, data: { turn: 1, reason: { kind: 'completed' } } } },
+    { event: { type: 'turn/end', seq: 8, data: { turn: 2, reason: { kind: 'aborted' } } } },
+    { event: { type: 'step/start', seq: 9, data: { turn: 1, step: 1 } } },
+    { event: { type: 'request/header', seq: 10, data: { header: {} } } },
+    { event: { type: 'mystery/thing', seq: 11, data: { a: 1 } } },
+  ]
+  const noticeRows = transcriptOf(noticeLog)
+  check(noticeRows.every((row) => row.role === 'notice'), 'every readable event is a notice row', JSON.stringify(noticeRows.map((row) => row.role)))
+  check(noticeRows.length === 8, 'bookkeeping events and completed turns paint nothing', String(noticeRows.length))
+  check(noticeRows[0]?.labelKey === 'floatNoticeApproval' && noticeRows[0]?.text.includes('bash'),
+    'an approval names the tool', JSON.stringify(noticeRows[0]))
+  check(noticeRows[1]?.labelKey === 'floatNoticeRetry' && noticeRows[1]?.text.includes('SERVER'),
+    'a retry keeps its cause', JSON.stringify(noticeRows[1]))
+  check(noticeRows[2]?.text.includes('✓ 写测试') && noticeRows[2]?.text.includes('▸ 跑测试'),
+    'a todo write keeps every item and its state', String(noticeRows[2]?.text))
+  check(noticeRows[4]?.text.includes('6179'), 'a prune keeps its token count', String(noticeRows[4]?.text))
+  check(noticeRows[5]?.labelKey === 'floatNoticeModel' && noticeRows[5]?.text === 'p / m', 'a model switch names both ids', JSON.stringify(noticeRows[5]))
+  check(noticeRows[6]?.labelKey === 'floatNoticeTurnAborted', 'an aborted turn is reported, a completed one is not', JSON.stringify(noticeRows[6]))
+  check(noticeRows[7]?.labelKey === 'floatEvent' && noticeRows[7]?.kind === 'mystery/thing',
+    'an unknown event type still becomes a row', JSON.stringify(noticeRows[7]))
 
   // ⌥+空格 那种问答：tool/call 是问题，tool/result 是答案，两者合成一张卡。
   const askLog = [
@@ -1834,43 +1921,67 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     check(hookUse === null, 'no React hook runs after the open guard', hookUse === null ? '' : hookUse[0])
   }
 
-  // The card paints the conversation, but keeps only the newest Tool batch: the
-  // assistant's own narration is the thread of the turn, while a stack of
-  // 「执行了命令」 lines is just a log nobody reads in a one-column card.
+  // The transcript is the conversation: the Tool log is live status pinned to
+  // the card's footer (next to the running clock), so it never scrolls away and
+  // never stacks up as a list of 「执行了命令」 rows.
   {
     const visibleOf = new Function(`${grabSource('ideFloatVisibleRows', '74-float.js')}\nreturn ideFloatVisibleRows`)()
+    const liveOf = new Function(`${grabSource('ideFloatLiveStep', '74-float.js')}\nreturn ideFloatLiveStep`)()
     const busy = [
       { key: 'u1', role: 'user', text: '发布' },
       { key: 'a1', role: 'assistant', text: '第二步的接口已经找到' },
       { key: 's1', role: 'step', kinds: ['commands'] },
       { key: 'a2', role: 'assistant', text: '现在开始实现' },
-      { key: 's2', role: 'step', kinds: ['tools'] },
+      { key: 's2', role: 'step', kinds: ['tools'], open: true },
       { key: 'a3', role: 'assistant', text: '完成了' },
     ]
-    const painted = visibleOf(busy)
-    check(painted.map((row) => row.key).join(',') === 'u1,a1,a2,s2,a3',
-      'every message stays; only the newest Tool batch is painted', painted.map((row) => row.key).join(','))
-    check(painted.filter((row) => row.role === 'step').length === 1,
-      'one progress line, not a list', String(painted.filter((row) => row.role === 'step').length))
+    const painted = visibleOf(busy, true)
+    check(painted.map((row) => row.key).join(',') === 'u1,a1,s1,a2,a3',
+      'while running only the live batch leaves the transcript', painted.map((row) => row.key).join(','))
+    check(visibleOf(busy, false).length === busy.length, 'a settled turn keeps every batch in the transcript', String(visibleOf(busy, false).length))
+    check(liveOf(busy)?.key === 's2', 'the newest Tool batch is the live status line', String(liveOf(busy)?.key))
+    check(liveOf([{ key: 'a1', role: 'assistant', text: 'x' }]) === null, 'no Tool batch, no live line')
+    check(liveOf(undefined) === null && visibleOf(undefined).length === 0, 'nothing to paint, nothing rendered')
 
     const asked = [
       { key: 'u1', role: 'user', text: '发布' },
       { key: 'q1', role: 'question', question: '要发吗？', answers: [] },
-      { key: 's1', role: 'step', kinds: ['tools'] },
+      { key: 's1', role: 'step', kinds: ['tools'], open: true },
     ]
-    check(visibleOf(asked).map((row) => row.key).join(',') === 'u1,q1,s1', 'a question card stays on screen', visibleOf(asked).map((row) => row.key).join(','))
+    check(visibleOf(asked, true).map((row) => row.key).join(',') === 'u1,q1',
+      'the live batch is pinned, the question card stays in the transcript', visibleOf(asked, true).map((row) => row.key).join(','))
     const files = [
       { key: 'u1', role: 'user', text: '发布' },
       { key: 'p1', role: 'files', files: [{ path: 'a.js' }] },
       { key: 'a1', role: 'assistant', text: '完成' },
     ]
     check(visibleOf(files).map((row) => row.key).join(',') === 'u1,p1,a1', 'the edited file list stays next to the answer', visibleOf(files).map((row) => row.key).join(','))
-    check(visibleOf([]).length === 0 && visibleOf(undefined).length === 0, 'nothing to paint, nothing rendered')
-    const noSteps = [{ key: 'u1', role: 'user', text: 'hi' }, { key: 'a1', role: 'assistant', text: 'only' }]
-    check(visibleOf(noSteps).length === 2, 'a turn without tools keeps every row', String(visibleOf(noSteps).length))
+    const noise = [
+      { key: 'u1', role: 'user', text: '发布' },
+      { key: 'n1', role: 'notice', labelKey: 'floatNoticeJob', text: 'bash · ls' },
+      { key: 'a1', role: 'assistant', text: '好' },
+    ]
+    check(visibleOf(noise, false, false).map((row) => row.key).join(',') === 'u1,a1',
+      'system events stay hidden until the switch is on', visibleOf(noise, false, false).map((row) => row.key).join(','))
+    check(visibleOf(noise, false, true).map((row) => row.key).join(',') === 'u1,n1,a1',
+      'the switch brings them back in order', visibleOf(noise, false, true).map((row) => row.key).join(','))
+
+    const liveText = new Function(
+      `${grabSource('IDE_FLOAT_ACTIVITY', '74-float.js')}\n${grabSource('ideFloatProgressKey', '74-float.js')}\n${grabSource('ideFloatStepTitle', '74-float.js')}\n${grabSource('ideFloatLiveText', '74-float.js')}\nreturn ideFloatLiveText`,
+    )()
+    const liveTr = (key) => ({
+      floatProgressCommand: '正在运行命令',
+      'floatStepDone.commands': '执行了命令',
+    })[key] ?? key
+    check(liveText({ names: ['bash'], detail: '查找措辞' }, liveTr) === '正在运行命令 · 查找措辞',
+      'the pinned line names the running Tool', liveText({ names: ['bash'], detail: '查找措辞' }, liveTr))
+    check(liveText({ names: [], kinds: ['commands'], detail: '' }, liveTr) === '执行了命令',
+      'a batch without a name falls back to the finished wording', liveText({ names: [], kinds: ['commands'], detail: '' }, liveTr))
 
     const floatSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
     check(floatSource.includes('visibleEntries.map((row)'), 'the body paints the folded rows, not the raw transcript', 'render target')
+    check(/key: 'live'/.test(floatSource) && floatSource.indexOf("key: 'live'") < floatSource.indexOf("key: 'think'"),
+      'the live line is pinned above the running clock', 'live placement')
   }
 
   // The queue strip reads the same projection the conversation's own strip does,
@@ -2034,7 +2145,7 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     'archived sessions stay out of the switcher', JSON.stringify(withArchived.map((row) => row.title)))
 
   // A prompt with an image carries it into the card.
-  const pictureTranscript = new Function(`${grabSource('IDE_FLOAT_MESSAGES', '74-float.js')}\n${grabSource('ideFloatTextOf', '74-float.js')}\n${grabSource('ideFloatImagesOf', '74-float.js')}\n${grabSource('ideFloatAnswers', '74-float.js')}\n${grabSource('ideFloatQuestionsOf', '74-float.js')}\n${grabSource('ideFloatStepKind', '74-float.js')}\n${grabSource('ideFloatCallDetail', '74-float.js')}\n${grabSource('ideFloatTranscript', '74-float.js')}\nreturn ideFloatTranscript`)()
+  const pictureTranscript = new Function(`${floatTranscriptSource()}\nreturn ideFloatTranscript`)()
   const pictureLog = [
     { event: { type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [
       { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 2, height: 2 } },

@@ -296,7 +296,21 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **能选中**：卡片与 `.iw-md` 要列进 `html.iw-select-code` 的白名单
 - **中文输入法组词时按 Enter 只上屏、不发送**：keydown 里先看 `composingRef`（`compositionstart/end` 维护）、`event.isComposing`、`keyCode === 229`，再看 `compositionend` 之后 80ms 内的那次 Enter（部分输入法先发 end 再发 keydown）；三条任一命中就交给输入法。**只判断 `isComposing` 不够**——踩过，用户组词按 Enter 直接把半句话发了出去
 - **进度按对话的样子进卡片**：`tool/call` 在 transcript 里**成批**变成一行步骤（`ideFloatStepKind` 把工具映射成 commands/read/write/search/web/questions/plan/tools，`ideFloatStepTitle` 复刻对话的措辞：一条=`执行了命令`、两条=`执行了命令并搜索代码`、三条以上=逗号连接+`等`，共用前缀「已」要去重）。**只有真正渲染的行（有文字/图片的消息、问题卡、交付卡）才切断批次**，别用空 assistant 消息切——那会把一次批量拆成一行一条；同一 `callId` 出现两次要按 id 去重。最后一批 `open`，`running` 时显示 `正在运行命令 · <细节>`（bash 取 `arguments.description`，没有才用 `command`）。底部计时行固定 `深度求索中，用时 X ···`，**起点取最近一条用户消息的 `time`**（不要用「发现 running 的时刻」，会重置成十几秒）。图标：步骤用 `IdeTerminalIcon`（`>_`）、计时行用 `IdeSparkleIcon`，字号 14px 与正文一致（早先 13px + 蓝点，和对话差得远）。被测：`ideFloatStepKind`/`ideFloatStepTitle`/批次切分都有用例
-- **卡片画对话，但不铺执行记录**：`ideFloatVisibleRows` 只丢掉「旧的工具批次」——**助手每句中间说明、你的消息、问题卡、已编辑文件清单全留**（踩过：一开始只留最新一条，把「第二步的接口已经找到…」「现在开始实现…」也砍了，卡片看着像什么都没发生过），`role === 'step'`（每批 `执行了命令`）**只保留最新一条**，运行中它是 `正在运行命令 · <细节>`，其余步骤去对话里看。渲染走 `visibleEntries`，`entries` 仍保留给图片预取和进度计时用。被测：`ideFloatVisibleRows` 有多条用例（含「一句说明都不许丢」），且 harness 断言渲染目标是 `visibleEntries`
+- **事件流里的东西不再"静默丢弃"**（`74-float.js` 的 `ideFloatTranscript` / `ideFloatNotice`）：卡片对 `binding.eventSource` 的每条事件都有交代——
+  - `assistant/message` 的 `reasoning` 块 → **思考**行（折叠，预览首行）；`user/message` 且 `source.kind !== 'user'` → **上下文注入**行（`agent-instructions` / `time-context` / `runtime-context` / `skill-catalog` / `compact-checkpoint` / `tool-jobs` / `user-approval`，用 `IDE_FLOAT_CONTEXT_LABELS` 出中文名）
+  - `tool/call` 的 `arguments`（原始 JSON，能解析就缩进）与 `tool/result` 的文本 / `isError` / `reason` 挂在批次行上，展开能看到 `▸ 工具名` + 参数 + `↳ 输出`
+  - 其余事件一律成 **notice 行**：审批（`approval/asked|decided|policy`）、后台作业（`job/registered|settled`）、压缩（`compaction/start|summary|end|prune`）、重试（`llm/retry`）、失败尝试（`assistant/attempt`）、待办（`todo/write`）、模型/权限/沙箱切换、`workspace/changes`、`system/message`、`request/context`、`session/title*`、`developer/message`（工具增删），**未知类型兜底成 `floatEvent` + 原始 JSON**（真实会话里发现过 `request/context`/`session/title*` 这些插件事件）
+  - **只吞纯簿记**（`IDE_FLOAT_SILENT_EVENTS`）：`turn/start`、`step/start`、`step/end`、`request/header`、`session/end-seed`、`llm/retry-started`、`agent/inbox/spliced`、`session-log-deepseek/delivery-accepted`——一次长会话里这些有 1.4 万条，且没有任何可读内容；`turn/end` 只在**非 completed** 时成行（回合成败要看得见）
+  - **系统事件默认不显示**：那些 notice 行（审批/作业/压缩/重试/标题/权限/沙箱/请求上下文/系统提示词/未知类型）只是把内容记下来，默认会刷屏（一次长会话几百条），所以由设置项 **`floatEvents`（「显示系统事件」，默认关）** 控制：`ideFloatVisibleRows(rows, running, showEvents)` 关时直接滤掉 `role === 'notice'`。思考、上下文注入、工具批次**不受开关影响**（它们是对话本身）
+  - 所有行默认折叠（`IdeFloatFold`，自身 `useState`，靠 row.key 保状态），展开显示详情；详情按 `IDE_FLOAT_DETAIL_MAX`（6000 字）截断；行数上限 `IDE_FLOAT_MESSAGES` 从 6 提到 **200**（原来 6 行会把历史截没）
+  - 运行中：当前批次是左下角钉住的实时状态（见上一条），因此**不在正文重复**（`ideFloatVisibleRows(rows, running)`），跑完的批次回到正文
+  - **流式增量（transient）永远不成行**：`entries` 里 `type: 'transient'` 的 `assistant/live-chunk` 是"正在写的这条消息"的分片，一条 chunk 一行会刷成几十行 `事件 {attemptId…}`（踩过，用户截图直接糊了一屏）。transcript 第一件事就是跳过它们，落定的 `assistant/message` 才是正文
+  - **左下角那行只显示"最新一条活动"**（`ideFloatLiveActivity(rows, rawEntries.current)`，注意要喂**原始 entries**——`entries` 状态已经是折好的行，拿它判断永远是空）：
+    - 最新一条是 `text-delta` → `正在输出 · <尾部>`
+    - 最新一条是 `reasoning-delta` → `思考中 · <尾部>`
+    - 最新一条是 `tool/call`/`tool/result` 且存在未收尾的批次 → `正在运行命令 · <细节>`
+    - 最新一条是落定的消息 → **不显示**（旧批次行不能挂到下一轮去，踩过：新回合一直在显示上一轮的「正在运行命令」）
+    - 尾部取最后 220 字再折成一行预览（`ideFloatPreview`），始终只有这一行，不随历史增长
 - **排队消息也进卡片**（`ideFloatQueueRows` + 卡片底部 `renderQueue()`）：数据源与对话里那块「N 条排队消息」**完全一致**——`binding.session.projections` 的 `inbox` 投影 `next-turn`（`source.kind === 'user'` 才要），再补 `session.getSnapshot().pendingSubmissions` 里 `placement === 'queued'` 的回显（Host 还没收编时不能闪没，按 `rpcId` 去重）。抬头是 `N 条排队消息` + 收起箭头，**一条时不出抬头**（直接显示带队列图标的那一行），与 DSH 的 dock 同规则；每条可编辑（Enter 保存 / Esc 取消）、删除、插话发送（`session.updateQueue(id, {kind})`，`kind` 为 `edit`/`remove`/`steer`，运行中才可 `steer`）。投影用 `faceOf('inbox').subscribe`，拿不到就退到 `subscribeAny`
 - **`/` 与 `@` 和对话一样分节、同一个数据源**：onChange 里用 `ideFloatTrigger` 取光标所在的 token（行首或空白后、到光标、无空格）。
   - `/` 三节：**添加**（文件→转 `@`、目标、计划、反馈）、**指令**（压缩、权限、模型→打开模型菜单、下载日志，外加 Host 里其他指令）、**技能**（`ctx.remote.skills.list({ sessionId })`——**这里要传对象**，传字符串拿不到）。前四项是编辑器动作，其余走 `binding.session.command('/name')`；名称/说明用本插件 locale（`floatCmdGoal`/`floatCmdGoalDesc`…），因为 Host 那份目录只有英文 name/description

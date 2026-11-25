@@ -13,7 +13,12 @@
  */
 
 /** How many messages the card keeps on screen. */
-const IDE_FLOAT_MESSAGES = 6
+// How many event rows the card keeps. This used to be 6, which silently cut
+// everything but the last few rows off a long turn; the card scrolls, so the
+// whole tail of the log is worth keeping.
+const IDE_FLOAT_MESSAGES = 200
+/** Longest text a folded row shows once opened; longer payloads are clipped. */
+const IDE_FLOAT_DETAIL_MAX = 6000
 /** How long after `compositionend` an Enter still counts as "confirm the IME". */
 const IDE_FLOAT_IME_SETTLE_MS = 80
 /** Collapsed card: a 44px ball plus the 4px padding the shell adds. */
@@ -111,18 +116,95 @@ function ideFloatClock(time) {
  * One transcript row: a right-aligned bubble for the user with a clock and a
  * copy button underneath, plain full-width markdown for the assistant.
  */
+/**
+ * One folded row: a single line that opens into the payload behind it.
+ *
+ * Reasoning, context injections and Tool output are long — a single reasoning
+ * block can be thousands of words — so every row keeps its own open state and
+ * paints the body only when asked. Row keys are stable, so that state survives
+ * the re-renders a running turn causes.
+ */
+function IdeFloatFold({ tone, icon, label, preview, detail }) {
+  const [open, setOpen] = useState(false)
+  return h('div', { className: `iw-float-fold iw-float-fold-${tone}${open ? ' open' : ''}` }, [
+    h('button', {
+      key: 'head',
+      type: 'button',
+      className: 'iw-float-fold-head',
+      'aria-expanded': open,
+      title: label,
+      onClick: () => setOpen(!open),
+    }, [
+      h('span', { key: 'i', className: 'iw-float-fold-icon' }, icon),
+      h('span', { key: 'l', className: 'iw-float-fold-label' }, label),
+      preview === '' ? null : h('span', { key: 'p', className: 'iw-float-fold-preview' }, preview),
+      h('span', { key: 'c', className: 'iw-float-fold-chevron' }, h(IdeChevronDownIcon, { size: 12 })),
+    ]),
+    open === true ? h('div', { key: 'body', className: 'iw-float-fold-body' }, h('pre', { key: 'pre', className: 'iw-float-fold-pre' }, detail)) : null,
+  ])
+}
+
+/** How a finished Tool batch reads once opened: the call, its arguments, its output. */
+function ideFloatCallsDetail(calls) {
+  return (Array.isArray(calls) ? calls : []).map((call) => {
+    const head = call.isError === true ? `${call.name} ✕ ${call.reason}`.trim() : String(call.name ?? '')
+    return [
+      `▸ ${head}`,
+      String(call.argumentsText ?? ''),
+      call.resultText === '' || call.resultText === undefined ? '' : `↳ ${call.resultText}`,
+    ].filter((part) => part !== '').join('\n')
+  }).join('\n\n')
+}
+
 function ideFloatRow(row, tr, io) {
   const { setViewing, store, pictures } = io
-  // A Tool batch: 「执行了命令」, or 「正在运行命令 · <描述>」 while it is the open one.
+  // A finished Tool batch: 「执行了命令」 (or the finished wording) that opens
+  // into every call of the batch with its arguments and output.
   if (row.role === 'step') {
-    const live = row.open === true && io.running === true
-    const last = row.names === undefined || row.names.length === 0 ? '' : row.names[row.names.length - 1]
-    const running = last === '' ? '' : `${tr(ideFloatProgressKey(last))}${row.detail === '' ? '' : ` · ${row.detail}`}`
-    const text = live && running !== '' ? running : ideFloatStepTitle(row.kinds ?? [], tr)
-    return h('div', { key: row.key, className: `iw-float-step${live ? ' live' : ''}` }, [
-      h('span', { key: 'i', className: 'iw-float-step-icon' }, h(IdeTerminalIcon, { size: 15 })),
-      h('span', { key: 't', className: 'iw-float-step-text', title: text }, text),
-    ])
+    return h(IdeFloatFold, {
+      key: row.key,
+      tone: 'step',
+      icon: h(IdeTerminalIcon, { size: 15 }),
+      label: ideFloatStepTitle(row.kinds ?? [], tr),
+      preview: row.detail === undefined || row.detail === '' ? '' : row.detail,
+      detail: ideFloatCallsDetail(row.calls),
+    })
+  }
+  // The model's own reasoning, folded: one line, the full text on demand.
+  if (row.role === 'reasoning') {
+    return h(IdeFloatFold, {
+      key: row.key,
+      tone: 'reasoning',
+      icon: h(IdeThinkIcon, { size: 14 }),
+      label: tr('floatThink'),
+      preview: ideFloatPreview(row.text),
+      detail: ideFloatDetail(row.text),
+    })
+  }
+  // Everything the agent was told that a human did not type: AGENTS.md, time,
+  // runtime context, skill catalog, compaction checkpoints, job status.
+  if (row.role === 'context') {
+    const labelKey = IDE_FLOAT_CONTEXT_LABELS[row.kind]
+    return h(IdeFloatFold, {
+      key: row.key,
+      tone: 'context',
+      icon: h(IdeContextIcon, { size: 14 }),
+      label: `${tr('floatContext')} · ${labelKey === undefined ? row.kind : tr(labelKey)}`,
+      preview: ideFloatPreview(row.text),
+      detail: ideFloatDetail(row.text),
+    })
+  }
+  // Every other event: approvals, background jobs, compaction, retries, todo
+  // lists, model and permission changes, tool registry edits, unknown types.
+  if (row.role === 'notice') {
+    return h(IdeFloatFold, {
+      key: row.key,
+      tone: 'notice',
+      icon: h(IdeNoticeIcon, { size: 14 }),
+      label: row.labelKey === undefined || row.labelKey === '' ? row.kind : tr(row.labelKey),
+      preview: ideFloatPreview(row.text),
+      detail: row.text === '' ? row.kind : ideFloatDetail(`[${row.kind}]\n${row.text}`),
+    })
   }
   // Questions cannot be answered here: DSH only accepts the answer in the
   // Conversation, so the card's button navigates there instead.
@@ -282,25 +364,192 @@ function ideFloatAnswers(entries) {
   return answers
 }
 
+/** Where a `user/message` that no human typed came from, as a label key. */
+const IDE_FLOAT_CONTEXT_LABELS = {
+  'agent-instructions': 'floatCtxAgentInstructions',
+  'time-context': 'floatCtxTime',
+  'runtime-context': 'floatCtxRuntime',
+  'skill-catalog': 'floatCtxSkills',
+  'compact-checkpoint': 'floatCtxCompact',
+  'tool-jobs': 'floatCtxJobs',
+  'user-approval': 'floatCtxApproval',
+}
+
+/**
+ * Events that carry no user-visible content: turn/step bookkeeping, the
+ * log-only request header, the seed marker, a retry that already prints its
+ * cause, and an inbox splice the queue strip already shows. Painting them would
+ * add ~14 000 empty rows to a long session.
+ */
+const IDE_FLOAT_SILENT_EVENTS = new Set([
+  'turn/start', 'step/start', 'step/end', 'request/header',
+  'session/end-seed', 'llm/retry-started', 'agent/inbox/spliced',
+  // The session-log upload ack: one per flush, no human-readable content.
+  'session-log-deepseek/delivery-accepted',
+])
+
+/** One line of an event for the collapsed row: whitespace folded, tail clipped. */
+function ideFloatPreview(text, max = 160) {
+  const flat = String(text ?? '').replace(/\s+/gu, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat
+}
+
+/** The body of an opened row: line breaks kept, runaway payloads clipped. */
+function ideFloatDetail(text, max = IDE_FLOAT_DETAIL_MAX) {
+  const body = String(text ?? '').trim()
+  if (body.length <= max) return body
+  return `${body.slice(0, max)}\n…（共 ${body.length} 字，已截断）`
+}
+
+/** `tool/call.arguments` is the model's raw JSON string; pretty-print when it parses. */
+function ideFloatArgumentsText(raw) {
+  try {
+    return JSON.stringify(JSON.parse(String(raw ?? '')), null, 2)
+  } catch (error) {
+    return String(raw ?? '')
+  }
+}
+
+/** `callId` → the settled Tool result, so a batch can carry what it produced. */
+function ideFloatToolResults(entries) {
+  const results = new Map()
+  if (!Array.isArray(entries)) return results
+  for (const entry of entries) {
+    const event = entry?.event
+    if (event?.type !== 'tool/result') continue
+    const callId = String(event.data?.message?.toolCallId ?? '')
+    if (callId === '') continue
+    results.set(callId, {
+      text: ideFloatTextOf(event.data?.message?.content),
+      isError: event.data?.message?.isError === true,
+      reason: String(event.data?.error?.reason ?? event.data?.error?.code ?? ''),
+    })
+  }
+  return results
+}
+
+/** The last failure inside an `assistant/attempt` stream, as readable text. */
+function ideFloatAttemptFailure(stream) {
+  const records = Array.isArray(stream) ? stream : []
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const chunk = records[index]?.chunk
+    if (chunk?.type !== 'finish') continue
+    const failure = chunk.reason?.failure
+    if (failure === undefined || failure === null) return String(chunk.reason?.kind ?? '')
+    return `${failure.code ?? ''} ${failure.message ?? ''}`.trim()
+  }
+  return ''
+}
+
+/** A todo list as plain lines, marked by state. */
+function ideFloatTodoText(todos) {
+  return (Array.isArray(todos) ? todos : [])
+    .map((todo) => {
+      const mark = todo?.status === 'completed' ? '✓' : todo?.status === 'in_progress' ? '▸' : '·'
+      return `${mark} ${String(todo?.content ?? '')}`
+    })
+    .join('\n')
+}
+
+/**
+ * Everything else that lands in the log, as `{ labelKey, text }`; null means the
+ * event says nothing a person can read (a completed turn end).
+ */
+function ideFloatNotice(event) {
+  const data = event?.data ?? {}
+  switch (event?.type) {
+    case 'turn/end':
+      if (data.reason?.kind === 'completed') return null
+      return { labelKey: 'floatNoticeTurnAborted', text: ideFloatDetail(JSON.stringify(data.reason ?? {}, null, 2)) }
+    case 'assistant/attempt':
+      return { labelKey: 'floatNoticeAttempt', text: ideFloatDetail(ideFloatAttemptFailure(data.stream)) }
+    case 'llm/retry':
+      return {
+        labelKey: 'floatNoticeRetry',
+        text: ideFloatDetail(`第 ${data.retry ?? '?'} / ${data.maxRetries ?? '?'} 次\n${data.failure?.code ?? ''} ${data.failure?.message ?? ''}`.trim()),
+      }
+    case 'approval/asked':
+      return { labelKey: 'floatNoticeApproval', text: ideFloatDetail(`${data.toolName ?? ''}\n${data.reason ?? ''}`.trim()) }
+    case 'approval/decided':
+      return { labelKey: 'floatNoticeApprovalResult', text: String(data.outcome ?? '') }
+    case 'approval/policy':
+      return { labelKey: 'floatNoticeApprovalPolicy', text: String(data.policy ?? '') }
+    case 'workspace/changes':
+      return { labelKey: 'floatNoticeWorkspace', text: Number.isFinite(data.turn) ? `回合 ${data.turn}` : '' }
+    case 'job/registered':
+      return { labelKey: 'floatNoticeJob', text: ideFloatDetail(`${data.kind ?? ''} · ${data.label ?? ''}`) }
+    case 'job/settled':
+      return { labelKey: 'floatNoticeJobDone', text: ideFloatDetail(`${data.kind ?? ''} · ${data.label ?? ''}`) }
+    case 'compaction/start':
+      return { labelKey: 'floatNoticeCompaction', text: '开始' }
+    case 'compaction/end':
+      return { labelKey: 'floatNoticeCompaction', text: '结束' }
+    case 'compaction/summary':
+      return { labelKey: 'floatNoticeCompactionSummary', text: ideFloatDetail(ideFloatTextOf(data.summary)) }
+    case 'compaction/prune':
+      return { labelKey: 'floatNoticePrune', text: `${Number(data.shadowedTokenCount ?? 0)} tokens` }
+    case 'todo/write':
+      return { labelKey: 'floatNoticeTodo', text: ideFloatDetail(ideFloatTodoText(data.todos)) }
+    case 'model/selection':
+      return { labelKey: 'floatNoticeModel', text: `${data.provider ?? ''} / ${data.model ?? ''}` }
+    case 'permission/preset':
+      return { labelKey: 'floatNoticePermission', text: String(data.preset ?? '') }
+    case 'sandbox/mode':
+      return { labelKey: 'floatNoticeSandbox', text: String(data.mode ?? '') }
+    case 'request/context':
+      return {
+        labelKey: 'floatNoticeRequest',
+        text: `${data.provider ?? ''} / ${data.model ?? ''}\ncontextWindow: ${data.contextWindow ?? ''}\nsystemPromptUpdate: ${data.systemPromptUpdate ?? ''}`,
+      }
+    case 'session/title':
+      return { labelKey: 'floatNoticeTitle', text: `${data.title ?? ''}\n(${data.source?.kind ?? ''})` }
+    case 'session/title-llm-request':
+      return {
+        labelKey: 'floatNoticeTitleRequest',
+        text: `${data.titleProvider ?? ''}\n${data.route?.provider ?? ''} / ${data.route?.model ?? ''}`,
+      }
+    case 'system/message':
+      return { labelKey: 'floatNoticeSystem', text: ideFloatDetail(ideFloatTextOf(data.message?.content)) }
+    case 'developer/message': {
+      const blocks = Array.isArray(data.message?.content) ? data.message.content : []
+      const lines = blocks.map((block) => {
+        const sign = block?.type === 'tool-addition' ? '+' : block?.type === 'tool-removal' ? '-' : '·'
+        return `${sign} ${String(block?.toolName ?? block?.type ?? '')}`
+      })
+      return { labelKey: 'floatNoticeTools', text: ideFloatDetail(lines.join('\n')) }
+    }
+    default:
+      return { labelKey: 'floatEvent', text: ideFloatDetail(JSON.stringify(data, null, 2)) }
+  }
+}
+
 function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
   if (!Array.isArray(entries)) return []
   const answers = ideFloatAnswers(entries)
+  const results = ideFloatToolResults(entries)
   const rows = []
-  // Tool calls collapse into one 「执行了命令」 line per batch, in the order they
-  // ran — the same shape the conversation uses. The last batch stays `open`
-  // until the Session stops, so the card can word it as 「正在运行命令」.
-  let batch = { names: [], detail: '', seq: 0, ids: new Set() }
+  // Tool calls collapse into one line per batch, in the order they ran. The last
+  // batch stays `open` until the Session stops, so the card can word it as
+  // 「正在运行命令」 and pin it under the clock.
+  let batch = { calls: [], seq: 0, ids: new Set() }
   const flushBatch = () => {
-    if (batch.names.length === 0) return
+    if (batch.calls.length === 0) return
+    const names = batch.calls.map((call) => call.name)
     const kinds = []
-    for (const name of batch.names) {
+    for (const name of names) {
       const kind = ideFloatStepKind(name)
       if (!kinds.includes(kind)) kinds.push(kind)
     }
-    rows.push({ key: `s${batch.seq}`, role: 'step', text: '', images: [], kinds, names: batch.names, detail: batch.detail, open: true })
-    batch = { names: [], detail: '', seq: 0, ids: new Set() }
+    const detail = batch.calls[batch.calls.length - 1]?.summary ?? ''
+    rows.push({ key: `s${batch.seq}`, role: 'step', kinds, names, calls: batch.calls, detail, open: true, seq: batch.seq })
+    batch = { calls: [], seq: 0, ids: new Set() }
   }
   for (const entry of entries) {
+    // A transient entry is one streamed delta of the message being written, not
+    // an event: painting them produced dozens of identical 「事件 {attemptId…}」
+    // rows during a single answer. The settled `assistant/message` carries the
+    // whole text, and the live tail is painted in the card's footer instead.
+    if (entry?.type === 'transient') continue
     const event = entry?.event
     if (event === null || typeof event !== 'object') continue
     if (event.type === 'tool/call') {
@@ -312,9 +561,16 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
         if (callId !== '' && batch.ids.has(callId)) continue
         if (callId !== '') batch.ids.add(callId)
         if (batch.seq === 0) batch.seq = event.seq
-        batch.names.push(name)
-        const detail = ideFloatCallDetail(name, event.data?.arguments)
-        if (detail !== '') batch.detail = detail
+        const settled = results.get(callId)
+        batch.calls.push({
+          callId,
+          name,
+          argumentsText: ideFloatArgumentsText(event.data?.arguments),
+          summary: ideFloatCallDetail(name, event.data?.arguments),
+          resultText: settled?.text ?? '',
+          isError: settled?.isError ?? false,
+          reason: settled?.reason ?? '',
+        })
         continue
       }
     }
@@ -324,18 +580,26 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
     const renders = event.type === 'user/message'
       ? true
       : event.type === 'assistant/message'
-        ? event.data?.message?.content?.some?.((part) => part?.type === 'text' ? String(part.text ?? '') !== '' : part?.type === 'image') === true
+        ? event.data?.message?.content?.some?.((part) => part?.type === 'text' ? String(part.text ?? '') !== ''
+          : part?.type === 'image' || part?.type === 'reasoning') === true
         : event.type === 'deliverables/presented' || (event.type === 'tool/call' && event.data?.name === 'ask_user_question')
     if (renders) flushBatch()
     if (event.type === 'user/message') {
-      // Context injections share the event type; only a human prompt is a row.
-      if (event.data?.source?.kind !== 'user') continue
+      const source = String(event.data?.source?.kind ?? 'user')
       const content = event.data?.content
       const text = ideFloatTextOf(content)
+      if (source !== 'user') {
+        // A synthetic context injection: the card shows it instead of dropping
+        // it, because "the agent was told something" is part of the record.
+        if (text !== '') {
+          rows.push({ key: `c${event.seq}`, role: 'context', kind: source, text, time: Number(event.time ?? 0), seq: event.seq })
+        }
+        continue
+      }
       // A prompt can be images only, so a row exists when either part exists.
       const images = ideFloatImagesOf(content)
       if (text !== '' || images.length > 0) {
-        rows.push({ key: `u${event.seq}`, role: 'user', text, images, time: Number(event.time ?? 0) })
+        rows.push({ key: `u${event.seq}`, role: 'user', text, images, time: Number(event.time ?? 0), seq: event.seq })
       }
       continue
     }
@@ -343,8 +607,16 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
       const content = event.data?.message?.content
       const text = ideFloatTextOf(content)
       const images = ideFloatImagesOf(content)
+      const reasoning = (Array.isArray(content) ? content : [])
+        .filter((part) => part?.type === 'reasoning')
+        .map((part) => String(part.text ?? '').trim())
+        .filter((part) => part !== '')
+        .join('\n\n')
+      if (reasoning !== '') {
+        rows.push({ key: `r${event.seq}`, role: 'reasoning', text: reasoning, time: Number(event.time ?? 0), seq: event.seq })
+      }
       if (text !== '' || images.length > 0) {
-        rows.push({ key: `a${event.seq}`, role: 'assistant', text, images, time: Number(event.time ?? 0) })
+        rows.push({ key: `a${event.seq}`, role: 'assistant', text, images, time: Number(event.time ?? 0), seq: event.seq })
       }
       continue
     }
@@ -360,6 +632,7 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
           text: '',
           images: [],
           time: Number(event.time ?? 0),
+          seq: event.seq,
           header: question.header,
           question: question.question,
           options: question.options,
@@ -372,7 +645,23 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
     }
     if (event.type === 'deliverables/presented') {
       const files = ideFloatPresentedFilesOf(event.data)
-      if (files.length > 0) rows.push({ key: `p${event.seq}`, role: 'files', text: '', images: [], files })
+      if (files.length > 0) rows.push({ key: `p${event.seq}`, role: 'files', text: '', images: [], files, seq: event.seq })
+      continue
+    }
+    // Tool calls that joined no batch (no name) and every result are not rows.
+    if (event.type === 'tool/result' || event.type === 'tool/call') continue
+    if (IDE_FLOAT_SILENT_EVENTS.has(String(event.type))) continue
+    const notice = ideFloatNotice(event)
+    if (notice !== null) {
+      rows.push({
+        key: `n${event.seq}`,
+        role: 'notice',
+        labelKey: notice.labelKey,
+        text: notice.text,
+        kind: String(event.type),
+        time: Number(event.time ?? 0),
+        seq: event.seq,
+      })
     }
   }
   flushBatch()
@@ -381,27 +670,100 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
 }
 
 /**
- * What the card paints: the conversation, minus the Tool log.
+ * What the transcript paints while a turn runs: everything except the batch that
+ * is executing right now.
  *
- * The assistant's own narration is the thread of the turn — «第二步的接口已经
- * 找到…», «现在开始实现…» — and dropping it made the card read like nothing had
- * happened, so every message, card and file list stays. What does not stay is
- * the log: each Tool batch used to become its own 「执行了命令」 line, and a long
- * turn stacked dozens of them. Only the newest batch is painted — it is the one
- * that describes what is happening now; the earlier steps live in the
- * conversation, where every one of them is still inspectable.
+ * That batch is the live status line pinned under the clock (`ideFloatLiveStep`),
+ * so painting it in the transcript too would show it twice — once where it
+ * scrolls away, once where it stays. Finished batches stay in the transcript,
+ * folded, because they are part of the record.
  */
-function ideFloatVisibleRows(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return []
-  let newestStep = -1
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    if (rows[index]?.role === 'step') {
-      newestStep = index
+function ideFloatVisibleRows(rows, running, showEvents) {
+  if (!Array.isArray(rows)) return []
+  // System events are a log, not a conversation: the Settings switch decides.
+  const kept = showEvents === true ? rows : rows.filter((row) => row?.role !== 'notice')
+  if (running !== true) return kept
+  let liveIndex = -1
+  for (let index = kept.length - 1; index >= 0; index -= 1) {
+    if (kept[index]?.role === 'step' && kept[index].open === true) {
+      liveIndex = index
       break
     }
   }
-  if (newestStep < 0) return rows
-  return rows.filter((row, index) => row?.role !== 'step' || index === newestStep)
+  return liveIndex < 0 ? kept : kept.filter((row, index) => index !== liveIndex)
+}
+
+/**
+ * The message being written right now: the tail of the newest streamed delta.
+ *
+ * Only ever one line — the card is not a transcript of chunks. `index` is the
+ * entry position, so the caller can tell whether the stream is newer than the
+ * newest Tool batch and paint exactly one live line.
+ */
+function ideFloatLiveStream(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return null
+  const chunkOf = (entry) => (entry?.type === 'transient' ? entry.event?.data?.chunk : undefined)
+  const head = chunkOf(entries[entries.length - 1])
+  // The newest entry has to be a delta: a settled message ends the stream, and
+  // painting the deltas before it would show text the transcript already has.
+  if (head?.type !== 'text-delta' && head?.type !== 'reasoning-delta') return null
+  const kind = head.type === 'reasoning-delta' ? 'reasoning' : 'text'
+  const attempt = String(entries[entries.length - 1]?.event?.data?.attemptId ?? '')
+  const parts = []
+  // The newest position is what "newer than the Tool batch" compares to; the
+  // loop only walks back to collect the text of this attempt.
+  const index = entries.length - 1
+  for (let position = entries.length - 1; position >= 0; position -= 1) {
+    const entry = entries[position]
+    if (entry?.type !== 'transient') break
+    const data = entry.event?.data
+    const chunk = data?.chunk
+    if (chunk?.type !== head.type) break
+    if (String(data?.attemptId ?? '') !== attempt) break
+    parts.unshift(String(chunk.text ?? ''))
+  }
+  return { index, kind, text: parts.join('') }
+}
+
+
+/**
+ * The one live line: what the card says right now.
+ *
+ * Priority is "newest wins": a streamed delta beats everything (the model is
+ * writing), a Tool call or its result means a batch is executing, and a settled
+ * message means there is nothing live to report — the old batch line used to
+ * linger here through an entire new turn.
+ */
+function ideFloatLiveActivity(rows, raw) {
+  const stream = ideFloatLiveStream(raw)
+  if (stream !== null) return { kind: stream.kind, text: stream.text }
+  const list = Array.isArray(raw) ? raw : []
+  const lastType = list.length === 0 ? '' : String(list[list.length - 1]?.event?.type ?? '')
+  if (lastType !== 'tool/call' && lastType !== 'tool/result') return null
+  const step = ideFloatLiveStep(rows)
+  return step === null ? null : { kind: 'tool', step }
+}
+
+/** The newest Tool batch, or null when the log carries none. */
+function ideFloatLiveStep(rows) {
+  if (!Array.isArray(rows)) return null
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index]?.role === 'step') return rows[index]
+  }
+  return null
+}
+
+/**
+ * How a live Tool batch reads in the pinned status line: 「正在运行命令 · <描述>」
+ * while the batch is open, the finished wording otherwise.
+ */
+function ideFloatLiveText(row, tr) {
+  const translate = typeof tr === 'function' ? tr : (key) => key
+  const names = Array.isArray(row?.names) ? row.names : []
+  const last = names.length === 0 ? '' : names[names.length - 1]
+  const detail = String(row?.detail ?? '')
+  const progress = last === '' ? '' : `${translate(ideFloatProgressKey(last))}${detail === '' ? '' : ` · ${detail}`}`
+  return progress !== '' ? progress : ideFloatStepTitle(Array.isArray(row?.kinds) ? row.kinds : [], translate)
 }
 
 /**
@@ -1897,8 +2259,13 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const size = ideFloatSize(state, viewportWidth, viewportHeight)
   const point = ideFloatPoint(state, viewportWidth, viewportHeight, size.width, collapsed ? 52 : size.height)
 
-  // Only the newest activity reaches the card; the conversation keeps the log.
-  const visibleEntries = ideFloatVisibleRows(entries)
+  // The transcript holds the conversation; the Tool log is live status pinned to
+  // the card's footer, so it never scrolls away with the history.
+  const visibleEntries = ideFloatVisibleRows(entries, running, state.floatEvents === true)
+  // The live line reads the RAW entries: `entries` is already folded into rows,
+  // and the streamed deltas live only in the window (they are not rows).
+  const live = running === true ? ideFloatLiveActivity(entries, rawEntries.current) : null
+  const liveTail = live === null || live.kind === 'tool' ? '' : ideFloatPreview(live.text.slice(-220), 140)
   const queueRows = ideFloatQueueRows(inbox, sessionSnap?.pendingSubmissions)
   const queueRunning = sessionSnap?.running === true
 
@@ -2396,7 +2763,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
       },
-    }, visibleEntries.length === 0
+    }, visibleEntries.length === 0 && running !== true
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : visibleEntries.map((row) => {
         // One malformed event must not take the whole card down: a throw inside
@@ -2408,6 +2775,14 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
       })),
+    live === null
+      ? null
+      : h('div', { key: 'live', className: 'iw-float-step live iw-float-live' }, [
+        h('span', { key: 'i', className: 'iw-float-step-icon' }, live.kind === 'tool' ? h(IdeTerminalIcon, { size: 15 }) : (live.kind === 'reasoning' ? h(IdeThinkIcon, { size: 15 }) : h(IdeSparkleIcon, { size: 15 }))),
+        live.kind === 'tool'
+          ? h('span', { key: 't', className: 'iw-float-step-text', title: ideFloatLiveText(live.step, tr) }, ideFloatLiveText(live.step, tr))
+          : h('span', { key: 't', className: 'iw-float-step-text', title: liveTail }, `${live.kind === 'reasoning' ? tr('floatLiveThinking') : tr('floatLiveWriting')} · ${liveTail}`),
+      ]),
     running
       ? h('div', { key: 'think', className: 'iw-float-thinking' }, [
         h('span', { key: 'i', className: 'iw-float-thinking-icon' }, h(IdeSparkleIcon, { size: 15 })),

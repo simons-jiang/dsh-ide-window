@@ -282,6 +282,19 @@ function IdeWorkspaceSettingsSection(props) {
             onClick: () => store.setFloatDetached(state.floatDetached !== true),
           }, state.floatDetached === true ? tr('settingsOn') : tr('settingsOff')),
         ]),
+        // Everything the Session logs besides messages: jobs, compaction, retries,
+        // approvals, model and permission switches. Off by default — it is a log,
+        // and a long turn produces hundreds of rows.
+        h('div', { key: 'floatevents', className: 'iw-settings-item' }, [
+          h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatEvents')),
+          h('button', {
+            key: 'b',
+            type: 'button',
+            className: `iw-gesture-chip${state.floatEvents === true ? ' on' : ''}`,
+            title: tr('settingsFloatEventsHint'),
+            onClick: () => store.setFloatEvents(state.floatEvents !== true),
+          }, state.floatEvents === true ? tr('settingsOn') : tr('settingsOff')),
+        ]),
         h('div', { key: 'floatsize', className: 'iw-settings-item' }, [
           h('span', { key: 'l', className: 'iw-settings-item-label' }, tr('settingsFloatSize')),
           h('button', {
