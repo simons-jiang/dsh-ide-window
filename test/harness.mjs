@@ -1831,10 +1831,39 @@ function floatTranscriptSource() {
     const activity = activityOf([{ key: 's1', role: 'step', open: true }], log)
     check(activity?.kind === 'reasoning' && activity?.text === '想一想二',
       'a running stream wins the live line over the batch', JSON.stringify(activity))
-    const batchOnly = activityOf([{ key: 's1', role: 'step', open: true }], [{ event: { type: 'tool/call', seq: 1, data: {} } }])
-    check(batchOnly?.kind === 'tool' && batchOnly?.step?.key === 's1', 'a Tool call keeps the batch line', JSON.stringify(batchOnly))
-    const settled = activityOf([{ key: 's1', role: 'step', open: true }], [{ event: { type: 'assistant/message', seq: 1, data: {} } }])
-    check(settled === null, 'a settled message clears the live line instead of keeping an old batch', JSON.stringify(settled))
+    const batchOnly = activityOf([{ key: 's1', role: 'step', open: true, pending: true }], [{ event: { type: 'job/registered', seq: 1, data: {} } }])
+    check(batchOnly?.kind === 'tool' && batchOnly?.step?.key === 's1',
+      'a batch waiting for its result keeps the line, whatever the newest event is', JSON.stringify(batchOnly))
+    const settledBatch = activityOf([{ key: 's1', role: 'step', open: true, pending: false }], [{ event: { type: 'tool/result', seq: 1, data: {} } }])
+    check(settledBatch === null, 'a settled batch leaves the live line to the answer', JSON.stringify(settledBatch))
+
+    // 真实的 bash 事件顺序：tool/call 之后还有 job/registered，然后再是 tool/result。
+    const liveLog = [
+      { event: { type: 'tool/call', seq: 1, data: { callId: 'c1', name: 'bash', arguments: '{}' } } },
+      { event: { type: 'job/registered', seq: 2, data: { kind: 'bash', label: 'sleep 30' } } },
+    ]
+    const liveRows = transcriptOf(liveLog)
+    const liveActivity = activityOf(liveRows, liveLog)
+    check(liveActivity?.kind === 'tool' && liveActivity?.step?.pending === true,
+      'a call in flight is the live line even after job/registered', JSON.stringify(liveActivity))
+    const doneLog = [...liveLog, { event: { type: 'tool/result', seq: 3, data: { message: { toolCallId: 'c1', content: [{ type: 'text', text: 'ok' }] } } } }]
+    const doneRows = transcriptOf(doneLog)
+    check(activityOf(doneRows, doneLog) === null, 'the line clears once the result lands', 'cleared')
+
+    // 没有文字的状态（分析请求、工具行）不能去读 text：读一次整个悬浮层槽位就崩了。
+    const tailOf = new Function(`${grabSource('ideFloatPreview', '74-float.js')}\n${grabSource('ideFloatLiveTail', '74-float.js')}\nreturn ideFloatLiveTail`)()
+    check(tailOf({ kind: 'analyze' }) === '' && tailOf({ kind: 'tool', step: {} }) === '',
+      'a status without text has no tail and does not throw', JSON.stringify([tailOf({ kind: 'analyze' }), tailOf({ kind: 'tool', step: {} })]))
+    check(tailOf(null) === '' && tailOf(undefined) === '', 'no status has no tail', 'ok')
+    check(tailOf({ kind: 'reasoning', text: '想一想' }) === '想一想', 'a streamed tail is previewed', tailOf({ kind: 'reasoning', text: '想一想' }))
+    check(tailOf({ kind: 'text', text: '' }) === '', 'an empty stream has an empty tail', 'ok')
+
+    // 流式正文进正文（对话就是这么做的），不再另出一条「正在输出」状态行。
+    const streamRowOf = new Function(`${grabSource('ideFloatStreamRow', '74-float.js')}\nreturn ideFloatStreamRow`)()
+    const textRow = streamRowOf({ kind: 'text', text: '正在写的内容' })
+    check(textRow?.role === 'assistant' && textRow?.text === '正在写的内容', 'streamed text becomes an assistant row', JSON.stringify(textRow))
+    check(streamRowOf({ kind: 'reasoning', text: '想一想' }) === null, 'reasoning is not the message body', 'null')
+    check(streamRowOf({ kind: 'text', text: '' }) === null && streamRowOf(null) === null, 'an empty or absent stream has no row', 'null')
     check(streamOf([{ event: { type: 'tool/call', seq: 1, data: {} } }]) === null, 'no stream, no live tail')
     const mixed = streamOf([
       { type: 'transient', event: { type: 'assistant/live-chunk', data: { attemptId: 'a1', chunk: { type: 'text-delta', index: 0, text: '旧' } } } },
@@ -1935,10 +1964,13 @@ function floatTranscriptSource() {
       { key: 's2', role: 'step', kinds: ['tools'], open: true },
       { key: 'a3', role: 'assistant', text: '完成了' },
     ]
-    const painted = visibleOf(busy, true)
-    check(painted.map((row) => row.key).join(',') === 'u1,a1,s1,a2,a3',
-      'while running only the live batch leaves the transcript', painted.map((row) => row.key).join(','))
-    check(visibleOf(busy, false).length === busy.length, 'a settled turn keeps every batch in the transcript', String(visibleOf(busy, false).length))
+    const painted = visibleOf(busy)
+    check(painted.map((row) => row.key).join(',') === 'u1,a3',
+      'the status board keeps what you said and the newest line only', painted.map((row) => row.key).join(','))
+    const detailRows = visibleOf(busy, true, true)
+    check(detailRows.map((row) => row.key).join(',') === 'u1,a1,s1,a2,a3',
+      'detail mode hides only the running batch', detailRows.map((row) => row.key).join(','))
+    check(visibleOf(busy, false, true).length === busy.length, 'detail mode keeps the whole record', String(visibleOf(busy, false, true).length))
     check(liveOf(busy)?.key === 's2', 'the newest Tool batch is the live status line', String(liveOf(busy)?.key))
     check(liveOf([{ key: 'a1', role: 'assistant', text: 'x' }]) === null, 'no Tool batch, no live line')
     check(liveOf(undefined) === null && visibleOf(undefined).length === 0, 'nothing to paint, nothing rendered')
@@ -1971,12 +2003,17 @@ function floatTranscriptSource() {
     )()
     const liveTr = (key) => ({
       floatProgressCommand: '正在运行命令',
+      floatProgressTool: '正在使用工具',
       'floatStepDone.commands': '执行了命令',
     })[key] ?? key
     check(liveText({ names: ['bash'], detail: '查找措辞' }, liveTr) === '正在运行命令 · 查找措辞',
       'the pinned line names the running Tool', liveText({ names: ['bash'], detail: '查找措辞' }, liveTr))
     check(liveText({ names: [], kinds: ['commands'], detail: '' }, liveTr) === '执行了命令',
       'a batch without a name falls back to the finished wording', liveText({ names: [], kinds: ['commands'], detail: '' }, liveTr))
+    check(liveText({ names: ['browser_evaluate'], kinds: ['tools'], detail: '' }, liveTr) === '正在使用工具 · browser_evaluate',
+      'a tool without a readable argument still names itself', liveText({ names: ['browser_evaluate'], kinds: ['tools'], detail: '' }, liveTr))
+    check(liveText({ names: ['bash'], kinds: ['commands'], detail: 'sleep 25' }, liveTr) === '正在运行命令 · sleep 25',
+      'a readable argument still wins over the tool name', liveText({ names: ['bash'], kinds: ['commands'], detail: 'sleep 25' }, liveTr))
 
     const floatSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
     check(floatSource.includes('visibleEntries.map((row)'), 'the body paints the folded rows, not the raw transcript', 'render target')
@@ -1987,7 +2024,9 @@ function floatTranscriptSource() {
   // The queue strip reads the same projection the conversation's own strip does,
   // and keeps a just-sent message visible until the Host admits it.
   {
-    const queueOf = new Function(`${grabSource('ideFloatQueueRows', '74-float.js')}\nreturn ideFloatQueueRows`)()
+    const queueOf = new Function(
+      `${grabSource('ideFloatQueueAttachments', '74-float.js')}\n${grabSource('ideFloatPendingAttachments', '74-float.js')}\n${grabSource('ideFloatQueueRows', '74-float.js')}\nreturn ideFloatQueueRows`,
+    )()
     const inbox = {
       'next-turn': [
         { id: 'm1', source: { kind: 'user', rpcId: 'r1' }, content: [{ type: 'text', text: '第一条' }] },
@@ -1997,7 +2036,8 @@ function floatTranscriptSource() {
       ],
     }
     const rows = queueOf(inbox, [])
-    check(rows.map((row) => row.text).join('|') === '第一条|第二条', 'only what the user queued becomes a row', JSON.stringify(rows))
+    check(rows.length === 3 && rows[0]?.text === '第一条' && rows[2]?.text === '第二条',
+      'only what the user queued becomes a row (and an image-only one still counts)', JSON.stringify(rows.map((row) => row.text)))
     check(rows.every((row) => row.sending === false), 'an admitted row is not sending', JSON.stringify(rows))
 
     const pending = [
@@ -2006,12 +2046,38 @@ function floatTranscriptSource() {
       { requestId: 'r8', placement: 'transcript', text: '已经在对话里' },
     ]
     const withPending = queueOf(inbox, pending)
-    check(withPending.length === 3, 'a message in flight joins the queue', String(withPending.length))
-    check(withPending[2]?.text === '刚发的' && withPending[2]?.sending === true, 'the in-flight row is marked sending', JSON.stringify(withPending[2]))
+    check(withPending.length === 4, 'a message in flight joins the queue', String(withPending.length))
+    check(withPending[3]?.text === '刚发的' && withPending[3]?.sending === true, 'the in-flight row is marked sending', JSON.stringify(withPending[3]))
     check(withPending.filter((row) => row.text === '第一条').length === 1, 'the echo does not duplicate the admitted row', JSON.stringify(withPending))
     check(queueOf(undefined, undefined).length === 0, 'no projection and no snapshot renders no queue')
     check(queueOf({ 'next-turn': [{ id: 'x', source: { kind: 'user' }, content: [{ type: 'text', text: '   ' }] }] }, []).length === 0,
       'a blank queue row is not a message')
+
+    // 排队里的图片/文件也要进队列行，纯图片消息不能被当成空行丢掉。
+    const mediaInbox = {
+      'next-turn': [
+        { id: 'm1', source: { kind: 'user' }, content: [{ type: 'image', attachment: { attachmentId: 'att-1', name: 'shot.png' } }] },
+        { id: 'm2', source: { kind: 'user' }, content: [{ type: 'text', text: '看这张' }, { type: 'image', attachment: { attachmentId: 'att-2' } }] },
+        { id: 'm3', source: { kind: 'user' }, content: [{ type: 'file', attachment: { attachmentId: 'att-3', name: 'report.pdf' } }] },
+      ],
+    }
+    const mediaRows = queueOf(mediaInbox, [])
+    check(mediaRows.length === 3, 'an image-only message is still a queued row', String(mediaRows.length))
+    check(mediaRows[0]?.text === '' && mediaRows[0]?.attachments?.[0]?.kind === 'image' && mediaRows[0]?.attachments?.[0]?.id === 'att-1',
+      'an image-only row carries its attachment', JSON.stringify(mediaRows[0]))
+    check(mediaRows[1]?.text === '看这张' && mediaRows[1]?.attachments?.[0]?.id === 'att-2',
+      'text and image travel together', JSON.stringify(mediaRows[1]))
+    check(mediaRows[2]?.attachments?.[0]?.kind === 'file' && mediaRows[2]?.attachments?.[0]?.name === 'report.pdf',
+      'a file attachment keeps its name', JSON.stringify(mediaRows[2]))
+
+    const pendingMedia = queueOf(undefined, [
+      { requestId: 'r1', placement: 'queued', text: '', attachments: [{ type: 'image', value: { previewUrl: 'blob:x', name: 'a.png' } }] },
+      { requestId: 'r2', placement: 'queued', text: '', attachments: [{ type: 'file', value: { name: 'b.txt' } }] },
+    ])
+    check(pendingMedia.length === 2, 'a just-queued picture is not dropped either', String(pendingMedia.length))
+    check(pendingMedia[0]?.attachments?.[0]?.preview === 'blob:x', 'an echo keeps the preview URL it was given', JSON.stringify(pendingMedia[0]))
+    check(pendingMedia[1]?.attachments?.[0]?.kind === 'file' && pendingMedia[1]?.attachments?.[0]?.name === 'b.txt',
+      'an echo keeps its file name', JSON.stringify(pendingMedia[1]))
   }
 
   // Which `/` rows the card runs itself, and which belong to the Conversation UI.

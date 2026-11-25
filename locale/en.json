@@ -432,7 +432,8 @@
   "floatCloseViewer": "Close",
   "settingsFloatDetach": "Detach from the workspace",
   "settingsFloatDetachHint": "Keep the card on screen when you switch to another panel or back to the conversation",
-  "settingsFloatEvents": "Show system events",
-  "settingsFloatEventsHint": "Background jobs, compaction, retries, approvals, model and permission changes; off by default to stay readable",
-  "floatWrap": "Wrap lines"
+  "settingsFloatEvents": "Show full detail",
+  "settingsFloatEventsHint": "List reasoning, context, Tool arguments and system events; off shows only the latest status line",
+  "floatWrap": "Wrap lines",
+  "floatLiveAnalyze": "Analyzing the request"
 }

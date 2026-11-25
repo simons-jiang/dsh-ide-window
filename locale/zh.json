@@ -432,7 +432,8 @@
   "floatCloseViewer": "关闭",
   "settingsFloatDetach": "脱离代码工作区",
   "settingsFloatDetachHint": "开启后悬浮框不再跟着代码工作区出现与消失：切到其他插件视图或回到对话时它依然在",
-  "settingsFloatEvents": "显示系统事件",
-  "settingsFloatEventsHint": "后台作业、上下文压缩、重试、审批、模型与权限切换等记录；默认关闭，避免刷屏",
-  "floatWrap": "自动换行"
+  "settingsFloatEvents": "显示详细过程",
+  "settingsFloatEventsHint": "把思考、上下文注入、工具参数与系统事件全部列出来；关闭时只显示最新一条状态",
+  "floatWrap": "自动换行",
+  "floatLiveAnalyze": "正在分析请求"
 }

@@ -158,6 +158,11 @@ function ideFloatCallsDetail(calls) {
 
 function ideFloatRow(row, tr, io) {
   const { setViewing, store, pictures } = io
+  // Compact (the default) is about WHICH rows show, not about cutting the text:
+  // the answer keeps its full markdown. Your own message is the exception — it
+  // renders as plain pre-wrapped text, because the markdown renderer collapses
+  // single newlines and a two-line message arrived as one.
+  const compact = io.detail !== true
   // A finished Tool batch: 「执行了命令」 (or the finished wording) that opens
   // into every call of the batch with its arguments and output.
   if (row.role === 'step') {
@@ -296,8 +301,11 @@ function ideFloatRow(row, tr, io) {
   }
   if (row.role === 'user') {
     const clock = ideFloatClock(row.time)
+    const said = compact && row.text !== ''
+      ? h('div', { key: 'text', className: 'iw-float-pre', title: row.text }, row.text)
+      : body
     return h('div', { key: row.key, className: 'iw-float-row iw-float-user' }, [
-      h('div', { key: 'bubble', className: 'iw-float-bubble' }, [body, pics].filter((part) => part !== null)),
+      h('div', { key: 'bubble', className: 'iw-float-bubble' }, [said, pics].filter((part) => part !== null)),
       h('div', { key: 'meta', className: 'iw-float-meta' }, [
         clock === '' ? null : h('span', { key: 'clock', className: 'iw-float-clock' }, clock),
         row.text === '' ? null : h('button', {
@@ -310,6 +318,9 @@ function ideFloatRow(row, tr, io) {
       ].filter((part) => part !== null)),
     ])
   }
+  // The answer is the point: it renders whole, exactly as the conversation
+  // shows it. Only the activity line above the composer is a summary — that is
+  // the one that gets an ellipsis.
   return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, [body, pics].filter((part) => part !== null))
 }
 
@@ -541,7 +552,11 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
       if (!kinds.includes(kind)) kinds.push(kind)
     }
     const detail = batch.calls[batch.calls.length - 1]?.summary ?? ''
-    rows.push({ key: `s${batch.seq}`, role: 'step', kinds, names, calls: batch.calls, detail, open: true, seq: batch.seq })
+    // A call with no `tool/result` yet means this batch is still executing; the
+    // live line keys off that instead of off "the newest event is tool/call",
+    // because a run emits job/registered, workspace notices and more meanwhile.
+    const pending = batch.calls.some((call) => call.callId === '' || results.get(call.callId) === undefined)
+    rows.push({ key: `s${batch.seq}`, role: 'step', kinds, names, calls: batch.calls, detail, open: true, pending, seq: batch.seq })
     batch = { calls: [], seq: 0, ids: new Set() }
   }
   for (const entry of entries) {
@@ -678,10 +693,32 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  * scrolls away, once where it stays. Finished batches stay in the transcript,
  * folded, because they are part of the record.
  */
-function ideFloatVisibleRows(rows, running, showEvents) {
+function ideFloatVisibleRows(rows, running, detail) {
   if (!Array.isArray(rows)) return []
-  // System events are a log, not a conversation: the Settings switch decides.
-  const kept = showEvents === true ? rows : rows.filter((row) => row?.role !== 'notice')
+  if (detail !== true) {
+    // The card is a status board, not a reader. It keeps the newest thing you
+    // said, the newest line the agent produced, and whatever is waiting for
+    // you — one screenful. Everything else is the conversation's job.
+    const keep = []
+    const lastWhere = (predicate) => {
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (predicate(rows[index]) === true) {
+          keep.push(index)
+          return
+        }
+      }
+    }
+    lastWhere((row) => row?.role === 'user')
+    lastWhere((row) => row?.role === 'assistant')
+    lastWhere((row) => row?.role === 'files')
+    rows.forEach((row, index) => {
+      if (row?.role === 'question' && !(Array.isArray(row.answers) && row.answers.length > 0)) keep.push(index)
+    })
+    return [...new Set(keep)].sort((left, right) => left - right).map((index) => rows[index])
+  }
+  // Detail mode: the whole record. The batch that is still running is pinned
+  // under the clock, so it leaves the transcript to avoid showing it twice.
+  const kept = rows
   if (running !== true) return kept
   let liveIndex = -1
   for (let index = kept.length - 1; index >= 0; index -= 1) {
@@ -737,11 +774,39 @@ function ideFloatLiveStream(entries) {
 function ideFloatLiveActivity(rows, raw) {
   const stream = ideFloatLiveStream(raw)
   if (stream !== null) return { kind: stream.kind, text: stream.text }
-  const list = Array.isArray(raw) ? raw : []
-  const lastType = list.length === 0 ? '' : String(list[list.length - 1]?.event?.type ?? '')
-  if (lastType !== 'tool/call' && lastType !== 'tool/result') return null
-  const step = ideFloatLiveStep(rows)
-  return step === null ? null : { kind: 'tool', step }
+  // The newest batch that still waits for a result is what is running now. A
+  // settled batch stays silent: the answer already says what happened.
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]
+    if (row?.role !== 'step') continue
+    return row.pending === true ? { kind: 'tool', step: row } : null
+  }
+  return null
+}
+
+/**
+ * The message that is being written right now, as a transcript row. The
+ * conversation prints streamed text straight into the message instead of
+ * showing a 「正在输出」 step, so the body grows here too — the pinned status line
+ * stays for Tool work and the analysis phase only.
+ */
+function ideFloatStreamRow(stream) {
+  if (stream === null || stream === undefined) return null
+  if (stream.kind !== 'text') return null
+  const text = String(stream.text ?? '')
+  if (text === '') return null
+  return { key: 'stream', role: 'assistant', text, streaming: true }
+}
+
+/**
+ * The one-line tail under a live status, or '' when that status has no text of
+ * its own. `analyze` and `tool` carry no text at all — reading `live.text`
+ * there crashed the whole overlay slot, so every kind stays on this path.
+ */
+function ideFloatLiveTail(live) {
+  if (live === null || live === undefined) return ''
+  if (live.kind === 'analyze' || live.kind === 'tool') return ''
+  return ideFloatPreview(String(live.text ?? '').slice(-220), 140)
 }
 
 /** The newest Tool batch, or null when the log carries none. */
@@ -762,7 +827,11 @@ function ideFloatLiveText(row, tr) {
   const names = Array.isArray(row?.names) ? row.names : []
   const last = names.length === 0 ? '' : names[names.length - 1]
   const detail = String(row?.detail ?? '')
-  const progress = last === '' ? '' : `${translate(ideFloatProgressKey(last))}${detail === '' ? '' : ` · ${detail}`}`
+  // The tool's own name when it has no readable argument (browser_evaluate,
+  // todo_write, …): 「正在使用工具 · browser_evaluate」 says what the conversation
+  // says, and a bare 「正在使用工具」 does not.
+  const suffix = detail !== '' ? detail : last
+  const progress = last === '' ? '' : `${translate(ideFloatProgressKey(last))}${suffix === '' ? '' : ` · ${suffix}`}`
   return progress !== '' ? progress : ideFloatStepTitle(Array.isArray(row?.kinds) ? row.kinds : [], translate)
 }
 
@@ -774,6 +843,34 @@ function ideFloatLiveText(row, tr) {
  * submission this Client just sent that the Host has not admitted yet: without
  * it the message would blink out between sending and being queued.
  */
+/** Attachments of one queued item, the two shapes the wire actually uses. */
+function ideFloatQueueAttachments(content) {
+  const items = []
+  for (const block of Array.isArray(content) ? content : []) {
+    if (block?.type === 'image' && block.attachment !== undefined) {
+      items.push({ kind: 'image', id: String(block.attachment.attachmentId ?? ''), ref: block.attachment })
+    }
+    if (block?.type === 'file' && block.attachment !== undefined) {
+      items.push({ kind: 'file', id: String(block.attachment.attachmentId ?? ''), name: String(block.attachment.name ?? '') })
+    }
+  }
+  return items.filter((item) => item.kind === 'file' || item.id !== '')
+}
+
+/** Attachments of a submission this Client just queued (it carries a preview URL). */
+function ideFloatPendingAttachments(attachments) {
+  const items = []
+  for (const entry of Array.isArray(attachments) ? attachments : []) {
+    if (entry?.type === 'image') {
+      items.push({ kind: 'image', id: '', preview: String(entry.value?.previewUrl ?? ''), name: String(entry.value?.name ?? '') })
+    }
+    if (entry?.type === 'file') {
+      items.push({ kind: 'file', id: '', name: String(entry.value?.name ?? '') })
+    }
+  }
+  return items
+}
+
 function ideFloatQueueRows(inbox, pending) {
   const rows = []
   const list = Array.isArray(inbox?.['next-turn']) ? inbox['next-turn'] : []
@@ -785,17 +882,21 @@ function ideFloatQueueRows(inbox, pending) {
       .map((block) => String(block.text ?? ''))
       .join('')
       .trim()
-    if (text === '') continue
+    const attachments = ideFloatQueueAttachments(row.content)
+    // An image-only message is still a message: dropping it would make the
+    // queue lie about what is waiting.
+    if (text === '' && attachments.length === 0) continue
     if (typeof row?.source?.rpcId === 'string') admitted.add(row.source.rpcId)
-    rows.push({ id: String(row.id ?? ''), text, sending: false })
+    rows.push({ id: String(row.id ?? ''), text, attachments, sending: false })
   }
   for (const item of Array.isArray(pending) ? pending : []) {
     if (item?.placement !== 'queued') continue
     const requestId = String(item.requestId ?? '')
     if (requestId !== '' && admitted.has(requestId)) continue
     const text = String(item.text ?? '').trim()
-    if (text === '') continue
-    rows.push({ id: requestId, text, sending: true })
+    const attachments = ideFloatPendingAttachments(item.attachments)
+    if (text === '' && attachments.length === 0) continue
+    rows.push({ id: requestId, text, attachments, sending: true })
   }
   return rows
 }
@@ -2244,6 +2345,50 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
   }, [binding])
 
+  // Queued rows are needed before the guard: the thumbnail effect below loads
+  // their images, and hooks may not sit under the early return.
+  const queueRows = ideFloatQueueRows(inbox, sessionSnap?.pendingSubmissions)
+  const queueImageKey = queueRows
+    .flatMap((row) => (row.attachments ?? []).filter((item) => item.kind === 'image' && item.preview === undefined).map((item) => item.id))
+    .join(',')
+
+  // A queued picture has no URL of its own: resolve it through the Session the
+  // same way message attachments are resolved, into the shared picture map.
+  useEffect(() => {
+    if (binding === null || binding.session === undefined || binding.session === null) return undefined
+    if (queueImageKey === '') return undefined
+    const wanted = []
+    for (const row of queueRows) {
+      for (const item of row.attachments ?? []) {
+        if (item.kind !== 'image' || item.ref === undefined || item.id === '') continue
+        if (picturesRef.current[item.id] !== undefined) continue
+        if (wanted.some((ref) => ref.attachmentId === item.id)) continue
+        wanted.push(item.ref)
+      }
+    }
+    if (wanted.length === 0) return undefined
+    let alive = true
+    for (const ref of wanted) {
+      binding.session.readAttachment(ref).then((result) => {
+        if (alive !== true || result?.ok !== true) return
+        const data = result.value?.data
+        if (data === undefined) return
+        const mediaType = result.value?.attachment?.mediaType ?? ref.mediaType
+        const bytes = new Uint8Array(data)
+        let url = ''
+        if (typeof URL?.createObjectURL === 'function') {
+          url = URL.createObjectURL(new Blob([bytes], { type: mediaType }))
+        } else {
+          let binary = ''
+          for (const byte of bytes) binary += String.fromCharCode(byte)
+          url = `data:${mediaType};base64,${btoa(binary)}`
+        }
+        setPictures((current) => (current[ref.attachmentId] !== undefined ? current : { ...current, [ref.attachmentId]: url }))
+      }).catch(() => {})
+    }
+    return () => { alive = false }
+  }, [binding, queueImageKey])
+
   if (!open) return null
 
   // The header names the conversation, not the folder: that is what the menu
@@ -2262,11 +2407,23 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   // The transcript holds the conversation; the Tool log is live status pinned to
   // the card's footer, so it never scrolls away with the history.
   const visibleEntries = ideFloatVisibleRows(entries, running, state.floatEvents === true)
+
   // The live line reads the RAW entries: `entries` is already folded into rows,
   // and the streamed deltas live only in the window (they are not rows).
-  const live = running === true ? ideFloatLiveActivity(entries, rawEntries.current) : null
-  const liveTail = live === null || live.kind === 'tool' ? '' : ideFloatPreview(live.text.slice(-220), 140)
-  const queueRows = ideFloatQueueRows(inbox, sessionSnap?.pendingSubmissions)
+  // Running with no stream and no Tool in flight means the request is being
+  // analysed — the same phase the conversation labels 「正在分析请求」. Without it
+  // the card sat silent for tens of seconds before the first token.
+  const liveStream = running === true ? ideFloatLiveStream(rawEntries.current) : null
+  // Streamed text goes into the body like the conversation; the pinned line is
+  // only for Tool work and the analysis phase.
+  const streamRow = ideFloatStreamRow(liveStream)
+  const activity = running === true ? ideFloatLiveActivity(entries, rawEntries.current) : null
+  const live = running !== true || streamRow !== null
+    ? null
+    : activity !== null && activity.kind === 'text'
+      ? null
+      : (activity ?? { kind: 'analyze' })
+  const liveTail = ideFloatLiveTail(live)
   const queueRunning = sessionSnap?.running === true
 
   /**
@@ -2368,7 +2525,32 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
             single
               ? h('span', { key: 'q', className: 'iw-float-queue-icon' }, h(IdeQueueIcon, { size: 14 }))
               : null,
-            h('span', { key: 't', className: 'iw-float-queue-text', title: row.text }, row.text),
+            (row.attachments ?? []).length === 0
+              ? null
+              : h('span', { key: 'media', className: 'iw-float-queue-media' }, (row.attachments ?? []).map((item, index) => {
+                if (item.kind === 'file') {
+                  return h('span', { key: `f${index}`, className: 'iw-float-queue-file', title: item.name }, [
+                    h('span', { key: 'i', className: 'iw-float-queue-file-icon' }, h(IdeFileIcon, { lang: '', size: 14 })),
+                    h('span', { key: 'n', className: 'iw-float-queue-file-name' }, item.name),
+                  ])
+                }
+                // The preview of a just-queued item is a URL already; one that
+                // came back from the Host has to be read through the Session.
+                const url = item.preview !== undefined && item.preview !== '' ? item.preview : (pictures[item.id] ?? '')
+                return url === ''
+                  ? h('span', { key: `i${index}`, className: 'iw-float-queue-thumb iw-float-queue-thumb-wait' })
+                  : h('img', {
+                    key: `i${index}`,
+                    className: 'iw-float-queue-thumb',
+                    src: url,
+                    alt: item.name ?? '',
+                    draggable: false,
+                    onClick: () => setViewing({ url, name: item.name ?? '' }),
+                  })
+              })),
+            row.text === ''
+              ? null
+              : h('span', { key: 't', className: 'iw-float-queue-text', title: row.text }, row.text),
             row.sending
               ? h('span', { key: 'st', className: 'iw-float-queue-sending' }, tr('floatQueueSending'))
               : h('div', { key: 'a', className: 'iw-float-queue-actions' }, [
@@ -2769,19 +2951,26 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         // One malformed event must not take the whole card down: a throw inside
         // this map unmounts the overlay, and the user just sees the card vanish.
         try {
-          return ideFloatRow(row, tr, { setViewing, store, pictures, goToChat, running })
+          return ideFloatRow(row, tr, { setViewing, store, pictures, goToChat, running, detail: state.floatEvents === true })
         } catch (error) {
           ideLogRecord('warn', 'float', 'row render failed', { key: row.key, error: String(error) })
           return h('div', { key: row.key, className: 'iw-float-row iw-float-assistant' }, String(row.text ?? ''))
         }
       })),
+    // The in-flight message renders in the transcript, exactly like the one the
+    // conversation is printing — no separate 「正在输出」 step.
+    streamRow === null
+      ? null
+      : h('div', { key: 'stream', className: 'iw-float-row iw-float-assistant iw-float-streaming' }, [h(IdeFloatMarkdown, { key: 'md', text: streamRow.text, tr })]),
     live === null
       ? null
       : h('div', { key: 'live', className: 'iw-float-step live iw-float-live' }, [
         h('span', { key: 'i', className: 'iw-float-step-icon' }, live.kind === 'tool' ? h(IdeTerminalIcon, { size: 15 }) : (live.kind === 'reasoning' ? h(IdeThinkIcon, { size: 15 }) : h(IdeSparkleIcon, { size: 15 }))),
         live.kind === 'tool'
           ? h('span', { key: 't', className: 'iw-float-step-text', title: ideFloatLiveText(live.step, tr) }, ideFloatLiveText(live.step, tr))
-          : h('span', { key: 't', className: 'iw-float-step-text', title: liveTail }, `${live.kind === 'reasoning' ? tr('floatLiveThinking') : tr('floatLiveWriting')} · ${liveTail}`),
+          : live.kind === 'analyze'
+            ? h('span', { key: 't', className: 'iw-float-step-text' }, tr('floatLiveAnalyze'))
+            : h('span', { key: 't', className: 'iw-float-step-text', title: liveTail }, `${live.kind === 'reasoning' ? tr('floatLiveThinking') : tr('floatLiveWriting')} · ${liveTail}`),
       ]),
     running
       ? h('div', { key: 'think', className: 'iw-float-thinking' }, [

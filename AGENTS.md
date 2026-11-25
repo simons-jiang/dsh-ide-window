@@ -301,17 +301,29 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - `tool/call` 的 `arguments`（原始 JSON，能解析就缩进）与 `tool/result` 的文本 / `isError` / `reason` 挂在批次行上，展开能看到 `▸ 工具名` + 参数 + `↳ 输出`
   - 其余事件一律成 **notice 行**：审批（`approval/asked|decided|policy`）、后台作业（`job/registered|settled`）、压缩（`compaction/start|summary|end|prune`）、重试（`llm/retry`）、失败尝试（`assistant/attempt`）、待办（`todo/write`）、模型/权限/沙箱切换、`workspace/changes`、`system/message`、`request/context`、`session/title*`、`developer/message`（工具增删），**未知类型兜底成 `floatEvent` + 原始 JSON**（真实会话里发现过 `request/context`/`session/title*` 这些插件事件）
   - **只吞纯簿记**（`IDE_FLOAT_SILENT_EVENTS`）：`turn/start`、`step/start`、`step/end`、`request/header`、`session/end-seed`、`llm/retry-started`、`agent/inbox/spliced`、`session-log-deepseek/delivery-accepted`——一次长会话里这些有 1.4 万条，且没有任何可读内容；`turn/end` 只在**非 completed** 时成行（回合成败要看得见）
-  - **系统事件默认不显示**：那些 notice 行（审批/作业/压缩/重试/标题/权限/沙箱/请求上下文/系统提示词/未知类型）只是把内容记下来，默认会刷屏（一次长会话几百条），所以由设置项 **`floatEvents`（「显示系统事件」，默认关）** 控制：`ideFloatVisibleRows(rows, running, showEvents)` 关时直接滤掉 `role === 'notice'`。思考、上下文注入、工具批次**不受开关影响**（它们是对话本身）
+  - **默认是「状态板」，不是阅读器**：`ideFloatVisibleRows(rows, running, detail)` 在 `detail !== true` 时只留 **最后一条你说的消息 + 最新一条输出 + 待回答的问题卡 + 最新文件卡**；`思考`、`上下文注入`、`工具批次`、notice 全部不进正文（细节去对话看）。踩过：一口气把事件都摊出来，用户看到的是一屏行，反而看不清"现在在做什么"
+  - **省略号只属于状态行，回答必须完整**（踩过：一度把助手输出压成一行，用户直接指出来「输出到对话的内容不要省略，省略的是『正在调用工具』这个框」）。所以：
+    - 助手回答照对话的排版**整段渲染**（`IdeFloatMarkdown`，段落/代码块/表格都在），绝不 clamp
+    - 用户消息用 `iw-float-pre`（`white-space: pre-wrap` + `-webkit-line-clamp: 4`）：**保留你打的换行**（markdown 会把单个换行折成空格），超 4 行才截
+    - 只有左下角那行状态（`iw-float-live` 的 `.iw-float-step-text`）是 `nowrap` + 省略号，一行到底
+    - 紧凑模式只决定**显示哪几行**，不负责截断文字
+  - **完整记录在设置里**：`floatEvents` 这一项现在叫 **「显示详细过程」**（默认关），打开即回到全量行模式（`detail === true`）：思考、上下文注入、工具参数与输出、系统事件（审批/作业/压缩/重试/标题/权限/沙箱/请求上下文/系统提示词/未知类型）全列出来
   - 所有行默认折叠（`IdeFloatFold`，自身 `useState`，靠 row.key 保状态），展开显示详情；详情按 `IDE_FLOAT_DETAIL_MAX`（6000 字）截断；行数上限 `IDE_FLOAT_MESSAGES` 从 6 提到 **200**（原来 6 行会把历史截没）
   - 运行中：当前批次是左下角钉住的实时状态（见上一条），因此**不在正文重复**（`ideFloatVisibleRows(rows, running)`），跑完的批次回到正文
   - **流式增量（transient）永远不成行**：`entries` 里 `type: 'transient'` 的 `assistant/live-chunk` 是"正在写的这条消息"的分片，一条 chunk 一行会刷成几十行 `事件 {attemptId…}`（踩过，用户截图直接糊了一屏）。transcript 第一件事就是跳过它们，落定的 `assistant/message` 才是正文
   - **左下角那行只显示"最新一条活动"**（`ideFloatLiveActivity(rows, rawEntries.current)`，注意要喂**原始 entries**——`entries` 状态已经是折好的行，拿它判断永远是空）：
-    - 最新一条是 `text-delta` → `正在输出 · <尾部>`
-    - 最新一条是 `reasoning-delta` → `思考中 · <尾部>`
-    - 最新一条是 `tool/call`/`tool/result` 且存在未收尾的批次 → `正在运行命令 · <细节>`
-    - 最新一条是落定的消息 → **不显示**（旧批次行不能挂到下一轮去，踩过：新回合一直在显示上一轮的「正在运行命令」）
+    - **流式正文直接进正文，不出「正在输出」状态行**（用户对照 DSH 指出的：对话是边生成边打印，没有这个步骤）。`ideFloatStreamRow(liveStream)` 把 `text-delta` 累积成一条 `role: 'assistant'` 的 `.iw-float-streaming` 行接在正文末尾，按 Markdown 渲染；落定的 `assistant/message` 一到，transient 消失、这条行也随之消失，不会重复
+    - 流式**思考**仍然出一行 `思考中 · <尾部>`（紧凑模式不展示思考内容，没有这行就什么也看不见）
+    - 否则看**最新一批工具是否还在等结果**（批次行的 `pending`：`tool/call` 有、对应 `tool/result` 还没有）→ `正在运行命令 · <细节>`
+    - 都没有 → **不显示**（旧批次不能挂到下一轮，踩过：新回合一直显示上一轮的「正在运行命令」）
+    - **不能按「最新一条事件是 tool/call」来判断**：真实顺序是 `tool/call` → `job/registered` → `job/settled` → `tool/result`，执行期间最新事件往往不是 tool/call，按事件类型判断会导致整段执行期没有状态行（踩过，实测 `last: job/registered` 时长时间空白）
     - 尾部取最后 220 字再折成一行预览（`ideFloatPreview`），始终只有这一行，不随历史增长
-- **排队消息也进卡片**（`ideFloatQueueRows` + 卡片底部 `renderQueue()`）：数据源与对话里那块「N 条排队消息」**完全一致**——`binding.session.projections` 的 `inbox` 投影 `next-turn`（`source.kind === 'user'` 才要），再补 `session.getSnapshot().pendingSubmissions` 里 `placement === 'queued'` 的回显（Host 还没收编时不能闪没，按 `rpcId` 去重）。抬头是 `N 条排队消息` + 收起箭头，**一条时不出抬头**（直接显示带队列图标的那一行），与 DSH 的 dock 同规则；每条可编辑（Enter 保存 / Esc 取消）、删除、插话发送（`session.updateQueue(id, {kind})`，`kind` 为 `edit`/`remove`/`steer`，运行中才可 `steer`）。投影用 `faceOf('inbox').subscribe`，拿不到就退到 `subscribeAny`
+    - **空档期显示「正在分析请求」**（`ideFloatLiveActivity(...) ?? { kind: 'analyze' }`）：DSH 对话里 `message.stepProcess.thinking` 就是这句，模型还没吐第一个字时卡片原来只剩计时行、看着像卡住。现在只要 `running` 且既没流式分片、也没有在飞的工具，就显示「正在分析请求」，阶段之间不再有空白
+    - **`analyze` / `tool` 这两种状态没有 `text`**：尾部预览统一走 `ideFloatLiveTail(live)`，它先按 kind 返回空串再读 `live.text`（踩过：直接在组件里 `live.text.slice(-220)`，analyze 一出现就抛 `Cannot read properties of undefined (reading 'slice')`，整个 `shell.overlay` 槽位崩掉、连悬浮球都没了）
+    - **没有可读参数时要带上工具名**（`ideFloatLiveText` 的 `suffix = detail || 工具名`）：`browser_evaluate` / `todo_write` 这类参数里没有 `description`/`command` 的工具，以前只显示「正在使用工具」，用户看不出在干嘛；现在显示「正在使用工具 · browser_evaluate」，和对话里那行一致。有可读参数时仍以参数为准（`正在运行命令 · sleep 20`）
+- **排队消息也进卡片**（`ideFloatQueueRows` + 卡片底部 `renderQueue()`）：数据源与对话里那块「N 条排队消息」**完全一致**——`binding.session.projections` 的 `inbox` 投影 `next-turn`（`source.kind === 'user'` 才要），再补 `session.getSnapshot().pendingSubmissions` 里 `placement === 'queued'` 的回显（Host 还没收编时不能闪没，按 `rpcId` 去重）。
+  - **附件（图片/文件）也要进队列行**（踩过：只取了 `type === 'text'` 的块，排队里的图片直接消失，连纯图片消息整行都没了）：`ideFloatQueueAttachments` 从 inbox 的 `content` 块取 `{type:'image'|'file', attachment}`，`ideFloatPendingAttachments` 从回显的 `attachments` 取（图片还带 `value.previewUrl`，可直接显示，不用再读）。**文本为空但有附件也要成行**
+  - 缩略图 26×26 圆角、点击进卡内大图；Host 收编后的图片没有 URL，走和消息图片同一个 `readAttachment` 路径（`queueImageKey` 作依赖的 effect 填 `pictures` 缓存），文件名用 12px chip + 省略号抬头是 `N 条排队消息` + 收起箭头，**一条时不出抬头**（直接显示带队列图标的那一行），与 DSH 的 dock 同规则；每条可编辑（Enter 保存 / Esc 取消）、删除、插话发送（`session.updateQueue(id, {kind})`，`kind` 为 `edit`/`remove`/`steer`，运行中才可 `steer`）。投影用 `faceOf('inbox').subscribe`，拿不到就退到 `subscribeAny`
 - **`/` 与 `@` 和对话一样分节、同一个数据源**：onChange 里用 `ideFloatTrigger` 取光标所在的 token（行首或空白后、到光标、无空格）。
   - `/` 三节：**添加**（文件→转 `@`、目标、计划、反馈）、**指令**（压缩、权限、模型→打开模型菜单、下载日志，外加 Host 里其他指令）、**技能**（`ctx.remote.skills.list({ sessionId })`——**这里要传对象**，传字符串拿不到）。前四项是编辑器动作，其余走 `binding.session.command('/name')`；名称/说明用本插件 locale（`floatCmdGoal`/`floatCmdGoalDesc`…），因为 Host 那份目录只有英文 name/description
   - `@` 两节：**文件与文件夹**（`workspaceFiles.list(sessionId, dir)`，`'.'` 是根、其余相对路径、条目只有 `{name,type}`）+ **对话**（按标题过滤其他会话，选中即切换悬浮卡的会话）

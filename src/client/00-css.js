@@ -1331,6 +1331,27 @@ html.iw-select-code .iw-code .iw-vision {
   color: var(--dsw-alias-label-primary, #1a1a1a);
 }
 .iw-float-queue-sending { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
+/* A queued message can be a picture or a file, not just text: show it. */
+.iw-float-queue-media { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.iw-float-queue-thumb {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  object-fit: cover;
+  cursor: zoom-in;
+}
+.iw-float-queue-thumb-wait { background: var(--dsw-alias-bg-layer-3, rgba(127, 127, 127, 0.16)); }
+.iw-float-queue-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 150px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font-size: 12px;
+}
+.iw-float-queue-file-icon { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.iw-float-queue-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iw-float-queue-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .iw-float-queue-action {
   display: inline-flex;
@@ -1821,6 +1842,17 @@ html.iw-select-code .iw-code .iw-vision {
   word-break: break-word;
 }
 .iw-float-bubble .iw-float-md { line-height: 22px; }
+/* The message you typed keeps its own line breaks (markdown collapsed single
+   newlines); the answer itself is never clipped — only the activity line above
+   the composer is a summarised one-liner. */
+.iw-float-pre {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* An open question is a card, matching the conversation's own: an 11px eyebrow,
    a 16px question, numbered options, and the way back to the conversation. */
 .iw-float-ask {
