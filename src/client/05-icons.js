@@ -280,6 +280,35 @@ function IdeStopMarkIcon({ size = 12 }) {
   return ideSvg(size, [h('rect', { key: 'a', x: 4, y: 4, width: 8, height: 8, rx: 1.6, fill: 'currentColor', stroke: 'none' })])
 }
 
+/** Queue: messages stacked up for the next turn. */
+function IdeQueueIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M3 4.4h10M3 8h10M3 11.6h6' }),
+  ])
+}
+
+/** Pencil: edit a queued message in place. */
+function IdePencilIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M10.9 2.9 13.1 5.1 6.1 12.1 3.2 12.9l.8-2.9z' }),
+    h('path', { key: 'b', d: 'M9.6 4.2 11.8 6.4' }),
+  ])
+}
+
+/** Trash: remove a queued message. */
+function IdeTrashIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M3.2 4.6h9.6' }),
+    h('path', { key: 'b', d: 'M6.2 4.6V3.2h3.6v1.4' }),
+    h('path', { key: 'c', d: 'M4.8 4.6 5.4 12.8h5.2l.6-8.2' }),
+  ])
+}
+
+/** Check: keep the edited queued message. */
+function IdeCheckIcon({ size = 14 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M3.4 8.5 6.6 11.7 12.6 4.9' })])
+}
+
 /** Wrap: fold a long line back into the block's width. */
 function IdeWrapIcon({ size = 15 }) {
   return ideSvg(size, [

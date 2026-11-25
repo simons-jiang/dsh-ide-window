@@ -346,6 +346,17 @@ window.__ModuleLoader__.load({
     "floatSending": "Sending…",
     "floatFailed": "Send failed",
     "floatRunning": "Thinking",
+    "floatQueueUnit": "queued messages",
+    "floatQueueSending": "Sending…",
+    "floatQueueEdit": "Edit queued message",
+    "floatQueueSave": "Save",
+    "floatQueueCancel": "Cancel editing",
+    "floatQueueRemove": "Remove queued message",
+    "floatQueueSteer": "Steer into the running turn",
+    "floatQueueSteerUnavailable": "Steering works only while the turn is running",
+    "floatQueueEditFailed": "Edit failed: this message may have already started sending",
+    "floatQueueRemoveFailed": "Remove failed: this message may have already started sending",
+    "floatQueueSteerFailed": "Steering failed; try again",
     "floatAttach": "Add content",
     "floatAttachReference": "Reference the open file",
     "floatNeedsFile": "Open a file first",
@@ -734,6 +745,17 @@ window.__ModuleLoader__.load({
     "floatSending": "发送中…",
     "floatFailed": "发送失败",
     "floatRunning": "深度求索中",
+    "floatQueueUnit": "条排队消息",
+    "floatQueueSending": "发送中…",
+    "floatQueueEdit": "编辑排队消息",
+    "floatQueueSave": "保存",
+    "floatQueueCancel": "取消编辑",
+    "floatQueueRemove": "删除排队消息",
+    "floatQueueSteer": "插话发送",
+    "floatQueueSteerUnavailable": "仅运行中可插话发送",
+    "floatQueueEditFailed": "编辑失败：这条消息可能已经开始发送",
+    "floatQueueRemoveFailed": "删除失败：这条消息可能已经开始发送",
+    "floatQueueSteerFailed": "插话发送失败，请重试",
     "floatAttach": "添加内容",
     "floatAttachReference": "引用当前文件",
     "floatNeedsFile": "先打开一个文件",
@@ -2009,6 +2031,89 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-step.live .iw-float-step-text { color: var(--dsw-alias-label-primary, #1a1a1a); }
 .iw-float-thinking { display: flex; gap: 6px; padding: 2px 0; }
 .iw-float-thinking-text { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary, #61666b); }
+
+/* The queue strip: messages waiting for the next turn, above the composer the
+   way the conversation docks its own. */
+.iw-float-queue {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.1));
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, #fff);
+  overflow: hidden;
+}
+.iw-float-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-float-queue-head:hover { background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.08)); }
+.iw-float-queue-icon,
+.iw-float-queue-chevron { display: inline-flex; align-items: center; flex: 0 0 auto; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-queue-chevron { margin-left: 2px; transition: transform 120ms ease; }
+.iw-float-queue-chevron.on { transform: rotate(180deg); }
+.iw-float-queue-count { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-float-queue-list { display: flex; flex-direction: column; max-height: 120px; overflow-y: auto; }
+.iw-float-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.1));
+}
+.iw-float-queue-row.sending { opacity: 0.7; }
+.iw-float-queue-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+}
+.iw-float-queue-sending { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-queue-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.iw-float-queue-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  cursor: pointer;
+}
+.iw-float-queue-action:hover:not(:disabled) {
+  background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.08));
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+}
+.iw-float-queue-action:disabled { opacity: 0.4; cursor: default; }
+.iw-float-queue-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.16));
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.06));
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+  font: inherit;
+  font-size: 13px;
+}
+.iw-float-queue-input:focus { outline: none; border-color: var(--dsw-alias-label-accent, #4d6bfe); }
 
 /* While the Session works, the card says what it is doing and for how long. */
 .iw-float-running {
@@ -3665,6 +3770,35 @@ function IdeArrowUpIcon({ size = 16 }) {
 /** Stop: the running turn's cancel button. */
 function IdeStopMarkIcon({ size = 12 }) {
   return ideSvg(size, [h('rect', { key: 'a', x: 4, y: 4, width: 8, height: 8, rx: 1.6, fill: 'currentColor', stroke: 'none' })])
+}
+
+/** Queue: messages stacked up for the next turn. */
+function IdeQueueIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M3 4.4h10M3 8h10M3 11.6h6' }),
+  ])
+}
+
+/** Pencil: edit a queued message in place. */
+function IdePencilIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M10.9 2.9 13.1 5.1 6.1 12.1 3.2 12.9l.8-2.9z' }),
+    h('path', { key: 'b', d: 'M9.6 4.2 11.8 6.4' }),
+  ])
+}
+
+/** Trash: remove a queued message. */
+function IdeTrashIcon({ size = 14 }) {
+  return ideSvg(size, [
+    h('path', { key: 'a', d: 'M3.2 4.6h9.6' }),
+    h('path', { key: 'b', d: 'M6.2 4.6V3.2h3.6v1.4' }),
+    h('path', { key: 'c', d: 'M4.8 4.6 5.4 12.8h5.2l.6-8.2' }),
+  ])
+}
+
+/** Check: keep the edited queued message. */
+function IdeCheckIcon({ size = 14 }) {
+  return ideSvg(size, [h('path', { key: 'a', d: 'M3.4 8.5 6.6 11.7 12.6 4.9' })])
 }
 
 /** Wrap: fold a long line back into the block's width. */
@@ -13952,6 +14086,64 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
 }
 
 /**
+ * What the card paints: the conversation, minus the Tool log.
+ *
+ * The assistant's own narration is the thread of the turn — «第二步的接口已经
+ * 找到…», «现在开始实现…» — and dropping it made the card read like nothing had
+ * happened, so every message, card and file list stays. What does not stay is
+ * the log: each Tool batch used to become its own 「执行了命令」 line, and a long
+ * turn stacked dozens of them. Only the newest batch is painted — it is the one
+ * that describes what is happening now; the earlier steps live in the
+ * conversation, where every one of them is still inspectable.
+ */
+function ideFloatVisibleRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+  let newestStep = -1
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index]?.role === 'step') {
+      newestStep = index
+      break
+    }
+  }
+  if (newestStep < 0) return rows
+  return rows.filter((row, index) => row?.role !== 'step' || index === newestStep)
+}
+
+/**
+ * The messages waiting for the next turn.
+ *
+ * `inbox` is the Host projection the conversation's own queue strip reads
+ * (`next-turn`), so the card and that strip can never disagree. `pending` adds a
+ * submission this Client just sent that the Host has not admitted yet: without
+ * it the message would blink out between sending and being queued.
+ */
+function ideFloatQueueRows(inbox, pending) {
+  const rows = []
+  const list = Array.isArray(inbox?.['next-turn']) ? inbox['next-turn'] : []
+  const admitted = new Set()
+  for (const row of list) {
+    if (row?.source?.kind !== 'user') continue
+    const text = (Array.isArray(row.content) ? row.content : [])
+      .filter((block) => block?.type === 'text')
+      .map((block) => String(block.text ?? ''))
+      .join('')
+      .trim()
+    if (text === '') continue
+    if (typeof row?.source?.rpcId === 'string') admitted.add(row.source.rpcId)
+    rows.push({ id: String(row.id ?? ''), text, sending: false })
+  }
+  for (const item of Array.isArray(pending) ? pending : []) {
+    if (item?.placement !== 'queued') continue
+    const requestId = String(item.requestId ?? '')
+    if (requestId !== '' && admitted.has(requestId)) continue
+    const text = String(item.text ?? '').trim()
+    if (text === '') continue
+    rows.push({ id: requestId, text, sending: true })
+  }
+  return rows
+}
+
+/**
  * The label of a permission preset id.
  *
  * The session log carries `permission/preset` events; the id is the sandbox mode
@@ -15362,6 +15554,39 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return () => globalThis.removeEventListener('resize', onResize)
   }, [])
 
+  // The queue: `inbox.next-turn` is the Host's own list, the same projection the
+  // conversation's queue strip reads, and the Session snapshot adds a message
+  // this card just sent. Both are observed, so a row never appears late.
+  const [sessionSnap, setSessionSnap] = useState(null)
+  const [inbox, setInbox] = useState(null)
+  const [queueOpen, setQueueOpen] = useState(false)
+  const [queueEdit, setQueueEdit] = useState(null)
+  const [queueBusy, setQueueBusy] = useState('')
+  useEffect(() => {
+    if (binding === null || binding.session === undefined || binding.session === null) {
+      setSessionSnap(null)
+      return undefined
+    }
+    const read = () => setSessionSnap(binding.session.getSnapshot())
+    read()
+    return typeof binding.session.subscribe === 'function' ? binding.session.subscribe(read) : undefined
+  }, [binding])
+  useEffect(() => {
+    if (binding === null) {
+      setInbox(null)
+      return undefined
+    }
+    const projections = binding.session?.projections
+    if (projections === undefined || projections === null) return undefined
+    const read = () => setInbox(typeof projections.get === 'function' ? (projections.get('inbox') ?? null) : null)
+    read()
+    const face = typeof projections.faceOf === 'function' ? projections.faceOf('inbox') : undefined
+    const off = typeof face?.subscribe === 'function' ? face.subscribe(read) : projections.subscribeAny?.(read)
+    return () => {
+      if (typeof off === 'function') off()
+    }
+  }, [binding])
+
   if (!open) return null
 
   // The header names the conversation, not the folder: that is what the menu
@@ -15376,6 +15601,148 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
   const size = ideFloatSize(state, viewportWidth, viewportHeight)
   const point = ideFloatPoint(state, viewportWidth, viewportHeight, size.width, collapsed ? 52 : size.height)
+
+  // Only the newest activity reaches the card; the conversation keeps the log.
+  const visibleEntries = ideFloatVisibleRows(entries)
+  const queueRows = ideFloatQueueRows(inbox, sessionSnap?.pendingSubmissions)
+  const queueRunning = sessionSnap?.running === true
+
+  /**
+   * One queue action: the Host answers with a result rather than a throw, and a
+   * row that started sending meanwhile must say so instead of failing silently.
+   */
+  const applyQueue = async (id, action, failureKey) => {
+    if (binding === null || id === '') return
+    setQueueBusy(id)
+    if (typeof binding.session.updateQueue !== 'function') return
+    try {
+      const result = await binding.session.updateQueue(id, action)
+      if (result?.ok === false) {
+        store.setNotice(`${tr(failureKey)}: ${result.error?.message ?? result.error?.code ?? 'unknown'}`)
+        return
+      }
+      if (action.kind === 'edit') setQueueEdit(null)
+    } catch (error) {
+      store.setNotice(`${tr(failureKey)}: ${error?.message ?? String(error)}`)
+    } finally {
+      setQueueBusy('')
+    }
+  }
+
+  /**
+   * The queue strip, shaped like the conversation's: one row shows itself, many
+   * collapse under a count header, and every row can be edited, dropped or
+   * steered into the running turn. It sits above the composer, where the
+   * conversation puts its own.
+   */
+  const renderQueue = () => {
+    if (queueRows.length === 0) return null
+    const single = queueRows.length === 1
+    const listVisible = single || queueOpen
+    const saveEdit = (row) => {
+      const text = queueEdit === null ? '' : queueEdit.text.trim()
+      if (text === '') return
+      void applyQueue(row.id, { kind: 'edit', content: [{ type: 'text', text }] }, 'floatQueueEditFailed')
+    }
+    const head = single
+      ? null
+      : h('button', {
+        key: 'head',
+        type: 'button',
+        className: 'iw-float-queue-head',
+        'aria-expanded': listVisible,
+        onClick: () => setQueueOpen(!queueOpen),
+      }, [
+        h('span', { key: 'i', className: 'iw-float-queue-icon' }, h(IdeQueueIcon, { size: 14 })),
+        h('span', { key: 'n', className: 'iw-float-queue-count' }, `${queueRows.length} ${tr('floatQueueUnit')}`),
+        h('span', { key: 'c', className: `iw-float-queue-chevron${listVisible ? ' on' : ''}` }, h(IdeChevronDownIcon, { size: 12 })),
+      ])
+    return h('div', { key: 'queue', className: 'iw-float-queue' }, [
+      head,
+      listVisible
+        ? h('div', { key: 'list', className: 'iw-float-queue-list' }, queueRows.map((row) => {
+          const busy = queueBusy === row.id
+          if (queueEdit !== null && queueEdit.id === row.id) {
+            return h('div', { key: row.id, className: 'iw-float-queue-row' }, [
+              h('input', {
+                key: 'e',
+                className: 'iw-float-queue-input',
+                value: queueEdit.text,
+                autoFocus: true,
+                'aria-label': tr('floatQueueEdit'),
+                onChange: (event) => setQueueEdit({ id: row.id, text: event.target.value }),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    saveEdit(row)
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setQueueEdit(null)
+                  }
+                },
+              }),
+              h('button', {
+                key: 's',
+                type: 'button',
+                className: 'iw-float-queue-action',
+                title: tr('floatQueueSave'),
+                'aria-label': tr('floatQueueSave'),
+                disabled: busy === true || queueEdit.text.trim() === '',
+                onClick: () => saveEdit(row),
+              }, h(IdeCheckIcon, { size: 14 })),
+              h('button', {
+                key: 'c',
+                type: 'button',
+                className: 'iw-float-queue-action',
+                title: tr('floatQueueCancel'),
+                'aria-label': tr('floatQueueCancel'),
+                disabled: busy === true,
+                onClick: () => setQueueEdit(null),
+              }, h(IdeCloseIcon, { size: 12 })),
+            ])
+          }
+          return h('div', { key: row.id, className: `iw-float-queue-row${row.sending ? ' sending' : ''}` }, [
+            single
+              ? h('span', { key: 'q', className: 'iw-float-queue-icon' }, h(IdeQueueIcon, { size: 14 }))
+              : null,
+            h('span', { key: 't', className: 'iw-float-queue-text', title: row.text }, row.text),
+            row.sending
+              ? h('span', { key: 'st', className: 'iw-float-queue-sending' }, tr('floatQueueSending'))
+              : h('div', { key: 'a', className: 'iw-float-queue-actions' }, [
+                h('button', {
+                  key: 'edit',
+                  type: 'button',
+                  className: 'iw-float-queue-action',
+                  title: tr('floatQueueEdit'),
+                  'aria-label': tr('floatQueueEdit'),
+                  disabled: busy === true,
+                  onClick: () => setQueueEdit({ id: row.id, text: row.text }),
+                }, h(IdePencilIcon, { size: 14 })),
+                h('button', {
+                  key: 'remove',
+                  type: 'button',
+                  className: 'iw-float-queue-action',
+                  title: tr('floatQueueRemove'),
+                  'aria-label': tr('floatQueueRemove'),
+                  disabled: busy === true,
+                  onClick: () => { void applyQueue(row.id, { kind: 'remove' }, 'floatQueueRemoveFailed') },
+                }, h(IdeTrashIcon, { size: 14 })),
+                h('button', {
+                  key: 'steer',
+                  type: 'button',
+                  className: 'iw-float-queue-action',
+                  title: queueRunning ? tr('floatQueueSteer') : tr('floatQueueSteerUnavailable'),
+                  'aria-label': tr('floatQueueSteer'),
+                  disabled: busy === true || queueRunning !== true,
+                  onClick: () => { void applyQueue(row.id, { kind: 'steer' }, 'floatQueueSteerFailed') },
+                }, h(IdeArrowUpIcon, { size: 14 })),
+              ]),
+          ])
+        }))
+        : null,
+    ])
+  }
 
   // Drag the header and resize the card from its corner grip.
   //
@@ -15734,9 +16101,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
       },
-    }, entries.length === 0
+    }, visibleEntries.length === 0
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
-      : entries.map((row) => {
+      : visibleEntries.map((row) => {
         // One malformed event must not take the whole card down: a throw inside
         // this map unmounts the overlay, and the user just sees the card vanish.
         try {
@@ -15777,6 +16144,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         }, tr('floatCloseViewer')),
       ]),
     ]),
+    renderQueue(),
     h('div', { key: 'input', className: 'iw-float-input', ref: inputRef }, [
       refs.length === 0 && images.length === 0 ? null : h('div', { key: 'chips', className: 'iw-float-chips' }, [
         ...refs.map((ref, index) => h('span', { key: `ref:${ref}`, className: 'iw-float-chip-ref' }, [

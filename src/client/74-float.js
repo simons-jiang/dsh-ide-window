@@ -381,6 +381,64 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
 }
 
 /**
+ * What the card paints: the conversation, minus the Tool log.
+ *
+ * The assistant's own narration is the thread of the turn — «第二步的接口已经
+ * 找到…», «现在开始实现…» — and dropping it made the card read like nothing had
+ * happened, so every message, card and file list stays. What does not stay is
+ * the log: each Tool batch used to become its own 「执行了命令」 line, and a long
+ * turn stacked dozens of them. Only the newest batch is painted — it is the one
+ * that describes what is happening now; the earlier steps live in the
+ * conversation, where every one of them is still inspectable.
+ */
+function ideFloatVisibleRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+  let newestStep = -1
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (rows[index]?.role === 'step') {
+      newestStep = index
+      break
+    }
+  }
+  if (newestStep < 0) return rows
+  return rows.filter((row, index) => row?.role !== 'step' || index === newestStep)
+}
+
+/**
+ * The messages waiting for the next turn.
+ *
+ * `inbox` is the Host projection the conversation's own queue strip reads
+ * (`next-turn`), so the card and that strip can never disagree. `pending` adds a
+ * submission this Client just sent that the Host has not admitted yet: without
+ * it the message would blink out between sending and being queued.
+ */
+function ideFloatQueueRows(inbox, pending) {
+  const rows = []
+  const list = Array.isArray(inbox?.['next-turn']) ? inbox['next-turn'] : []
+  const admitted = new Set()
+  for (const row of list) {
+    if (row?.source?.kind !== 'user') continue
+    const text = (Array.isArray(row.content) ? row.content : [])
+      .filter((block) => block?.type === 'text')
+      .map((block) => String(block.text ?? ''))
+      .join('')
+      .trim()
+    if (text === '') continue
+    if (typeof row?.source?.rpcId === 'string') admitted.add(row.source.rpcId)
+    rows.push({ id: String(row.id ?? ''), text, sending: false })
+  }
+  for (const item of Array.isArray(pending) ? pending : []) {
+    if (item?.placement !== 'queued') continue
+    const requestId = String(item.requestId ?? '')
+    if (requestId !== '' && admitted.has(requestId)) continue
+    const text = String(item.text ?? '').trim()
+    if (text === '') continue
+    rows.push({ id: requestId, text, sending: true })
+  }
+  return rows
+}
+
+/**
  * The label of a permission preset id.
  *
  * The session log carries `permission/preset` events; the id is the sandbox mode
@@ -1791,6 +1849,39 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     return () => globalThis.removeEventListener('resize', onResize)
   }, [])
 
+  // The queue: `inbox.next-turn` is the Host's own list, the same projection the
+  // conversation's queue strip reads, and the Session snapshot adds a message
+  // this card just sent. Both are observed, so a row never appears late.
+  const [sessionSnap, setSessionSnap] = useState(null)
+  const [inbox, setInbox] = useState(null)
+  const [queueOpen, setQueueOpen] = useState(false)
+  const [queueEdit, setQueueEdit] = useState(null)
+  const [queueBusy, setQueueBusy] = useState('')
+  useEffect(() => {
+    if (binding === null || binding.session === undefined || binding.session === null) {
+      setSessionSnap(null)
+      return undefined
+    }
+    const read = () => setSessionSnap(binding.session.getSnapshot())
+    read()
+    return typeof binding.session.subscribe === 'function' ? binding.session.subscribe(read) : undefined
+  }, [binding])
+  useEffect(() => {
+    if (binding === null) {
+      setInbox(null)
+      return undefined
+    }
+    const projections = binding.session?.projections
+    if (projections === undefined || projections === null) return undefined
+    const read = () => setInbox(typeof projections.get === 'function' ? (projections.get('inbox') ?? null) : null)
+    read()
+    const face = typeof projections.faceOf === 'function' ? projections.faceOf('inbox') : undefined
+    const off = typeof face?.subscribe === 'function' ? face.subscribe(read) : projections.subscribeAny?.(read)
+    return () => {
+      if (typeof off === 'function') off()
+    }
+  }, [binding])
+
   if (!open) return null
 
   // The header names the conversation, not the folder: that is what the menu
@@ -1805,6 +1896,148 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
   const size = ideFloatSize(state, viewportWidth, viewportHeight)
   const point = ideFloatPoint(state, viewportWidth, viewportHeight, size.width, collapsed ? 52 : size.height)
+
+  // Only the newest activity reaches the card; the conversation keeps the log.
+  const visibleEntries = ideFloatVisibleRows(entries)
+  const queueRows = ideFloatQueueRows(inbox, sessionSnap?.pendingSubmissions)
+  const queueRunning = sessionSnap?.running === true
+
+  /**
+   * One queue action: the Host answers with a result rather than a throw, and a
+   * row that started sending meanwhile must say so instead of failing silently.
+   */
+  const applyQueue = async (id, action, failureKey) => {
+    if (binding === null || id === '') return
+    setQueueBusy(id)
+    if (typeof binding.session.updateQueue !== 'function') return
+    try {
+      const result = await binding.session.updateQueue(id, action)
+      if (result?.ok === false) {
+        store.setNotice(`${tr(failureKey)}: ${result.error?.message ?? result.error?.code ?? 'unknown'}`)
+        return
+      }
+      if (action.kind === 'edit') setQueueEdit(null)
+    } catch (error) {
+      store.setNotice(`${tr(failureKey)}: ${error?.message ?? String(error)}`)
+    } finally {
+      setQueueBusy('')
+    }
+  }
+
+  /**
+   * The queue strip, shaped like the conversation's: one row shows itself, many
+   * collapse under a count header, and every row can be edited, dropped or
+   * steered into the running turn. It sits above the composer, where the
+   * conversation puts its own.
+   */
+  const renderQueue = () => {
+    if (queueRows.length === 0) return null
+    const single = queueRows.length === 1
+    const listVisible = single || queueOpen
+    const saveEdit = (row) => {
+      const text = queueEdit === null ? '' : queueEdit.text.trim()
+      if (text === '') return
+      void applyQueue(row.id, { kind: 'edit', content: [{ type: 'text', text }] }, 'floatQueueEditFailed')
+    }
+    const head = single
+      ? null
+      : h('button', {
+        key: 'head',
+        type: 'button',
+        className: 'iw-float-queue-head',
+        'aria-expanded': listVisible,
+        onClick: () => setQueueOpen(!queueOpen),
+      }, [
+        h('span', { key: 'i', className: 'iw-float-queue-icon' }, h(IdeQueueIcon, { size: 14 })),
+        h('span', { key: 'n', className: 'iw-float-queue-count' }, `${queueRows.length} ${tr('floatQueueUnit')}`),
+        h('span', { key: 'c', className: `iw-float-queue-chevron${listVisible ? ' on' : ''}` }, h(IdeChevronDownIcon, { size: 12 })),
+      ])
+    return h('div', { key: 'queue', className: 'iw-float-queue' }, [
+      head,
+      listVisible
+        ? h('div', { key: 'list', className: 'iw-float-queue-list' }, queueRows.map((row) => {
+          const busy = queueBusy === row.id
+          if (queueEdit !== null && queueEdit.id === row.id) {
+            return h('div', { key: row.id, className: 'iw-float-queue-row' }, [
+              h('input', {
+                key: 'e',
+                className: 'iw-float-queue-input',
+                value: queueEdit.text,
+                autoFocus: true,
+                'aria-label': tr('floatQueueEdit'),
+                onChange: (event) => setQueueEdit({ id: row.id, text: event.target.value }),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    saveEdit(row)
+                  }
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setQueueEdit(null)
+                  }
+                },
+              }),
+              h('button', {
+                key: 's',
+                type: 'button',
+                className: 'iw-float-queue-action',
+                title: tr('floatQueueSave'),
+                'aria-label': tr('floatQueueSave'),
+                disabled: busy === true || queueEdit.text.trim() === '',
+                onClick: () => saveEdit(row),
+              }, h(IdeCheckIcon, { size: 14 })),
+              h('button', {
+                key: 'c',
+                type: 'button',
+                className: 'iw-float-queue-action',
+                title: tr('floatQueueCancel'),
+                'aria-label': tr('floatQueueCancel'),
+                disabled: busy === true,
+                onClick: () => setQueueEdit(null),
+              }, h(IdeCloseIcon, { size: 12 })),
+            ])
+          }
+          return h('div', { key: row.id, className: `iw-float-queue-row${row.sending ? ' sending' : ''}` }, [
+            single
+              ? h('span', { key: 'q', className: 'iw-float-queue-icon' }, h(IdeQueueIcon, { size: 14 }))
+              : null,
+            h('span', { key: 't', className: 'iw-float-queue-text', title: row.text }, row.text),
+            row.sending
+              ? h('span', { key: 'st', className: 'iw-float-queue-sending' }, tr('floatQueueSending'))
+              : h('div', { key: 'a', className: 'iw-float-queue-actions' }, [
+                h('button', {
+                  key: 'edit',
+                  type: 'button',
+                  className: 'iw-float-queue-action',
+                  title: tr('floatQueueEdit'),
+                  'aria-label': tr('floatQueueEdit'),
+                  disabled: busy === true,
+                  onClick: () => setQueueEdit({ id: row.id, text: row.text }),
+                }, h(IdePencilIcon, { size: 14 })),
+                h('button', {
+                  key: 'remove',
+                  type: 'button',
+                  className: 'iw-float-queue-action',
+                  title: tr('floatQueueRemove'),
+                  'aria-label': tr('floatQueueRemove'),
+                  disabled: busy === true,
+                  onClick: () => { void applyQueue(row.id, { kind: 'remove' }, 'floatQueueRemoveFailed') },
+                }, h(IdeTrashIcon, { size: 14 })),
+                h('button', {
+                  key: 'steer',
+                  type: 'button',
+                  className: 'iw-float-queue-action',
+                  title: queueRunning ? tr('floatQueueSteer') : tr('floatQueueSteerUnavailable'),
+                  'aria-label': tr('floatQueueSteer'),
+                  disabled: busy === true || queueRunning !== true,
+                  onClick: () => { void applyQueue(row.id, { kind: 'steer' }, 'floatQueueSteerFailed') },
+                }, h(IdeArrowUpIcon, { size: 14 })),
+              ]),
+          ])
+        }))
+        : null,
+    ])
+  }
 
   // Drag the header and resize the card from its corner grip.
   //
@@ -2163,9 +2396,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
       },
-    }, entries.length === 0
+    }, visibleEntries.length === 0
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
-      : entries.map((row) => {
+      : visibleEntries.map((row) => {
         // One malformed event must not take the whole card down: a throw inside
         // this map unmounts the overlay, and the user just sees the card vanish.
         try {
@@ -2206,6 +2439,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
         }, tr('floatCloseViewer')),
       ]),
     ]),
+    renderQueue(),
     h('div', { key: 'input', className: 'iw-float-input', ref: inputRef }, [
       refs.length === 0 && images.length === 0 ? null : h('div', { key: 'chips', className: 'iw-float-chips' }, [
         ...refs.map((ref, index) => h('span', { key: `ref:${ref}`, className: 'iw-float-chip-ref' }, [

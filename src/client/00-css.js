@@ -1222,6 +1222,89 @@ html.iw-select-code .iw-code .iw-vision {
 .iw-float-thinking { display: flex; gap: 6px; padding: 2px 0; }
 .iw-float-thinking-text { font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary, #61666b); }
 
+/* The queue strip: messages waiting for the next turn, above the composer the
+   way the conversation docks its own. */
+.iw-float-queue {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.1));
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, #fff);
+  overflow: hidden;
+}
+.iw-float-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.iw-float-queue-head:hover { background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.08)); }
+.iw-float-queue-icon,
+.iw-float-queue-chevron { display: inline-flex; align-items: center; flex: 0 0 auto; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-queue-chevron { margin-left: 2px; transition: transform 120ms ease; }
+.iw-float-queue-chevron.on { transform: rotate(180deg); }
+.iw-float-queue-count { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-float-queue-list { display: flex; flex-direction: column; max-height: 120px; overflow-y: auto; }
+.iw-float-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.1));
+}
+.iw-float-queue-row.sending { opacity: 0.7; }
+.iw-float-queue-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+}
+.iw-float-queue-sending { flex: 0 0 auto; font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); }
+.iw-float-queue-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.iw-float-queue-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  cursor: pointer;
+}
+.iw-float-queue-action:hover:not(:disabled) {
+  background: var(--dsw-alias-card-fill-hover, rgba(127, 127, 127, 0.08));
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+}
+.iw-float-queue-action:disabled { opacity: 0.4; cursor: default; }
+.iw-float-queue-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.16));
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.06));
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+  font: inherit;
+  font-size: 13px;
+}
+.iw-float-queue-input:focus { outline: none; border-color: var(--dsw-alias-label-accent, #4d6bfe); }
+
 /* While the Session works, the card says what it is doing and for how long. */
 .iw-float-running {
   display: flex;

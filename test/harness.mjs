@@ -1834,6 +1834,75 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
     check(hookUse === null, 'no React hook runs after the open guard', hookUse === null ? '' : hookUse[0])
   }
 
+  // The card paints the conversation, but keeps only the newest Tool batch: the
+  // assistant's own narration is the thread of the turn, while a stack of
+  // 「执行了命令」 lines is just a log nobody reads in a one-column card.
+  {
+    const visibleOf = new Function(`${grabSource('ideFloatVisibleRows', '74-float.js')}\nreturn ideFloatVisibleRows`)()
+    const busy = [
+      { key: 'u1', role: 'user', text: '发布' },
+      { key: 'a1', role: 'assistant', text: '第二步的接口已经找到' },
+      { key: 's1', role: 'step', kinds: ['commands'] },
+      { key: 'a2', role: 'assistant', text: '现在开始实现' },
+      { key: 's2', role: 'step', kinds: ['tools'] },
+      { key: 'a3', role: 'assistant', text: '完成了' },
+    ]
+    const painted = visibleOf(busy)
+    check(painted.map((row) => row.key).join(',') === 'u1,a1,a2,s2,a3',
+      'every message stays; only the newest Tool batch is painted', painted.map((row) => row.key).join(','))
+    check(painted.filter((row) => row.role === 'step').length === 1,
+      'one progress line, not a list', String(painted.filter((row) => row.role === 'step').length))
+
+    const asked = [
+      { key: 'u1', role: 'user', text: '发布' },
+      { key: 'q1', role: 'question', question: '要发吗？', answers: [] },
+      { key: 's1', role: 'step', kinds: ['tools'] },
+    ]
+    check(visibleOf(asked).map((row) => row.key).join(',') === 'u1,q1,s1', 'a question card stays on screen', visibleOf(asked).map((row) => row.key).join(','))
+    const files = [
+      { key: 'u1', role: 'user', text: '发布' },
+      { key: 'p1', role: 'files', files: [{ path: 'a.js' }] },
+      { key: 'a1', role: 'assistant', text: '完成' },
+    ]
+    check(visibleOf(files).map((row) => row.key).join(',') === 'u1,p1,a1', 'the edited file list stays next to the answer', visibleOf(files).map((row) => row.key).join(','))
+    check(visibleOf([]).length === 0 && visibleOf(undefined).length === 0, 'nothing to paint, nothing rendered')
+    const noSteps = [{ key: 'u1', role: 'user', text: 'hi' }, { key: 'a1', role: 'assistant', text: 'only' }]
+    check(visibleOf(noSteps).length === 2, 'a turn without tools keeps every row', String(visibleOf(noSteps).length))
+
+    const floatSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
+    check(floatSource.includes('visibleEntries.map((row)'), 'the body paints the folded rows, not the raw transcript', 'render target')
+  }
+
+  // The queue strip reads the same projection the conversation's own strip does,
+  // and keeps a just-sent message visible until the Host admits it.
+  {
+    const queueOf = new Function(`${grabSource('ideFloatQueueRows', '74-float.js')}\nreturn ideFloatQueueRows`)()
+    const inbox = {
+      'next-turn': [
+        { id: 'm1', source: { kind: 'user', rpcId: 'r1' }, content: [{ type: 'text', text: '第一条' }] },
+        { id: 'm2', source: { kind: 'runtime-context' }, content: [{ type: 'text', text: '不是我的话' }] },
+        { id: 'm3', source: { kind: 'user' }, content: [{ type: 'image', attachment: { attachmentId: 'a' } }] },
+        { id: 'm4', source: { kind: 'user' }, content: [{ type: 'text', text: '第二条' }] },
+      ],
+    }
+    const rows = queueOf(inbox, [])
+    check(rows.map((row) => row.text).join('|') === '第一条|第二条', 'only what the user queued becomes a row', JSON.stringify(rows))
+    check(rows.every((row) => row.sending === false), 'an admitted row is not sending', JSON.stringify(rows))
+
+    const pending = [
+      { requestId: 'r1', placement: 'queued', text: '第一条' },
+      { requestId: 'r9', placement: 'queued', text: '刚发的' },
+      { requestId: 'r8', placement: 'transcript', text: '已经在对话里' },
+    ]
+    const withPending = queueOf(inbox, pending)
+    check(withPending.length === 3, 'a message in flight joins the queue', String(withPending.length))
+    check(withPending[2]?.text === '刚发的' && withPending[2]?.sending === true, 'the in-flight row is marked sending', JSON.stringify(withPending[2]))
+    check(withPending.filter((row) => row.text === '第一条').length === 1, 'the echo does not duplicate the admitted row', JSON.stringify(withPending))
+    check(queueOf(undefined, undefined).length === 0, 'no projection and no snapshot renders no queue')
+    check(queueOf({ 'next-turn': [{ id: 'x', source: { kind: 'user' }, content: [{ type: 'text', text: '   ' }] }] }, []).length === 0,
+      'a blank queue row is not a message')
+  }
+
   // Which `/` rows the card runs itself, and which belong to the Conversation UI.
   const slashSource = readFileSync(new URL('../src/client/74-float.js', import.meta.url), 'utf8')
   const setOf = (name) => {
