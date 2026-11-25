@@ -1981,8 +1981,25 @@ function floatTranscriptSource() {
       { key: 'a3', role: 'assistant', text: '完成了' },
     ]
     const painted = visibleOf(busy)
-    check(painted.map((row) => row.key).join(',') === 'u1,a3',
-      'the status board keeps what you said and the newest line only', painted.map((row) => row.key).join(','))
+    check(painted.map((row) => row.key).join(',') === 'u1,a1,a2,a3',
+      'the status board keeps every line the agent printed after your message', painted.map((row) => row.key).join(','))
+    const twoTurns = [
+      { key: 'u1', role: 'user', text: '上一轮' },
+      { key: 'a1', role: 'assistant', text: '上一轮的回答' },
+      { key: 'u2', role: 'user', text: '这一轮' },
+      { key: 'a2', role: 'assistant', text: '先看一下代码' },
+      { key: 's1', role: 'step', kinds: ['commands'] },
+      { key: 'a3', role: 'assistant', text: '改完了' },
+    ]
+    check(visibleOf(twoTurns).map((row) => row.key).join(',') === 'u2,a2,a3',
+      'only the turn you are in — earlier turns stay in the conversation', visibleOf(twoTurns).map((row) => row.key).join(','))
+    const orphan = [
+      { key: 'n1', role: 'notice', labelKey: 'floatNoticeJob', text: 'bash · ls' },
+      { key: 'a1', role: 'assistant', text: '第一段' },
+      { key: 'a2', role: 'assistant', text: '第二段' },
+    ]
+    check(visibleOf(orphan).map((row) => row.key).join(',') === 'a2',
+      'without a user line the newest answer is the anchor', visibleOf(orphan).map((row) => row.key).join(','))
     const detailRows = visibleOf(busy, true, true)
     check(detailRows.map((row) => row.key).join(',') === 'u1,a1,s1,a2,a3',
       'detail mode hides only the running batch', detailRows.map((row) => row.key).join(','))

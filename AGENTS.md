@@ -273,6 +273,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - 请求 `dsh-data-window:request`（`openTable` / `openSql`），回执 `dsh-data-window:response`，按 `id` 匹配，2s 超时；
 - 文件树右键 Java/Kotlin 文件 → 解析 `@TableName` 发 `openTable`；编辑器符号右键 → Mapper 方法发 `openSql`（`@Select` 等注解优先，其次按 namespace 在 XML 里找 statement，动态 SQL 会带注释提示原文粘贴）；
 - MyBatis 动态 SQL 会先转成可执行 SQL：`<foreach>` 展开 3 条默认值、`#{}`/`${}` 按方法签名里的参数类型填默认值（数字 `1`、字符串 `'demo'`、日期时间），SQL 头部注释列出默认参数；XML 的 `<if>/<where>/<set>/<trim>/<choose>` 会展开成静态 SQL。仍不自动执行，用户在数据窗口里改值后自己跑。
+- **`<include refid="..."/>` 会展开再拼**（`test/data-bridge.mjs` 有用例）：同文件 `<sql id>`、跨命名空间的片段、嵌套 include、include 自带的 `<property>` 都解析；解析不到的 refid 在 SQL 里留 `/* include not found: x */` 并在头部注释列出，条件被吃光后剩下的空 `WHERE` 直接去掉——绝不给数据窗口一段 `WHERE` 后面直接 `ORDER BY` 的语法错误 SQL。
 - 本插件只解析、不执行 SQL；定位库、只读校验都在数据窗口与它的 Host 里。
 
 ### 4.4 与对话联动
@@ -301,7 +302,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - `tool/call` 的 `arguments`（原始 JSON，能解析就缩进）与 `tool/result` 的文本 / `isError` / `reason` 挂在批次行上，展开能看到 `▸ 工具名` + 参数 + `↳ 输出`
   - 其余事件一律成 **notice 行**：审批（`approval/asked|decided|policy`）、后台作业（`job/registered|settled`）、压缩（`compaction/start|summary|end|prune`）、重试（`llm/retry`）、失败尝试（`assistant/attempt`）、待办（`todo/write`）、模型/权限/沙箱切换、`workspace/changes`、`system/message`、`request/context`、`session/title*`、`developer/message`（工具增删），**未知类型兜底成 `floatEvent` + 原始 JSON**（真实会话里发现过 `request/context`/`session/title*` 这些插件事件）
   - **只吞纯簿记**（`IDE_FLOAT_SILENT_EVENTS`）：`turn/start`、`step/start`、`step/end`、`request/header`、`session/end-seed`、`llm/retry-started`、`agent/inbox/spliced`、`session-log-deepseek/delivery-accepted`——一次长会话里这些有 1.4 万条，且没有任何可读内容；`turn/end` 只在**非 completed** 时成行（回合成败要看得见）
-  - **默认是「状态板」，不是阅读器**：`ideFloatVisibleRows(rows, running, detail)` 在 `detail !== true` 时只留 **最后一条你说的消息 + 最新一条输出 + 待回答的问题卡 + 最新文件卡**；`思考`、`上下文注入`、`工具批次`、notice 全部不进正文（细节去对话看）。踩过：一口气把事件都摊出来，用户看到的是一屏行，反而看不清"现在在做什么"
+  - **默认是「本轮状态板」，不是阅读器**：`ideFloatVisibleRows(rows, running, detail)` 在 `detail !== true` 时只留 **最后一条你说的消息 + 它之后的每一条输出**（一轮里 agent 会在工具调用之间说好几段话，对话里逐条显示，卡片也逐条显示）+ 待回答的问题卡 + 最新文件卡；`思考`、`上下文注入`、`工具批次`、notice 全部不进正文（细节去对话看）。踩过两次：①一口气把事件都摊出来，用户看到的是一屏行，反而看不清"现在在做什么"；②反过来只留最新一条输出，一轮里前面那些「改完了，再补个用例」全被吞掉（用户实测反馈）。
   - **省略号只属于状态行，回答必须完整**（踩过：一度把助手输出压成一行，用户直接指出来「输出到对话的内容不要省略，省略的是『正在调用工具』这个框」）。所以：
     - 助手回答照对话的排版**整段渲染**（`IdeFloatMarkdown`，段落/代码块/表格都在），绝不 clamp
     - 用户消息用 `iw-float-pre`（`white-space: pre-wrap` + `-webkit-line-clamp: 4`）：**保留你打的换行**（markdown 会把单个换行折成空格），超 4 行才截

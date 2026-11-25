@@ -13700,12 +13700,151 @@ function ideDataWindowDecodeXml(text) {
     .replace(/&amp;/g, '&')
 }
 
+/** 嵌套 `<include>` 最多展开这么多层，超过就按未解析处理，防止递归失控。 */
+const IDE_DATA_WINDOW_INCLUDE_DEPTH = 8
+
 /**
- * The SQL of one mapper statement from its XML file.
+ * 一个 mapper 文件里所有 `<sql id="...">` 片段，按 id 建索引。
+ *
+ * 片段是 mapper 语句的另一半：语句用 `<include refid="..."/>` 复用筛选条件块。
+ * 早先这里直接把 include 标签删掉，于是 `WHERE <include .../>` 变成光秃秃的
+ * `WHERE`，数据窗口拿到的 SQL 语法都不成立。
+ */
+function ideDataWindowSqlFragments(text) {
+  const fragments = {}
+  const pattern = /<sql\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/\s*sql\s*>/gi
+  let match
+  while ((match = pattern.exec(String(text ?? ''))) !== null) {
+    fragments[match[1]] = match[2]
+  }
+  return fragments
+}
+
+/** 把 refid 拆成「命名空间 + 片段名」，裸名字没有命名空间。 */
+function ideDataWindowRefId(refid) {
+  const text = String(refid ?? '').trim()
+  const dot = text.lastIndexOf('.')
+  return dot > 0 ? { namespace: text.slice(0, dot), id: text.slice(dot + 1) } : { namespace: '', id: text }
+}
+
+/** 某个命名空间的片段表；一次调用内只查一次，跨文件 include 靠它加载。 */
+async function ideDataWindowMapperFragments(root, files, namespace) {
+  if (files.has(namespace)) return files.get(namespace)
+  const found = await ideGrepQuery(root, `namespace="${namespace}"`, { extensions: ['xml'] })
+  const paths = found.ok === true ? found.matches.map((match) => String(match.path ?? '')) : []
+  const path = paths.find((entry) => entry.includes('/src/main/resources/')) ?? paths[0] ?? ''
+  const text = path === '' ? '' : await ideDataWindowReadFile(root, path)
+  const fragments = text === '' ? null : ideDataWindowSqlFragments(text)
+  files.set(namespace, fragments)
+  return fragments
+}
+
+/** 文本里每个 `<include>` 的位置，成对（带 `<property>` 子标签）和自闭合都认。 */
+function ideDataWindowIncludes(body) {
+  const text = String(body ?? '')
+  const items = []
+  const open = /<include\b/gi
+  let match
+  while ((match = open.exec(text)) !== null) {
+    const start = match.index
+    const end = text.indexOf('>', start)
+    if (end < 0) break
+    const raw = text.slice(start + '<include'.length, end)
+    const head = raw.replace(/\/\s*$/, '')
+    if (/\/\s*$/.test(raw)) {
+      items.push({ index: start, length: end + 1 - start, attrs: head, body: '' })
+      open.lastIndex = end + 1
+      continue
+    }
+    // 自闭合标签后面紧跟的内容不属于它；只有成对标签才向后找 `</include>`。
+    const closing = /<\/\s*include\s*>/i.exec(text.slice(end + 1))
+    if (closing === null) {
+      items.push({ index: start, length: end + 1 - start, attrs: head, body: '' })
+      open.lastIndex = end + 1
+      continue
+    }
+    const bodyEnd = end + 1 + closing.index
+    items.push({
+      index: start,
+      length: bodyEnd + closing[0].length - start,
+      attrs: head,
+      body: text.slice(end + 1, bodyEnd),
+    })
+    open.lastIndex = bodyEnd + closing[0].length
+  }
+  return items
+}
+
+/** `<include>` 里 `<property name=... value=.../>` 提供的占位符值。 */
+function ideDataWindowIncludeProps(body) {
+  const props = {}
+  for (const match of String(body ?? '').matchAll(/<property\b[^>]*\/?\s*>/gi)) {
+    const attrs = ideDataWindowXmlAttrs(match[0])
+    if (attrs.name !== undefined && attrs.value !== undefined) props[attrs.name] = attrs.value
+  }
+  return props
+}
+
+/** 用 include 的 property 值替换片段里的 `${name}`，其余占位符留给参数填充。 */
+function ideDataWindowApplyProps(sql, props) {
+  const names = Object.keys(props)
+  if (names.length === 0) return String(sql ?? '')
+  return String(sql ?? '').replace(/\$\{\s*([^}]+?)\s*\}/g, (whole, name) => (
+    Object.prototype.hasOwnProperty.call(props, name) ? props[name] : whole
+  ))
+}
+
+/**
+ * 展开 `<include refid="..."/>`：同文件片段、跨命名空间片段、嵌套 include 与
+ * include 自带的 property 都解析。
+ *
+ * 解析不出来的片段换成一条 SQL 注释而不是静默消失——注释能看出缺了谁，空洞
+ * 只会让数据窗口执行一段语法错误的 SQL。`missing` 收集这些 refid 交给调用方
+ * 写进头部注释。
+ */
+async function ideDataWindowExpandIncludes(root, files, namespace, body, seen, missing, depth) {
+  const text = String(body ?? '')
+  const items = ideDataWindowIncludes(text)
+  if (items.length === 0 || depth > IDE_DATA_WINDOW_INCLUDE_DEPTH) return text
+  let result = ''
+  let cursor = 0
+  for (const item of items) {
+    result += text.slice(cursor, item.index)
+    cursor = item.index + item.length
+    const refid = String(ideDataWindowXmlAttrs(item.attrs).refid ?? '').trim()
+    if (refid === '') {
+      result += '/* include without refid */'
+      missing.push('(without refid)')
+      continue
+    }
+    const ref = ideDataWindowRefId(refid)
+    const owner = ref.namespace === '' ? namespace : ref.namespace
+    const key = `${owner}|${ref.id}`
+    if (seen.has(key)) {
+      result += `/* include cycle: ${refid} */`
+      missing.push(refid)
+      continue
+    }
+    const fragments = await ideDataWindowMapperFragments(root, files, owner)
+    const fragment = fragments === null ? undefined : fragments[ref.id]
+    if (fragment === undefined) {
+      result += `/* include not found: ${refid} */`
+      missing.push(refid)
+      continue
+    }
+    const provided = ideDataWindowApplyProps(fragment, ideDataWindowIncludeProps(item.body))
+    result += await ideDataWindowExpandIncludes(root, files, owner, provided, new Set(seen).add(key), missing, depth + 1)
+  }
+  result += text.slice(cursor)
+  return result
+}
+
+/**
+ * The SQL of one mapper statement from its XML file, with `<include>` expanded.
  *
  * The namespace search is a content grep, so the mapper does not have to sit at a
- * conventional path. A dynamic statement keeps its raw text; the user is told it
- * needs adjusting rather than being handed a silently wrong static SQL.
+ * conventional path. `missing` lists the refids that could not be resolved, so the
+ * header can say which filter block is absent instead of pretending the SQL is whole.
  */
 async function ideDataWindowXmlSql(root, fqcn, symbol) {
   const found = await ideGrepQuery(root, `namespace="${fqcn}"`, { extensions: ['xml'] })
@@ -13723,7 +13862,10 @@ async function ideDataWindowXmlSql(root, fqcn, symbol) {
   if (match === null) return null
   const body = match[2]
   if (body.trim() === '') return null
-  return ideDataWindowDecodeXml(body).trim()
+  const files = new Map([[fqcn, ideDataWindowSqlFragments(text)]])
+  const missing = []
+  const expanded = await ideDataWindowExpandIncludes(root, files, fqcn, body, new Set(), missing, 0)
+  return { sql: ideDataWindowDecodeXml(expanded).trim(), missing }
 }
 
 /** Parse the attributes of one XML-ish tag, single or double quoted. */
@@ -13819,6 +13961,8 @@ function ideDataWindowExpandForeach(sql, params) {
 /** Remove the MyBatis dynamic tags, keeping the SQL they contain. */
 function ideDataWindowStripTags(sql) {
   let result = String(sql ?? '')
+  // CDATA 里是原样 SQL，先去壳，否则会被下面「未知标签」那条清理连内容一起吞掉。
+  result = result.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
   result = result.replace(/<\s*script\b[^>]*>/gi, '').replace(/<\s*\/\s*script\s*>/gi, '')
   result = result.replace(/<choose\b[^>]*>([\s\S]*?)<\/choose>/gi, (whole, body) => {
     const when = /<when\b[^>]*>([\s\S]*?)<\/when>/i.exec(body)
@@ -13849,11 +13993,14 @@ function ideDataWindowStripTags(sql) {
     result = result.replace(pattern, '$1')
   }
   result = result.replace(/<bind\b[^>]*\/?\s*>/gi, '')
-  result = result.replace(/<include\b[^>]*\/?\s*>/gi, '')
-  // Anything left (foreach is already expanded) is an unsupported tag: drop it.
-  result = result.replace(/<[^>]+>/g, '')
+  // Anything left (foreach and include are already expanded) is an unsupported tag: drop it.
+  // 只认「XML 形状」的标签（字母或 `!` 开头）：`a &lt; 5` 解出来是比较运算符，
+  // 按 `<[^>]+>` 删会把 `<` 到后面某个 `>` 之间的真实 SQL 一起吞掉。
+  result = result.replace(/<\/?[A-Za-z!][^>]*>/g, '')
   // `<where>` may have wrapped its leading AND/OR inside a stripped `<if>`.
   result = result.replace(/\bWHERE\s+(AND|OR)\b/gi, 'WHERE')
+  // 条件被动态标签或解析失败的 include 吃光后只剩一个 WHERE，留着就是语法错误。
+  result = result.replace(/\bWHERE\b(?=(?:\s*\/\*[\s\S]*?\*\/)*\s*(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|UNION|FOR\s+UPDATE|\)|;|$))/gi, '')
   return result
 }
 
@@ -13883,6 +14030,9 @@ function ideDataWindowExecutableSql(raw, params) {
     .filter((line) => line !== '')
     .join('\n')
     .replace(/\b(IN|in)\s*\(/g, 'IN (')
+    // `WHERE` 独占一行时，看上去和「条件被吃掉了」的空 WHERE 一模一样；把紧跟着
+    // 它的第一个条件接上去，一眼就能看出条件在不在。`SET` 同理。
+    .replace(/\b(WHERE|SET)[ \t]*\n[ \t]*(?=\S)/gi, (whole, keyword) => `${keyword.toUpperCase()} `)
     .trim()
 }
 
@@ -13908,15 +14058,22 @@ async function ideDataWindowOpenMapper(store, tr, root, path, symbol, line) {
   const fqcn = packageMatch === null ? typeName : `${packageMatch[1]}.${typeName}`
   const methodOffset = ideDataWindowMethodOffset(text, name, line)
   const params = ideDataWindowMethodParams(text, methodOffset)
-  const raw = ideDataWindowAnnotationSql(text, name, line)
-    || await ideDataWindowXmlSql(root, fqcn, name)
-  const sql = typeof raw === 'string' ? ideDataWindowExecutableSql(raw, params) : ''
+  const annotation = ideDataWindowAnnotationSql(text, name, line)
+  const statement = annotation === '' ? await ideDataWindowXmlSql(root, fqcn, name) : { sql: annotation, missing: [] }
+  const raw = statement === null ? '' : String(statement.sql ?? '')
+  const sql = raw === '' ? '' : ideDataWindowExecutableSql(raw, params)
   if (sql === '') {
     store.setNotice(tr('dataWindowNoSql'))
     return
   }
   const defaults = ideDataWindowDefaultSummary(params)
-  const header = defaults === '' ? '' : `-- defaults: ${defaults}\n`
+  // 解析不出来的 include 必须说出来：否则用户以为拿到了完整条件，实际少了过滤块。
+  const unresolved = [...new Set(statement?.missing ?? [])]
+  const notes = [
+    defaults === '' ? '' : `-- defaults: ${defaults}`,
+    unresolved.length === 0 ? '' : `-- unresolved include: ${unresolved.join(', ')}`,
+  ].filter((line) => line !== '').join('\n')
+  const header = notes === '' ? '' : `${notes}\n`
   store.setNotice(tr('dataWindowOpening'))
   const ack = await ideDataWindowRequest({
     action: 'openSql',
@@ -14625,26 +14782,47 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  */
 function ideFloatVisibleRows(rows, running, detail) {
   if (!Array.isArray(rows)) return []
+  // 还没作答的问题卡片不管在哪个位置都要露出来，否则用户永远看不到「要你选」。
+  const pendingQuestion = (row) => row?.role === 'question' && !(Array.isArray(row?.answers) && row.answers.length > 0)
   if (detail !== true) {
-    // The card is a status board, not a reader. It keeps the newest thing you
-    // said, the newest line the agent produced, and whatever is waiting for
-    // you — one screenful. Everything else is the conversation's job.
-    const keep = []
-    const lastWhere = (predicate) => {
-      for (let index = rows.length - 1; index >= 0; index -= 1) {
-        if (predicate(rows[index]) === true) {
-          keep.push(index)
-          return
-        }
+    // The card is a status board for the current turn: what you last said, then
+    // every line the agent printed after it. An agent narrates between Tool calls
+    // ("改完了，再补个用例"), and the conversation prints each narration as its own
+    // message — keeping only the newest one dropped everything said before it,
+    // which is exactly what the card used to do.
+    let lastUser = -1
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]?.role === 'user') {
+        lastUser = index
+        break
       }
     }
-    lastWhere((row) => row?.role === 'user')
-    lastWhere((row) => row?.role === 'assistant')
-    lastWhere((row) => row?.role === 'files')
+    if (lastUser < 0) {
+      // 没有 user 行可以锚定（历史被截断或会话是种子消息）：退回「最新一条输出」。
+      const keep = new Set()
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (rows[index]?.role === 'assistant') {
+          keep.add(index)
+          break
+        }
+      }
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (rows[index]?.role === 'files') {
+          keep.add(index)
+          break
+        }
+      }
+      rows.forEach((row, index) => {
+        if (pendingQuestion(row)) keep.add(index)
+      })
+      return [...keep].sort((left, right) => left - right).map((index) => rows[index])
+    }
+    const keep = new Set([lastUser])
     rows.forEach((row, index) => {
-      if (row?.role === 'question' && !(Array.isArray(row.answers) && row.answers.length > 0)) keep.push(index)
+      if (index > lastUser && (row?.role === 'assistant' || row?.role === 'files' || pendingQuestion(row))) keep.add(index)
+      else if (index < lastUser && pendingQuestion(row)) keep.add(index)
     })
-    return [...new Set(keep)].sort((left, right) => left - right).map((index) => rows[index])
+    return [...keep].sort((left, right) => left - right).map((index) => rows[index])
   }
   // Detail mode: the whole record. The batch that is still running is pinned
   // under the clock, so it leaves the transcript to avoid showing it twice.

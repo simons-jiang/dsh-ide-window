@@ -695,26 +695,47 @@ function ideFloatTranscript(entries, limit = IDE_FLOAT_MESSAGES) {
  */
 function ideFloatVisibleRows(rows, running, detail) {
   if (!Array.isArray(rows)) return []
+  // 还没作答的问题卡片不管在哪个位置都要露出来，否则用户永远看不到「要你选」。
+  const pendingQuestion = (row) => row?.role === 'question' && !(Array.isArray(row?.answers) && row.answers.length > 0)
   if (detail !== true) {
-    // The card is a status board, not a reader. It keeps the newest thing you
-    // said, the newest line the agent produced, and whatever is waiting for
-    // you — one screenful. Everything else is the conversation's job.
-    const keep = []
-    const lastWhere = (predicate) => {
-      for (let index = rows.length - 1; index >= 0; index -= 1) {
-        if (predicate(rows[index]) === true) {
-          keep.push(index)
-          return
-        }
+    // The card is a status board for the current turn: what you last said, then
+    // every line the agent printed after it. An agent narrates between Tool calls
+    // ("改完了，再补个用例"), and the conversation prints each narration as its own
+    // message — keeping only the newest one dropped everything said before it,
+    // which is exactly what the card used to do.
+    let lastUser = -1
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]?.role === 'user') {
+        lastUser = index
+        break
       }
     }
-    lastWhere((row) => row?.role === 'user')
-    lastWhere((row) => row?.role === 'assistant')
-    lastWhere((row) => row?.role === 'files')
+    if (lastUser < 0) {
+      // 没有 user 行可以锚定（历史被截断或会话是种子消息）：退回「最新一条输出」。
+      const keep = new Set()
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (rows[index]?.role === 'assistant') {
+          keep.add(index)
+          break
+        }
+      }
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (rows[index]?.role === 'files') {
+          keep.add(index)
+          break
+        }
+      }
+      rows.forEach((row, index) => {
+        if (pendingQuestion(row)) keep.add(index)
+      })
+      return [...keep].sort((left, right) => left - right).map((index) => rows[index])
+    }
+    const keep = new Set([lastUser])
     rows.forEach((row, index) => {
-      if (row?.role === 'question' && !(Array.isArray(row.answers) && row.answers.length > 0)) keep.push(index)
+      if (index > lastUser && (row?.role === 'assistant' || row?.role === 'files' || pendingQuestion(row))) keep.add(index)
+      else if (index < lastUser && pendingQuestion(row)) keep.add(index)
     })
-    return [...new Set(keep)].sort((left, right) => left - right).map((index) => rows[index])
+    return [...keep].sort((left, right) => left - right).map((index) => rows[index])
   }
   // Detail mode: the whole record. The batch that is still running is pinned
   // under the clock, so it leaves the transcript to avoid showing it twice.

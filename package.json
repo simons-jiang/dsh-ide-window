@@ -30,7 +30,7 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "node --check index.js && node --check client.js",
-    "test": "node test/platform.mjs && node test/diagnostics.mjs && node test/status.mjs && node test/harness.mjs && node test/inference.mjs && node test/maven.mjs && node test/theme.mjs && node test/screenshot.mjs"
+    "test": "node test/platform.mjs && node test/diagnostics.mjs && node test/status.mjs && node test/harness.mjs && node test/data-bridge.mjs && node test/inference.mjs && node test/maven.mjs && node test/theme.mjs && node test/screenshot.mjs"
   },
   "dsh": {
     "bundle": {
