@@ -339,6 +339,13 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **跟随当前会话（`floatFollow`，默认开，持久化）**：`ideFloatTargetSession(state)` 决定卡片展示哪个会话——跟随用 `state.sessionId`；关掉后用卡片自己的 `state.floatSessionId`（只本次进程有效），DSH 里怎么切都不动。卡片标题菜单里点会话：跟随时照旧 `openSession()`，不跟随时只 `store.setFloatSessionId()`（不动面板）；不跟随时菜单顶部有「不跟随当前会话 · 在下面手动切换」提示。卡片里点「＋ 新建会话」用 `pinnedAdoptRef` 收养新会话，避免不跟随时新建完还停在旧会话。重新打开跟随会清掉钉子
 - **表头**：`▾` 标题 **居中、16px、最多 20 个字**（超出加省略号，悬停给完整标题 + 工作区路径），标题颜色按**工作区**取色相（`ideFloatWorkspaceHue(path)` → `--iw-float-hue`，再和正文主色 `color-mix` 混，浅色/深色都压得住对比度）；右侧 `＋` 与 `–`/`×` 放在绝对定位的 `.iw-float-head-right` 里，标题才会在整条表头里真正居中
 - **滚到顶 = 翻历史**：正文滚到顶部时（`scrollTop <= 4`）调用 `binding.session.loadOlder()` 补一页（DSH 的会话窗口是分页的：首屏 ≥50 条消息、最多 500 条），同时打开 `historyMode`——**否则补进来的旧行会被「只画本轮」过滤掉，看起来像没加载**。historyMode 下 `ideFloatVisibleRows(..., history)` 铺开整个已加载窗口的对话（`step`/`reasoning`/`context`/`notice` 仍然不画）。补完把 `scrollTop` 推到「长出来的高度」，视线不跳；`rowLimit` 每次 +200（上限 2000）让补进来的行真的出现。发消息或切会话回到「本轮状态板」；没有更多历史时滚到顶只展开已加载的历史，不再请求
+- **到顶继续上滑 = 加载更早（回弹手势）**：正文滚到顶后继续往上滚（滚轮 `deltaY < 0` / 触摸下拉），内容被「拉」下来一段（`pull` 像素，最多 `IDE_FLOAT_PULL_MAX`），到 `IDE_FLOAT_PULL_TRIGGER`（64px）自动调 `loadOlderRows({ reveal: true })`，补完把视图移到新加载那段的开头；不用点任何按钮（用户明确要求「不想再点一次」）
+  - **不要再挂「滚到顶就加载」**：到顶立刻翻页的话，回弹一下子都看不到；`onScroll` 只管贴底状态
+  - **监听器用回调 ref 挂，不要用 effect**：`createOlderGesture(node, api)` 在 `ref={attachBody}` 里创建——节点一出现就挂、卸载就解绑。用 `useEffect` + 依赖数组时，收起成球期间 `bodyRef` 是空的，展开口很容易错过重挂，手势就整个失效（踩过：浏览器实测拉不出任何反应）。依赖里也**不能写 `collapsed`**（它在组件后面才声明，会抛 `Cannot access 'collapsed' before initialization`，整个 `shell.overlay` 槽直接崩掉、卡片整个不见）
+  - **回弹行是 flex 子项**：正文是 `flex-direction: column`，只写 `height` 会被 `flex-shrink` 压成 padding 高度（实测拉不动），必须同时写 `flex: 0 0 <h>px` + `minHeight`
+  - **高度不加 transition**：每个 wheel 事件都会重启过渡，看着像卡住；跟着滚轮实时变
+- **补历史期间不许贴底**：贴底 effect 在 `olderRef.current.busy || pending` 时直接 return，`loadOlderRows` 先把 `stickRef.current = false`——否则补完立刻被拽回底部，看着像「没加载」
+- **程序化滚动要防自触发**：`reveal` 把 `scrollTop` 设为 0 会再发一次 scroll 事件；`suppressUntil` 未过期时不重复加载
 - **表头按钮**：`＋` 新建、`–` 收起、`×` 关闭（模型与思考等级在输入区，别重复）
 - **每次打开 DSH 都从「收起来」开始**：卡片存在，但只占一个 44px 圆球（`floatCollapsed` 初值 `true`，不持久化）；球**由 CSS 钉在窗口右下角**（`right/bottom: 20px`，`left/top: auto`），窗口放大缩小都在原位——早先用卡片坐标算，最大化后还停在旧尺寸的位置，看着像跑到屏幕中间
 - **窗口尺寸变化要重渲染**：`resize` 监听里 `setViewportTick` 一次，否则卡片坐标还是旧视口的夹取结果

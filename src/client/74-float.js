@@ -17,6 +17,15 @@
 // everything but the last few rows off a long turn; the card scrolls, so the
 // whole tail of the log is worth keeping.
 const IDE_FLOAT_MESSAGES = 200
+/** 往回翻历史时卡片最多渲染这么多行（再多就该去对话里看了）。 */
+const IDE_FLOAT_MESSAGES_MAX = 1200
+/** 上拉回弹：到阈值自动加载更早一页（像素）。 */
+const IDE_FLOAT_PULL_TRIGGER = 64
+/** 回弹最多拉这么高，再多也没有意义。 */
+const IDE_FLOAT_PULL_MAX = 96
+/** 停止滚动这么久后回弹归零。 */
+const IDE_FLOAT_PULL_IDLE_MS = 420
+
 /** 表头标题最多显示多少个字（超出加省略号）。 */
 const IDE_FLOAT_TITLE_CHARS = 20
 /** Longest text a folded row shows once opened; longer payloads are clipped. */
@@ -176,6 +185,27 @@ function ideFloatTargetSession(state) {
   return pinned !== '' ? pinned : panel
 }
 
+/**
+ * 往回翻历史时的下一步。判定与副作用分开，方便测。
+ *
+ * `hasMore` 只说明窗口里还有没有更早的**页**；卡片自己还有 `rowLimit` 这个渲染上限，
+ * 两者不是一回事——早先只看 `hasMore`，于是在「上限截掉了更早的行」时也宣布
+ * 「已经到会话开头」，和 DSH 对话显示的开头对不上（用户实测反馈）。
+ */
+function ideFloatOlderStep(state) {
+  const hasMore = state?.hasMore === true
+  const total = Number(state?.total ?? 0)
+  const limit = Number(state?.limit ?? 0)
+  const history = state?.history === true
+  if (state?.loadable === false) return 'none'
+  if (hasMore) return 'load'
+  // 窗口没有更早的页了，但手里的行还没放完：先放开上限。
+  if (total > limit) return 'raise'
+  // 放完了，但正文还停在「本轮状态板」：先展开整段已加载的历史。
+  if (!history) return 'expand'
+  return 'start'
+}
+
 /** 会话的模式：`agentPreset` 投影的值（字符串或 `{currentValue}`，没配置就是空）。 */
 function ideFloatPresetId(value) {
   if (typeof value === 'string') return value
@@ -191,6 +221,75 @@ function ideFloatPresetName(presets, id, translate) {
   if (named !== '') return named
   const text = typeof translate === 'function' ? translate(id) : ''
   return typeof text === 'string' && text !== '' ? text : id
+}
+
+/**
+ * 到顶继续上滑的手势：累积回弹距离，到阈值回调 `load`。
+ *
+ * 返回解绑函数。所有可变输入都走 `api`（`pull` 是同一个对象引用、`setPull` 是稳定的
+ * setState），所以监听器不需要随每次渲染重建。
+ */
+function createOlderGesture(node, api) {
+  const settle = (timer) => {
+    if (timer !== 0) globalThis.clearTimeout(timer)
+  }
+  const reset = () => {
+    api.pull.value = 0
+    api.setPull(0)
+  }
+  const decay = () => {
+    settle(api.pull.timer)
+    api.pull.timer = globalThis.setTimeout(reset, IDE_FLOAT_PULL_IDLE_MS)
+  }
+  const push = (distance) => {
+    if (api.isBusy() === true) return
+    if (node.scrollTop > 2) return
+    const next = Math.min(IDE_FLOAT_PULL_MAX, api.pull.value + distance)
+    api.pull.value = next
+    api.setPull(next)
+    if (next >= IDE_FLOAT_PULL_TRIGGER) {
+      settle(api.pull.timer)
+      reset()
+      api.load({ reveal: true })
+      return
+    }
+    decay()
+  }
+  const onWheel = (event) => {
+    if (event.deltaY >= 0) return
+    // 到顶了才拦：否则正常滚动会被吃掉。
+    if (node.scrollTop > 2) return
+    event.preventDefault()
+    push(-event.deltaY)
+  }
+  let touchY = null
+  const onTouchStart = (event) => {
+    touchY = event.touches?.[0]?.clientY ?? null
+  }
+  const onTouchMove = (event) => {
+    if (touchY === null) return
+    const y = event.touches?.[0]?.clientY ?? touchY
+    const delta = y - touchY
+    touchY = y
+    if (delta <= 0) return
+    if (node.scrollTop > 2) return
+    push(delta)
+  }
+  const onTouchEnd = () => {
+    touchY = null
+    decay()
+  }
+  node.addEventListener('wheel', onWheel, { passive: false })
+  node.addEventListener('touchstart', onTouchStart, { passive: true })
+  node.addEventListener('touchmove', onTouchMove, { passive: true })
+  node.addEventListener('touchend', onTouchEnd, { passive: true })
+  return () => {
+    settle(api.pull.timer)
+    node.removeEventListener('wheel', onWheel)
+    node.removeEventListener('touchstart', onTouchStart)
+    node.removeEventListener('touchmove', onTouchMove)
+    node.removeEventListener('touchend', onTouchEnd)
+  }
 }
 
 /** 表头标题最多 `limit` 个字，超出用省略号——再长就分不清是哪个会话了。 */
@@ -1921,7 +2020,22 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const olderRef = useRef({ busy: false, pending: false, height: 0 })
   // 「＋ 新建会话」之后，不跟随时把卡片收养到新会话上（只认卡片自己发起的创建）。
   const pinnedAdoptRef = useRef(false)
+  // 上拉回弹的实时值（不在 state 里累积，避免每帧渲染整个卡片）。
+  const pullRef = useRef({ value: 0, timer: 0 })
+  // 监听器里要调最新的 loadOlderRows（每次渲染都会重建）。
+  const loadOlderRef = useRef(null)
+  const olderAvailableRef = useRef(false)
+  // 当前窗口折出来的总行数（含被 rowLimit 截掉的部分）。
+  const transcriptTotalRef = useRef(0)
+  // 回调 ref 挂上的手势清理函数（节点卸载或重新渲染时先解绑）。
+  const gestureCleanupRef = useRef(null)
   const [olderBusy, setOlderBusy] = useState(false)
+  // 会话窗口里还有没有更早的一页（有才允许上拉加载）。
+  const [olderAvailable, setOlderAvailable] = useState(false)
+  // 上拉到顶后的「回弹」高度：内容整体往下推，松手/到阈值就加载。
+  const [pull, setPull] = useState(0)
+  // 拉到顶时的提示（已到开头 / 只保留最近若干行）：一句话，看完自己消失。
+  const [startHint, setStartHint] = useState('')
   // 会话的模式（Agent 预设）：DSH 表头显示的就是它，卡片只展示不改。
   const [presetId, setPresetId] = useState('')
   const [presets, setPresets] = useState([])
@@ -2086,25 +2200,54 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
 
   // 滚到「更早」补一页：DSH 的会话窗口是分页的（首屏 ≥50 条消息、最多 500 条），
   // 卡片自己不请求就只能看到那一屏。补完把滚动位置往下推同样高度，视觉上停在原处。
-  const loadOlderRows = async () => {
+  const loadOlderRows = async (options) => {
+    // 点「加载更早的消息」是明确要看旧内容：补完把视图挪到新加载那段的开头。
+    // 滚到顶触发时相反——保持原位置，新内容自然出现在上方。
+    const reveal = options?.reveal === true
     const session = binding?.session
     const source = binding?.eventSource
     if (olderRef.current.busy) return
+    // 往回翻就不再跟着最新一条走：否则补完历史，负责「贴底」的那个 effect 会
+    // 立刻把视图拽回底部，用户根本看不到刚加载出来的旧消息。
+    stickRef.current = false
     const element = bodyRef.current
     const taller = () => (element === null || element === undefined ? 0 : element.scrollHeight)
     const hasMore = source?.getSnapshot()?.hasMore === true
     const canLoad = session !== undefined && session !== null && typeof session.loadOlder === 'function'
     // 已经到会话开头（或这条会话没有分页）：不用请求，只把历史展开，
     // 让已经拿到的更早内容显示出来。
-    if (!hasMore || !canLoad) {
-      if (historyMode) return
+    const step = ideFloatOlderStep({
+      hasMore,
+      loadable: canLoad,
+      total: transcriptTotalRef.current,
+      limit: rowLimit,
+      history: historyMode,
+    })
+    if (step === 'raise') {
+      // 上限截掉了更早的行：先把它放出来，绝不在这时候说「已经到开头」。
       olderRef.current.height = taller()
+      olderRef.current.top = element === null || element === undefined ? 0 : element.scrollTop
+      setRowLimit(Math.min(transcriptTotalRef.current, IDE_FLOAT_MESSAGES_MAX))
+      olderRef.current.pending = true
+      return
+    }
+    if (step === 'expand') {
+      // 展开「已加载但被本轮过滤掉」的历史。
+      olderRef.current.height = taller()
+      olderRef.current.top = element === null || element === undefined ? 0 : element.scrollTop
       setHistoryMode(true)
       olderRef.current.pending = true
       return
     }
+    if (step === 'start' || step === 'none') {
+      // 真到头了：上限也装不下的（1200 行）如实说「只显示最近这些」。
+      setStartHint(transcriptTotalRef.current > rowLimit ? tr('floatRowsTrimmed') : tr('floatStartReached'))
+      globalThis.setTimeout(() => setStartHint(''), 1600)
+      return
+    }
     olderRef.current.busy = true
     olderRef.current.height = taller()
+    olderRef.current.top = element === null || element === undefined ? 0 : element.scrollTop
     setOlderBusy(true)
     if (!historyMode) setHistoryMode(true)
     try {
@@ -2112,6 +2255,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       // 窗口补进来了，但卡片只画最后 N 行；放宽上限，让补进来的行真的出现。
       setRowLimit((current) => Math.min(current + IDE_FLOAT_MESSAGES, IDE_FLOAT_MESSAGES * 10))
       olderRef.current.pending = true
+      olderRef.current.reveal = reveal
     } catch (error) {
       ideLogRecord('warn', 'float', 'load older failed', error?.message ?? String(error))
     } finally {
@@ -2120,6 +2264,29 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
   }
 
+  // 已经到顶还继续往上滑：内容被「拉」下来一段，到阈值就自动加载更早一页。
+  // 监听器挂在 body 节点上，用回调 ref（节点一出现就挂），不依赖 effect 的依赖数组：
+  // 收起成球时 body 不存在，靠 effect 重挂很容易错过，手势就整个失效（踩过）。
+  const attachBody = (node) => {
+    if (typeof gestureCleanupRef.current === 'function') {
+      gestureCleanupRef.current()
+      gestureCleanupRef.current = null
+    }
+    bodyRef.current = node
+    if (node === null || node === undefined) return
+    gestureCleanupRef.current = createOlderGesture(node, {
+      isBusy: () => olderRef.current.busy === true,
+      load: (options) => {
+        if (typeof loadOlderRef.current === 'function') void loadOlderRef.current(options)
+      },
+      pull: pullRef.current,
+      setPull,
+    })
+  }
+
+  loadOlderRef.current = loadOlderRows
+  olderAvailableRef.current = olderAvailable
+
   // 新行渲染完再量高度：把滚动条往下推「长出来的那一段」，视线不跳。
   useLayoutEffect(() => {
     const older = olderRef.current
@@ -2127,8 +2294,16 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const element = bodyRef.current
     if (element === null || element === undefined) return
     const grown = element.scrollHeight - older.height
-    // 浏览器若已按 scroll anchoring 挪过位置，就保留它的结果，别把高度算两遍。
-    if (grown > 0) element.scrollTop = Math.max(element.scrollTop, grown)
+    // 下面这行是自己滚动：滚动事件会再进来一次，别把它当成用户在往回翻。
+    older.suppressUntil = Date.now() + 800
+    if (older.reveal === true) {
+      // 明确点了「加载更早」：直接看到新加载的那段（它的开头就是最上面一行）。
+      element.scrollTop = 0
+    } else if (grown > 0) {
+      // 滚到顶触发的：按点击时看到的位置还原，新内容自然出现在上方。
+      element.scrollTop = Math.max(0, Number(older.top ?? 0) + grown)
+    }
+    older.reveal = false
     older.height = element.scrollHeight
     older.pending = false
   })
@@ -2139,6 +2314,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   useEffect(() => {
     const element = bodyRef.current
     if (element === null || element === undefined || stickRef.current !== true) return undefined
+    // 正在往回补历史：这时候贴到底就等于把刚加载出来的旧消息藏起来。
+    if (olderRef.current.busy === true || olderRef.current.pending === true) return undefined
     const toBottom = () => { element.scrollTop = element.scrollHeight }
     toBottom()
     // A picture or a code block grows the transcript after it lays out, which
@@ -2185,14 +2362,20 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       setRowLimit((current) => (current === IDE_FLOAT_MESSAGES ? current : IDE_FLOAT_MESSAGES))
       olderRef.current = { busy: false, pending: false, height: 0 }
       setHistoryMode(false)
+      setOlderAvailable(false)
       return undefined
     }
     const source = binding.eventSource
     const read = () => {
-      const raw = source.getSnapshot()?.entries
+      const snapshot = source.getSnapshot()
+      const raw = snapshot?.entries
       // The transcript drops Tool calls; the progress line needs them.
       rawEntries.current = Array.isArray(raw) ? raw : []
-      setEntries(ideFloatTranscript(raw, rowLimit))
+      // 一次折出全部行，再按上限截断：这样才能判断「截掉的那些是不是比窗口还早」。
+      const all = ideFloatTranscript(raw)
+      transcriptTotalRef.current = all.length
+      setEntries(all.length > rowLimit ? all.slice(-rowLimit) : all)
+      setOlderAvailable(snapshot?.hasMore === true)
     }
     read()
     return source.subscribe(read)
@@ -3299,15 +3482,36 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     h('div', {
       key: 'body',
       className: 'iw-float-body',
-      ref: bodyRef,
+      ref: attachBody,
       onScroll: (event) => {
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
-        // 滚到最顶再往上拉：补一页更早的历史（没有更多时是空操作）。
-        if (element.scrollTop <= 4) void loadOlderRows()
+        // 加载更早一页不在这里触发：到顶后继续上滑由上面的回弹累积器负责，
+        // 否则一碰到顶就立刻翻页，用户根本看不到「拉扯」的那一下。
       },
     }, [
-      olderBusy ? h('div', { key: 'older', className: 'iw-float-older' }, tr('floatLoadingOlder')) : null,
+      startHint !== '' && pull === 0
+        ? h('div', { key: 'start', className: 'iw-float-older' }, startHint)
+        : olderBusy
+        ? h('div', { key: 'older', className: 'iw-float-older' }, tr('floatLoadingOlder'))
+        : pull > 0
+          ? h('div', {
+            key: 'older',
+            className: `iw-float-puller${pull >= IDE_FLOAT_PULL_TRIGGER * 0.75 ? ' armed' : ''}`,
+            // 正文是 flex 列：只写 height 会被 flex-shrink 压回 padding 高度，
+            // 必须连 `flex` 一起钉住，回弹才拉得出来。
+            style: { height: `${pull}px`, flex: `0 0 ${pull}px`, minHeight: `${pull}px` },
+          }, pull >= IDE_FLOAT_PULL_TRIGGER * 0.75 ? tr('floatPullArmed') : tr('floatPullOlder'))
+          : olderAvailable
+            // 常驻一行提示：让人知道这个方向还有内容（点一下也能加载，手势失灵时的兜底）。
+            ? h('button', {
+              key: 'older',
+              type: 'button',
+              className: 'iw-float-older iw-float-older-hint',
+              title: tr('floatLoadOlderHint'),
+              onClick: () => { void loadOlderRows({ reveal: true }) },
+            }, tr('floatLoadOlder'))
+            : null,
       visibleEntries.length === 0 && running !== true
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : visibleEntries.map((row) => {

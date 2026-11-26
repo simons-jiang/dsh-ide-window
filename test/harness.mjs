@@ -2420,6 +2420,18 @@ function floatTranscriptSource() {
     check(hueOf('') === 214, 'no workspace falls back to a neutral hue', String(hueOf('')))
     check(bundle.includes('session.loadOlder()') && bundle.includes('floatLoadingOlder'),
       'the card asks the session for one older page and says so while loading')
+    // 「已经到会话开头」只有在窗口没有更早的页、且卡片上限也没截掉东西时才成立。
+    const stepOf = new Function(`${grabSource('ideFloatOlderStep', '74-float.js')}\nreturn ideFloatOlderStep`)()
+    check(stepOf({ hasMore: true, total: 900, limit: 200, history: false }) === 'load', 'more pages → load one')
+    check(stepOf({ hasMore: false, total: 900, limit: 200, history: true }) === 'raise',
+      'the row cap still hides older rows → raise it instead of claiming the start')
+    check(stepOf({ hasMore: false, total: 120, limit: 200, history: false }) === 'expand',
+      'the window is complete but the board shows one turn → expand the loaded history')
+    check(stepOf({ hasMore: false, total: 120, limit: 200, history: true }) === 'start', 'only then is it the start')
+    check(stepOf({ hasMore: false, total: 5000, limit: 5000, history: true }) === 'start', 'a complete window is the start')
+    check(stepOf({ hasMore: true, loadable: false, total: 10, limit: 200 }) === 'none', 'a session without paging does nothing')
+    check(bundle.includes('floatRowsTrimmed'), 'the trimmed-rows wording ships too')
+
     // 会话模式：读 agentPreset 投影，内置模式用 DSH 自己的文案，自定义用预设名字。
     const presetOf = new Function(`${grabSource('ideFloatPresetId', '74-float.js')}\nreturn ideFloatPresetId`)()
     check(presetOf('standard') === 'standard', 'a string projection is the mode')
@@ -2433,8 +2445,12 @@ function floatTranscriptSource() {
     check(nameOf([], '', builtin) === '', 'no mode renders nothing')
     check(bundle.includes("faceOf('agentPreset')") && bundle.includes('agentPresets.list'),
       'the card follows the session mode projection and reads the preset list')
-    check(bundle.includes('setHistoryMode(true)') && bundle.includes('ideFloatVisibleRows(entries, running, state.floatEvents === true, historyMode)'),
-      'reaching the top reveals the loaded history and asks for one more page')
+    check(bundle.includes('iw-float-puller') && bundle.includes('floatPullOlder') && bundle.includes('floatPullArmed'),
+      'pulling past the top shows a rubber-band line and loads by itself')
+    check(bundle.includes("addEventListener('wheel', onWheel, { passive: false })") && bundle.includes('IDE_FLOAT_PULL_TRIGGER'),
+      'the wheel accumulator runs with a non-passive listener so it can intercept at the top')
+    check(bundle.includes('setOlderAvailable(snapshot?.hasMore === true)'),
+      'the entry appears only while the window really has older history')
     check(bundle.includes('iw-float-head-right') && bundle.includes('iw-float-older'),
       'the header cluster and the loading row ship their styles')
   }

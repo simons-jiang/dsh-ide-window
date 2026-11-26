@@ -1787,6 +1787,31 @@ html.iw-select-code .iw-code .iw-vision {
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary, #81858c);
 }
+/* 已经到顶还继续上滑：内容被拉下来一段（回弹），到阈值自动加载更早一页。 */
+.iw-float-puller {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  padding-bottom: 4px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font-size: 12.5px;
+  line-height: 16px;
+  /* 高度跟着滚轮实时走，不加 transition——否则每来一个 wheel 事件都会重启过渡，
+     看着像「拉不动」。 */
+}
+.iw-float-puller.armed { color: var(--dsw-alias-brand-primary, #4f7cf7); }
+/* 还有更早历史时常驻的一行提示；点一下也能加载（手势之外的口子）。 */
+.iw-float-older-hint {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  text-align: center;
+}
+.iw-float-older-hint:hover { color: var(--dsw-alias-brand-primary, #4f7cf7); }
 .iw-float-title-btn:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 /* A model row must be clickable across its whole width, not just on the text. */
 .iw-float-menu-item {
