@@ -2099,6 +2099,38 @@ html.iw-select-code .iw-code .iw-vision {
   border-radius: 6px;
   border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.1));
 }
+/* 图片文件不在了：一行说明，别只留一枚裂图标。 */
+.iw-float-img-missing {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 10px;
+  margin: 6px 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-3, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12.5px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-float-pic-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 220px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12.5px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .iw-float-filelist { display: flex; flex-direction: column; gap: 4px; }
 .iw-float-file {
   display: flex;

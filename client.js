@@ -407,6 +407,7 @@ window.__ModuleLoader__.load({
     "floatNeedsFile": "Open a file first",
     "floatPermission": "Permission",
     "floatMode": "Mode",
+    "floatImageMissing": "Image unavailable",
     "floatModeStandard": "Standard mode",
     "floatModePtc": "PTC mode",
     "floatModeMinimal": "Minimal mode",
@@ -864,6 +865,7 @@ window.__ModuleLoader__.load({
     "floatNeedsFile": "先打开一个文件",
     "floatPermission": "权限",
     "floatMode": "模式",
+    "floatImageMissing": "图片无法加载",
     "floatModeStandard": "标准模式",
     "floatModePtc": "PTC 模式",
     "floatModeMinimal": "精简模式",
@@ -3024,6 +3026,38 @@ html.iw-select-code .iw-code .iw-vision {
   margin: 6px 0;
   border-radius: 6px;
   border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.1));
+}
+/* 图片文件不在了：一行说明，别只留一枚裂图标。 */
+.iw-float-img-missing {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 10px;
+  margin: 6px 0;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-3, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12.5px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iw-float-pic-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 220px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12.5px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .iw-float-filelist { display: flex; flex-direction: column; gap: 4px; }
 .iw-float-file {
@@ -14597,7 +14631,12 @@ function ideFloatRow(row, tr, io) {
   const body = row.text === '' ? null : h(IdeFloatMarkdown, { key: 'text', text: row.text, tr })
   const pics = row.images === undefined || row.images.length === 0 ? null : h('div', { key: 'pics', className: 'iw-float-pics' }, row.images.map((image, index) => {
     const url = pictures[image.attachmentId] ?? ''
-    if (url === '') return h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
+    // 还没读到用骨架，读失败用一行提示（`''` 是「试过了、失败」的标记）。
+    if (url === '') {
+      return Object.prototype.hasOwnProperty.call(picturesRef.current, image.attachmentId)
+        ? h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-missing' }, `${tr('floatImageMissing')}${image.name === undefined ? '' : ` · ${image.name}`}`)
+        : h('div', { key: `pic${index}`, className: 'iw-float-pic iw-float-pic-wait' })
+    }
     return h('img', {
       key: `pic${index}`,
       className: 'iw-float-pic',
@@ -15793,8 +15832,38 @@ function ideFloatFileUrl(path) {
   }
 }
 
+/**
+ * 一张 markdown 图：加载不出来就换成一行提示。
+ *
+ * 助手有时会写 `![说明](/tmp/xxx.jpg)` 指向已经不存在的文件（临时截图被清理了），
+ * 浏览器只会给一枚裂图标 + alt 文字，看着像卡片坏了。这里显式说明「图片无法加载」
+ * 并带上文件名，悬停给完整路径。
+ */
+function IdeFloatImage(props) {
+  // 一个 props 参数、不解构：测试里的 grabSource 按花括号配平取函数体，
+  // 解构里的 `{ ... }` 会被当成函数结尾。
+  const src = props?.src
+  const alt = props?.alt
+  const path = props?.path
+  const tr = props?.tr
+  const [failed, setFailed] = useState(false)
+  if (failed === true) {
+    const name = String(path ?? '').split(/[\\/]/).pop() || String(alt ?? '')
+    return h('span', {
+      className: 'iw-float-img-missing',
+      title: path === undefined ? name : String(path),
+    }, name === '' ? tr('floatImageMissing') : `${tr('floatImageMissing')} · ${name}`)
+  }
+  return h('img', {
+    className: 'iw-float-md-img',
+    src,
+    alt,
+    onError: () => setFailed(true),
+  })
+}
+
 /** One inline markdown run: code, bold, emphasis, strike, links, images, autolinks. */
-function ideFloatInline(text, prefix = '') {
+function ideFloatInline(text, prefix = '', tr) {
   const nodes = []
   const pattern = new RegExp([
     '`+[^`]*`+', // inline code, any number of backticks
@@ -15833,7 +15902,14 @@ function ideFloatInline(text, prefix = '') {
       const localImage = image === null ? '' : ideFloatFileUrl(image[2])
       const src = localImage !== '' ? localImage : image === null ? '' : ideFloatSafeUrl(image[2], true)
       if (src === '') pushText(image === null ? token : image[1])
-      else nodes.push(h('img', { key, className: 'iw-float-md-img', src, alt: image[1] }))
+      else nodes.push(h(IdeFloatImage, {
+        key,
+        src,
+        alt: image[1],
+        // 本地路径的图才可能「文件没了」；网络图加载失败也给同一句提示。
+        path: image[2],
+        tr: typeof tr === 'function' ? tr : (key) => key,
+      }))
     } else if (token.startsWith('[')) {
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
       const localLink = link === null ? '' : ideFloatFileUrl(link[2])
@@ -16083,19 +16159,19 @@ function IdeFloatMarkdown({ text, tr }) {
   return h('div', { className: 'iw-float-md' }, blocks.map((block, index) => {
     const key = `b${index}`
     if (block.type === 'code') return h(IdeFloatCodeBlock, { key, code: block.text, lang: block.lang, tr })
-    if (block.type === 'heading') return h('div', { key, className: `iw-float-md-h iw-float-md-h${block.level}` }, ideFloatInline(block.text, key))
+    if (block.type === 'heading') return h('div', { key, className: `iw-float-md-h iw-float-md-h${block.level}` }, ideFloatInline(block.text, key, tr))
     if (block.type === 'hr') return h('div', { key, className: 'iw-float-md-hr' })
-    if (block.type === 'quote') return h('blockquote', { key, className: 'iw-float-md-quote' }, ideFloatInline(block.text, key))
+    if (block.type === 'quote') return h('blockquote', { key, className: 'iw-float-md-quote' }, ideFloatInline(block.text, key, tr))
     if (block.type === 'table') {
       return h('div', { key, className: 'iw-float-md-tablewrap' }, h('table', { key: 't', className: 'iw-float-md-table' }, [
         h('thead', { key: 'head' }, h('tr', { key: 'row' }, block.head.map((cell, column) => h('th', {
           key: `c${column}`,
           className: cellClass(block.align[column]),
-        }, ideFloatInline(cell, `${key}h${column}`))))),
+        }, ideFloatInline(cell, `${key}h${column}`, tr))))),
         h('tbody', { key: 'body' }, block.rows.map((row, rowIndex) => h('tr', { key: `r${rowIndex}` }, block.head.map((_, column) => h('td', {
           key: `c${column}`,
           className: cellClass(block.align[column]),
-        }, ideFloatInline(row[column] ?? '', `${key}r${rowIndex}c${column}`)))))),
+        }, ideFloatInline(row[column] ?? '', `${key}r${rowIndex}c${column}`, tr)))))),
       ]))
     }
     if (block.type === 'ul' || block.type === 'ol') {
@@ -16109,10 +16185,10 @@ function IdeFloatMarkdown({ text, tr }) {
         item.task === null || item.task === undefined
           ? null
           : h('span', { key: 'check', className: 'iw-float-md-check' }, item.task === true ? '☑' : '☐'),
-        ...ideFloatInline(item.text.replace(/\n/g, ' '), `${key}l${itemIndex}`),
+        ...ideFloatInline(item.text.replace(/\n/g, ' '), `${key}l${itemIndex}`, tr),
       ])))
     }
-    return h('p', { key, className: 'iw-float-md-p' }, ideFloatInline(block.text, key))
+    return h('p', { key, className: 'iw-float-md-p' }, ideFloatInline(block.text, key, tr))
   }))
 }
 
@@ -16212,6 +16288,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
             code: result?.error?.code ?? 'unknown',
             message: result?.error?.message ?? '',
           })
+          // 读不出来就别留一个永远转圈的骨架：标成失败，渲染成「图片无法加载」。
+          setPictures((current) => (current[image.attachmentId] !== undefined ? current : { ...current, [image.attachmentId]: '' }))
           return
         }
         const data = result.value?.data

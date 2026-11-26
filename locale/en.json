@@ -401,6 +401,7 @@
   "floatNeedsFile": "Open a file first",
   "floatPermission": "Permission",
   "floatMode": "Mode",
+  "floatImageMissing": "Image unavailable",
   "floatModeStandard": "Standard mode",
   "floatModePtc": "PTC mode",
   "floatModeMinimal": "Minimal mode",

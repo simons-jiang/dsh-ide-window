@@ -2366,19 +2366,22 @@ function floatTranscriptSource() {
     globalThis.document = { baseURI: 'http://127.0.0.1:57999/' }
     try {
       const fileUrlOf = new Function(`${grabSource('ideFloatFileUrl', '74-float.js')}\nreturn ideFloatFileUrl`)()
-      const inlineOf = new Function('h', `${grabSource('ideFloatSafeUrl', '74-float.js')}\n${grabSource('ideFloatFileUrl', '74-float.js')}\n${grabSource('ideFloatInline', '74-float.js')}\nreturn ideFloatInline`)(
+      const inlineOf = new Function('h', 'useState', `${grabSource('ideFloatSafeUrl', '74-float.js')}\n${grabSource('ideFloatFileUrl', '74-float.js')}\n${grabSource('IdeFloatImage', '74-float.js')}\n${grabSource('ideFloatInline', '74-float.js')}\nreturn ideFloatInline`)(
         (type, props, ...children) => ({ type, props, children }),
+        (initial) => [initial, () => {}],
       )
-      const localImage = inlineOf('![选择数据库（深色）](/tmp/dw-schema-picker.jpg)')[0]
-      check(localImage?.type === 'img'
-        && localImage.props.src === 'http://127.0.0.1:57999/api/file?path=%2Ftmp%2Fdw-schema-picker.jpg',
+      // 图片现在是组件（加载失败要换成一行说明），组件名通过 props 判断。
+      const localImage = inlineOf('![选择数据库（深色）](/tmp/dw-schema-picker.jpg)', 'b', (key) => key)[0]
+      check(localImage?.type?.name === 'IdeFloatImage'
+        && localImage.props.src === 'http://127.0.0.1:57999/api/file?path=%2Ftmp%2Fdw-schema-picker.jpg'
+        && localImage.props.path === '/tmp/dw-schema-picker.jpg',
         'a local image is served by the DSH file route', String(localImage?.props?.src))
-      const remoteImage = inlineOf('![x](https://cdn.example.com/a.png)')[0]
+      const remoteImage = inlineOf('![x](https://cdn.example.com/a.png)', 'b', (key) => key)[0]
       check(remoteImage?.props?.src === 'https://cdn.example.com/a.png', 'a remote image is untouched', String(remoteImage?.props?.src))
       check(fileUrlOf('./shot.jpg') === '' && fileUrlOf('https://a/b.png') === '', 'only absolute paths take the file route')
       check(fileUrlOf('C:\\shots\\a.png').includes('api/file?path=C%3A%5Cshots%5Ca.png'),
         'a Windows path is encoded the same way', fileUrlOf('C:\\shots\\a.png'))
-      const localLink = inlineOf('[截图](/tmp/dw-schema-picker.jpg)')[0]
+      const localLink = inlineOf('[截图](/tmp/dw-schema-picker.jpg)', 'b', (key) => key)[0]
       check(localLink?.type === 'a' && localLink.props.href.includes('api/file?path=%2Ftmp%2F'),
         'a local link opens the same route', String(localLink?.props?.href))
     } finally {
@@ -2437,6 +2440,27 @@ function floatTranscriptSource() {
   }
   check(bundle.includes('iw-float-approval') && bundle.includes('floatApprovalHint'),
     'the approval card ships its styles and its 「go to the conversation」 hint')
+
+  // 图片文件不在（助手写了 ![](/tmp/xxx.jpg) 但文件早被清理）：给一行说明，不留裂图标。
+  {
+    const imageSource = grabSource('IdeFloatImage', '74-float.js')
+    let failed = false
+    const h = (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(4) })
+    // 状态由测试自己持有：第二次渲染要看到 onError 之后的值。
+    const useState = () => [failed, (next) => { failed = next }]
+    const tr = (key) => (key === 'floatImageMissing' ? '图片无法加载' : key)
+    const imageOf = new Function('h', 'useState', `${imageSource}\nreturn IdeFloatImage`)(h, useState)
+    const first = imageOf({ src: 'api/file?path=%2Ftmp%2Fgone.jpg', alt: '横向滚动', path: '/tmp/gone.jpg', tr })
+    check(first.type === 'img', 'a loadable image is an img', String(first.type))
+    check(typeof first.props.onError === 'function', 'the image reports its own load failure')
+    first.props.onError()
+    const second = imageOf({ src: 'api/file?path=%2Ftmp%2Fgone.jpg', alt: '横向滚动', path: '/tmp/gone.jpg', tr })
+    check(second.type === 'span' && String(second.children[0]).includes('图片无法加载'), 'a missing file becomes one line of text', JSON.stringify(second.children))
+    check(String(second.children[0]).includes('gone.jpg'), 'the line names the file', String(second.children[0]))
+    check(second.props.title === '/tmp/gone.jpg', 'hovering shows the full path', String(second.props.title))
+    check(bundle.includes('floatImageMissing') && bundle.includes('iw-float-img-missing'),
+      'the placeholder ships its text and its style')
+  }
 
   // 渲染路径也要过一遍：审批卡在卡片里长什么样、按钮把人送回对话。
   {

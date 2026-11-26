@@ -401,6 +401,7 @@
   "floatNeedsFile": "先打开一个文件",
   "floatPermission": "权限",
   "floatMode": "模式",
+  "floatImageMissing": "图片无法加载",
   "floatModeStandard": "标准模式",
   "floatModePtc": "PTC 模式",
   "floatModeMinimal": "精简模式",
