@@ -2240,9 +2240,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       return
     }
     if (step === 'start' || step === 'none') {
-      // 真到头了：上限也装不下的（1200 行）如实说「只显示最近这些」。
-      setStartHint(transcriptTotalRef.current > rowLimit ? tr('floatRowsTrimmed') : tr('floatStartReached'))
-      globalThis.setTimeout(() => setStartHint(''), 1600)
+      // 没得加载了就直说，并把人引到会话框——卡片不是阅读器，细节去对话看。
+      setStartHint(tr('floatStartReached'))
+      globalThis.setTimeout(() => setStartHint(''), 2600)
       return
     }
     olderRef.current.busy = true

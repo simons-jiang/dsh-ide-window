@@ -2430,7 +2430,8 @@ function floatTranscriptSource() {
     check(stepOf({ hasMore: false, total: 120, limit: 200, history: true }) === 'start', 'only then is it the start')
     check(stepOf({ hasMore: false, total: 5000, limit: 5000, history: true }) === 'start', 'a complete window is the start')
     check(stepOf({ hasMore: true, loadable: false, total: 10, limit: 200 }) === 'none', 'a session without paging does nothing')
-    check(bundle.includes('floatRowsTrimmed'), 'the trimmed-rows wording ships too')
+    check(bundle.includes('floatStartReached') && !bundle.includes('floatRowsTrimmed'),
+      '走到尽头只给一句话，并把人引到会话框')
 
     // 会话模式：读 agentPreset 投影，内置模式用 DSH 自己的文案，自定义用预设名字。
     const presetOf = new Function(`${grabSource('ideFloatPresetId', '74-float.js')}\nreturn ideFloatPresetId`)()

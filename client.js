@@ -344,8 +344,7 @@ window.__ModuleLoader__.load({
     "floatLoadingOlder": "Loading earlier messages…",
     "floatPullOlder": "Keep pulling for earlier messages",
     "floatPullArmed": "Loading…",
-    "floatStartReached": "No messages left to load",
-    "floatRowsTrimmed": "The card keeps recent messages only; open the conversation for older ones",
+    "floatStartReached": "Nothing left to load here — see the conversation for the full history",
     "floatLoadOlder": "↑ Keep scrolling up for earlier messages",
     "floatLoadOlderHint": "Pull past the top, or click here",
     "floatNoSession": "No session bound yet",
@@ -810,8 +809,7 @@ window.__ModuleLoader__.load({
     "floatLoadingOlder": "正在加载更早的消息…",
     "floatPullOlder": "上滑加载更早",
     "floatPullArmed": "即将加载…",
-    "floatStartReached": "没有更多可加载的消息了",
-    "floatRowsTrimmed": "卡片只显示最近的消息，更早的请在对话里查看",
+    "floatStartReached": "没有可加载的消息了 · 更多细节请移步会话框查看",
     "floatLoadOlder": "↑ 继续上滑加载更早",
     "floatLoadOlderHint": "滚到顶后继续上滑，或点这里",
     "floatNoSession": "还没有绑定会话",
@@ -16775,9 +16773,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       return
     }
     if (step === 'start' || step === 'none') {
-      // 真到头了：上限也装不下的（1200 行）如实说「只显示最近这些」。
-      setStartHint(transcriptTotalRef.current > rowLimit ? tr('floatRowsTrimmed') : tr('floatStartReached'))
-      globalThis.setTimeout(() => setStartHint(''), 1600)
+      // 没得加载了就直说，并把人引到会话框——卡片不是阅读器，细节去对话看。
+      setStartHint(tr('floatStartReached'))
+      globalThis.setTimeout(() => setStartHint(''), 2600)
       return
     }
     olderRef.current.busy = true
