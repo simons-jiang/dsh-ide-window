@@ -6,6 +6,24 @@
 升级方式：DSH →「插件」→ 打开插件的「版本」区 →「检查更新」，或直接卸载后重新安装。
 （`link:` 本地安装不参与版本检查，拉取仓库即可。）
 
+## [0.4.5] — 2026-11-26
+
+### 新增
+
+- **代码里直接查找（`⌘F` / `Ctrl+F`）**：以前在文件里找一段代码只能滚，或者跳出代码视图去「Search Everywhere」。现在代码视图右上角浮出查找条，输入即搜，`.*` 正则、`Aa` 区分大小写、`W` 整词三个开关，右侧 `1/N` 命中计数，回车下一个、`Shift+回车` 上一个、到头环绕，Esc 随时关闭；命中用深色底标出，语法色和 ⌘+单击照常可用。选中文本或符号上右键也有「在文件中查找」。
+- **主题从 10 套扩到 29 套**：新增 Material 系列（Ocean / Palenight / Darker / Deep Ocean / Forest / Volcano / Space / Sky Blue / Sandy Beach / Light），以及 Arc Dark、Atom One、Cobalt2、GitHub Dark/Light、Horizon、Dracula、Monokai Pro、Night Owl、Solarized、Synthwave 84、Shades of Purple、Winter is Coming、Noctis 等；每套都同时给出 9 个语法色和 10 档括号色，切换主题会一并带动同页的 git 窗口。
+
+### 改进
+
+- **括号按嵌套层级分色**：多层嵌套时所有括号一个颜色，看串行。现在按层级分 10 档、10 档一轮回，闭合括号和它的开括号同色，深浅色主题各自配了色。
+- **语法配色对齐 Material 的语义**：关键字斜体、注解与方法同色、常量与数字同色、形参单独一色、静态成员斜体；方法声明与调用同色。
+- **关键字表按语言分开**：Java 里名叫 `type` / `object` / `range` 的参数以前会被染成关键字色（同一行参数有的有色、有的没有），现在每种语言只认自己的关键字。
+
+### 修复
+
+- **打开代码工作区可能整块打不开**：代码视图里有一个 `useMemo` 落在「加载中」的提前 return 之后，加载态和就绪态的 hook 数量不一致（React #310），表现就是进不去代码工作区。现在 hook 全部在 return 之前。
+- **签名带注解前缀时形参不着色**：`@RequestBody @Valid X query` 这种写法认不出形参，现在能识别。
+
 ## [0.4.4] — 2026-11-26
 
 ### 新增
