@@ -1,0 +1,55 @@
+/**
+ * cobalt2 (dark) — a palette for the code workspace.
+ *
+ * Generated from Cobalt2 (wesbos/cobalt2-vscode) → Cobalt2, see tools/gen-*.mjs. Only DSH alias tokens are
+ * overridden, scoped to the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="cobalt2"] {
+  --dsw-alias-bg-base: #193549;
+  --dsw-alias-bg-layer-1: #253f52;
+  --dsw-alias-bg-layer-2: #2e4759;
+  --dsw-alias-bg-layer-3: #395162;
+  --dsw-alias-bg-overlay: #142a3a;
+  --dsw-specific-sidebar-fill: #253f52;
+  --dsw-specific-menu: #2e4759;
+  --dsw-alias-card-fill: #2e4759;
+  --dsw-alias-card-fill-hover: #395162;
+  --dsw-alias-card-tile-fill: #2e4759;
+  --dsw-alias-label-primary: #ffffff;
+  --dsw-alias-label-secondary: #d9d9d9;
+  --dsw-alias-label-tertiary: #aaaaaa;
+  --dsw-alias-border-l1: #2e4759;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #395162;
+  --dsw-alias-border-l3: #748591;
+  --dsw-alias-border: #2e4759;
+  --dsw-alias-brand-primary: #0d3a58;
+  --dsw-alias-interactive-bg-hover: #304c60;
+  --dsw-alias-state-success-primary: #7fd88f;
+  --dsw-alias-state-warning-primary: #ffc600;
+  --dsw-alias-state-error-primary: #ff628c;
+  --dsw-alias-state-business-primary: #0d3a58;
+  --dsw-alias-state-idle-primary: #aaaaaa;
+  --dsw-focus-ring-color: #0d3a58;
+  --iw-changes-fill: #0d3a58;
+  --iw-changes-hover: #627f92;
+  --iw-syn-keyword: #ff9d00;
+  --iw-syn-string: #a5ff90;
+  --iw-syn-number: #ffffff;
+  --iw-syn-comment: #0088ff;
+  --iw-syn-annotation: #ff9d00;
+  --iw-syn-type: #fb94ff;
+  --iw-syn-function: #ff9d00;
+  --iw-syn-punct: #e1efff;
+  --iw-syn-param: #ffffff;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

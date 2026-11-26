@@ -1,0 +1,55 @@
+/**
+ * horizon-bright (light) — a palette for the code workspace.
+ *
+ * Generated from Horizon Bright (jolaleye/horizon-theme-vscode) → Horizon Bright, see tools/gen-*.mjs. Only DSH alias tokens are
+ * overridden, scoped to the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="horizon-bright"] {
+  --dsw-alias-bg-base: #fdf0ed;
+  --dsw-alias-bg-layer-1: #f3e6e4;
+  --dsw-alias-bg-layer-2: #ebdfdc;
+  --dsw-alias-bg-layer-3: #e1d6d3;
+  --dsw-alias-bg-overlay: #eee2df;
+  --dsw-specific-sidebar-fill: #f3e6e4;
+  --dsw-specific-menu: #ebdfdc;
+  --dsw-alias-card-fill: #ebdfdc;
+  --dsw-alias-card-fill-hover: #e1d6d3;
+  --dsw-alias-card-tile-fill: #ebdfdc;
+  --dsw-alias-label-primary: #06060c;
+  --dsw-alias-label-secondary: #06060c;
+  --dsw-alias-label-tertiary: #06060c;
+  --dsw-alias-border-l1: #ebdfdc;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #e1d6d3;
+  --dsw-alias-border-l3: #9f9897;
+  --dsw-alias-border: #ebdfdc;
+  --dsw-alias-brand-primary: #1a1c23;
+  --dsw-alias-interactive-bg-hover: #b9b1b0;
+  --dsw-alias-state-success-primary: #1eb980;
+  --dsw-alias-state-warning-primary: #af5427;
+  --dsw-alias-state-error-primary: #f43e5c;
+  --dsw-alias-state-business-primary: #1a1c23;
+  --dsw-alias-state-idle-primary: #06060c;
+  --dsw-focus-ring-color: #1a1c23;
+  --iw-changes-fill: #1a1c23;
+  --iw-changes-hover: #6a6b70;
+  --iw-syn-keyword: #8a31b9;
+  --iw-syn-string: #f6661e;
+  --iw-syn-number: #06060c;
+  --iw-syn-comment: #333333;
+  --iw-syn-annotation: #1d8991;
+  --iw-syn-type: #f77d26;
+  --iw-syn-function: #1d8991;
+  --iw-syn-punct: #333333;
+  --iw-syn-param: #06060c;
+  --iw-br-0: #a52727;
+  --iw-br-1: #a57327;
+  --iw-br-2: #8ca527;
+  --iw-br-3: #40a527;
+  --iw-br-4: #27a559;
+  --iw-br-5: #27a5a5;
+  --iw-br-6: #2759a5;
+  --iw-br-7: #4027a5;
+  --iw-br-8: #8c27a5;
+  --iw-br-9: #a52773;
+}

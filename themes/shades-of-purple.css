@@ -1,0 +1,55 @@
+/**
+ * shades-of-purple (dark) — a palette for the code workspace.
+ *
+ * Generated from Shades of Purple (ahmadawais/shades-of-purple-vscode) → Shades of Purple, see tools/gen-*.mjs. Only DSH alias tokens are
+ * overridden, scoped to the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="shades-of-purple"] {
+  --dsw-alias-bg-base: #2d2b55;
+  --dsw-alias-bg-layer-1: #38365e;
+  --dsw-alias-bg-layer-2: #403e64;
+  --dsw-alias-bg-layer-3: #4a496d;
+  --dsw-alias-bg-overlay: #242244;
+  --dsw-specific-sidebar-fill: #38365e;
+  --dsw-specific-menu: #403e64;
+  --dsw-alias-card-fill: #403e64;
+  --dsw-alias-card-fill-hover: #4a496d;
+  --dsw-alias-card-tile-fill: #403e64;
+  --dsw-alias-label-primary: #ffffff;
+  --dsw-alias-label-secondary: #d7d1f5;
+  --dsw-alias-label-tertiary: #a599e9;
+  --dsw-alias-border-l1: #403e64;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #4a496d;
+  --dsw-alias-border-l3: #808099;
+  --dsw-alias-border: #403e64;
+  --dsw-alias-brand-primary: #1e1e3f;
+  --dsw-alias-interactive-bg-hover: #414064;
+  --dsw-alias-state-success-primary: #7fd88f;
+  --dsw-alias-state-warning-primary: #fad000;
+  --dsw-alias-state-error-primary: #ec3a37;
+  --dsw-alias-state-business-primary: #1e1e3f;
+  --dsw-alias-state-idle-primary: #a599e9;
+  --dsw-focus-ring-color: #1e1e3f;
+  --iw-changes-fill: #1e1e3f;
+  --iw-changes-hover: #6d6d82;
+  --iw-syn-keyword: #ff9d00;
+  --iw-syn-string: #a5ff90;
+  --iw-syn-number: #ffffff;
+  --iw-syn-comment: #b362ff;
+  --iw-syn-annotation: #ff9d00;
+  --iw-syn-type: #fb94ff;
+  --iw-syn-function: #ff9d00;
+  --iw-syn-punct: #e1efff;
+  --iw-syn-param: #ffffff;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

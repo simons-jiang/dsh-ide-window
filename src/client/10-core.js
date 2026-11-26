@@ -274,17 +274,140 @@ function ideLangLabel(lang) {
   return map[lang] ?? (lang === '' ? 'Text' : lang)
 }
 
-/** Words the tokenizer paints as keywords — the shapes this plugin realistically shows. */
-const IDE_KEYWORDS = new Set((
+/**
+ * One language family's keyword set.
+ *
+ * 关键字**按语言分开**，不要混成一份：早先是一张多语言大表，于是 Java 里名叫
+ * `type` / `object` / `range` 的普通参数被当成关键字染色，同一行里有的参数有色、
+ * 有的没有（用户实测反馈）。现在按 `ideLangOf` 的语言 id 取自己对的那张表。
+ */
+function ideKeywordSet(words) {
+  return new Set(words.split(/\s+/).filter(Boolean))
+}
+
+/** Java：`type` / `object` / `map` 都不是关键字。 */
+const IDE_KEYWORDS_JAVA = ideKeywordSet(
   'abstract assert boolean break byte case catch char class const continue default do double else enum extends ' +
   'final finally float for goto if implements import instanceof int interface long native new package private ' +
   'protected public return short static strictfp super switch synchronized this throw throws transient try void ' +
-  'volatile while true false null var let function typeof delete in of export async await yield type namespace ' +
-  'declare module readonly string number any unknown never object fun val when is as try catch finally ' +
-  'func go defer chan map range select struct fallthrough pub fn mut impl trait match loop ' +
-  'where unsafe use mod crate self Self static ref dyn override sealed record permits non-sealed ' +
-  'get set constructor undefined extends implements readonly satisfies keyof infer asserts'
-).split(/\s+/).filter(Boolean))
+  'volatile while true false null var yield record sealed permits',
+)
+
+/** Kotlin：比 Java 多 `fun`/`val`/`when`/`object` 等，但同样没有 `type`。 */
+const IDE_KEYWORDS_KOTLIN = ideKeywordSet(
+  'as break class continue do else false for fun if in interface is null object package return super this throw ' +
+  'true try typealias typeof val var when while by catch constructor delegate dynamic field file finally get ' +
+  'import init param property receiver set setparam where actual abstract annotation companion const ' +
+  'crossinline data enum expect external final infix inline inner internal lateinit noinline open operator out ' +
+  'override private protected public reified sealed suspend tailrec vararg',
+)
+
+/** JavaScript / TypeScript / JSON：`type` 在这里**是**关键字。 */
+const IDE_KEYWORDS_TS = ideKeywordSet(
+  'break case catch class const continue debugger default delete do else enum export extends false finally for ' +
+  'function if import in instanceof let new null return static super switch this throw true try typeof var void ' +
+  'while with yield async await as from of get set constructor declare infer keyof module namespace readonly ' +
+  'satisfies type interface implements abstract any boolean number object string symbol unknown never undefined ' +
+  'public private protected',
+)
+
+/** Go。 */
+const IDE_KEYWORDS_GO = ideKeywordSet(
+  'break case chan const continue default defer else fallthrough for func go goto if import interface map ' +
+  'package range return select struct switch type var nil true false iota',
+)
+
+/** Python。 */
+const IDE_KEYWORDS_PY = ideKeywordSet(
+  'and as assert async await break class continue def del elif else except False finally for from global if ' +
+  'import in is lambda None nonlocal not or pass raise return True try while with yield self match case',
+)
+
+/** Rust。 */
+const IDE_KEYWORDS_RUST = ideKeywordSet(
+  'as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod ' +
+  'move mut pub ref return self Self static struct super trait true type unsafe use where while',
+)
+
+/** C / C++ / C#：`type`、`object` 都只是普通标识符。 */
+const IDE_KEYWORDS_C = ideKeywordSet(
+  'auto break case char const continue default do double else enum extern float for goto if inline int long ' +
+  'register return short signed sizeof static struct switch typedef union unsigned void volatile while class ' +
+  'namespace new delete public private protected virtual template typename using bool true false nullptr constexpr ' +
+  'nullptr_t override final abstract async await base catch decimal explicit fixed foreach implicit in internal ' +
+  'is lock object out params readonly ref sbyte sealed stackalloc string throw try uint ulong unchecked unsafe ' +
+  'ushort var volatile',
+)
+
+/** Shell。 */
+const IDE_KEYWORDS_SH = ideKeywordSet(
+  'if then else elif fi for while until do done case esac function return local export declare readonly shift ' +
+  'break continue in select time',
+)
+
+/** SQL。 */
+const IDE_KEYWORDS_SQL = ideKeywordSet(
+  'add all alter and any as asc between by case cast check column commit constraint create cross current ' +
+  'database default delete desc distinct drop else end escape except exists foreign from full group having in ' +
+  'index inner insert intersect into is join key left like limit not null offset on or order outer primary ' +
+  'references right rollback select set table then to transaction union unique update values view when where ' +
+  'with',
+)
+
+/** JSON / YAML / TOML 这类只有字面量的语言。 */
+const IDE_KEYWORDS_DATA = ideKeywordSet('true false null yes no on off')
+
+/** Swift。 */
+const IDE_KEYWORDS_SWIFT = ideKeywordSet(
+  'associatedtype class deinit enum extension fileprivate func import init inout internal let open operator ' +
+  'private protocol public rethrows static struct subscript typealias var break case continue default defer do ' +
+  'else fallthrough for guard if in repeat return switch where while as Any catch false is nil super self Self ' +
+  'throw throws true try',
+)
+
+/** Scala / Groovy。 */
+const IDE_KEYWORDS_SCALA = ideKeywordSet(
+  'abstract case catch class def do else extends false final finally for forSome if implicit import lazy match ' +
+  'new null object override package private protected return sealed super this throw trait true try type val ' +
+  'var while with yield def as in trait',
+)
+
+/** 没有关键字可染色的语言（XML / CSS / 纯文本 / 未知后缀）。 */
+const IDE_KEYWORDS_NONE = new Set()
+
+/**
+ * The keyword table for one language id.
+ *
+ * @param lang - language id from {@link ideLangOf}.
+ * @returns the set to paint as keywords; empty when the language has none we know.
+ */
+function ideKeywordsOf(lang) {
+  switch (lang) {
+    case 'java': return IDE_KEYWORDS_JAVA
+    case 'kotlin': return IDE_KEYWORDS_KOTLIN
+    case 'scala': return IDE_KEYWORDS_SCALA
+    case 'groovy': return IDE_KEYWORDS_SCALA
+    case 'js': return IDE_KEYWORDS_TS
+    case 'ts': return IDE_KEYWORDS_TS
+    case 'json': return IDE_KEYWORDS_DATA
+    case 'yaml': return IDE_KEYWORDS_DATA
+    case 'toml': return IDE_KEYWORDS_DATA
+    case 'properties': return IDE_KEYWORDS_DATA
+    case 'conf': return IDE_KEYWORDS_DATA
+    case 'go': return IDE_KEYWORDS_GO
+    case 'py': return IDE_KEYWORDS_PY
+    case 'rs': return IDE_KEYWORDS_RUST
+    case 'c': return IDE_KEYWORDS_C
+    case 'cpp': return IDE_KEYWORDS_C
+    case 'cs': return IDE_KEYWORDS_C
+    case 'sh': return IDE_KEYWORDS_SH
+    case 'sql': return IDE_KEYWORDS_SQL
+    case 'swift': return IDE_KEYWORDS_SWIFT
+    case 'php': return IDE_KEYWORDS_TS
+    case 'rb': return IDE_KEYWORDS_PY
+    default: return IDE_KEYWORDS_NONE
+  }
+}
 
 /** Languages whose `#` starts a line comment. */
 const IDE_HASH_COMMENT = new Set(['py', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'rb', 'toml', 'conf', 'properties', 'dockerfile'])
@@ -294,25 +417,78 @@ const IDE_PLAIN_LANGS = new Set(['md', 'txt', 'log', 'csv', 'tsv', 'lock'])
 
 /**
  * Split one code line into coloured runs.
+ *
+ * 单词只有三条判断：命中本语言的关键字 → 关键字色；首字母大写 → 类型色；
+ * 后面跟 `(` 或前面是 `::` → 方法色；其余一律无色（参数名大多落在这里）。
+ *
  * @param text - the source line.
- * @param lang - language id from {@link ideLangOf}.
+ * @param lang - language id from {@link ideLangOf}; also picks the keyword table.
  * @returns `{ text, cls }` runs; a single plain run when nothing matches.
  */
-function ideTokenize(text, lang) {
-  if (text === '' || IDE_PLAIN_LANGS.has(lang) || text.length > 1200) return [{ text, cls: '' }]
+/**
+ * 括号层级一共几档颜色（超过 10 层回到第 0 档）。
+ *
+ * 颜色不再是「借语法色」：语法色只有 8–9 个且互相撞色（`annotation` 与
+ * `type`/`function` 同色），最多撑到 4 档。现在每套主题显式定义
+ * `--iw-br-0..9` 十个括号色（色相 36° 一档铺满一圈），层级色直接取它。
+ */
+const IDE_BRACKET_LEVELS = 10
+
+/**
+ * 参数名：`类型 名字` 形状、且这段后面紧接 `,` 或 `)`。
+ *
+ * 只在「看起来就是参数表」的位置匹配——段内不能出现 `=`、调用、分号，
+ * 所以 `foo(a, b)` 这种调用不会误判，`String lockKey = …` 也不会。
+ */
+const IDE_PARAM_PAIR = /(?:^|[(,])\s*(?:@[A-Za-z_][\w.]*(?:\([^()]*\))?\s*)*(?:final\s+)?([A-Za-z_$][\w$.]*(?:\s*<[^<>()]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_$][\w$]*)\s*(?=[,)])/g
+
+/** Columns of the parameter names on one line. */
+function ideParamColumns(text) {
+  const columns = new Set()
+  IDE_PARAM_PAIR.lastIndex = 0
+  let match = IDE_PARAM_PAIR.exec(text)
+  while (match !== null) {
+    const name = match[2]
+    // 这一段的起点到名字之间不能出现 `=`/`(`/`;`，否则就不是声明。
+    // 名字在整段里的位置：注解前缀里可能出现同名，所以取最后一次出现。
+    const offset = match[0].lastIndexOf(name)
+    const head = text.slice(0, match.index + offset)
+    const segment = head.slice(Math.max(head.lastIndexOf('('), head.lastIndexOf(','), head.lastIndexOf(';')) + 1)
+    if (!/[=(;]/.test(segment)) columns.add(match.index + offset)
+    match = IDE_PARAM_PAIR.exec(text)
+  }
+  return columns
+}
+
+/**
+ * Split one code line into coloured runs, tracking bracket nesting.
+ *
+ * @param text - the source line.
+ * @param lang - language id; also picks the keyword table.
+ * @param depth - bracket depth at the start of this line (from the previous line).
+ * @returns `{ runs, depth }` — the runs and the depth at the next line.
+ */
+function ideTokenizeTracked(text, lang, depth = 0) {
+  const start = Number.isFinite(depth) ? Math.max(0, depth) : 0
+  if (text === '' || IDE_PLAIN_LANGS.has(lang) || text.length > 1200) {
+    return { runs: [{ text, cls: '', at: 0 }], depth: start }
+  }
+  const keywords = ideKeywordsOf(lang)
   const hashComments = IDE_HASH_COMMENT.has(lang)
+  const level = (value) => `level-${value % IDE_BRACKET_LEVELS}`
+  let nesting = start
   const trimmed = text.trimStart()
   if (trimmed.startsWith('*') || trimmed.startsWith('*/') || trimmed.startsWith('//') || (hashComments && trimmed.startsWith('#'))) {
-    return [{ text, cls: 'iw-com' }]
+    return { runs: [{ text, cls: 'iw-com', at: 0 }], depth: nesting }
   }
-  if (trimmed.startsWith('/*') && trimmed.indexOf('*/') < 0) return [{ text, cls: 'iw-com' }]
+  if (trimmed.startsWith('/*') && trimmed.indexOf('*/') < 0) return { runs: [{ text, cls: 'iw-com', at: 0 }], depth: nesting }
 
   const runs = []
-  const push = (value, cls) => {
+  const push = (value, cls, at) => {
     if (value === '') return
     const last = runs[runs.length - 1]
     if (last !== undefined && last.cls === cls) last.text += value
-    else runs.push({ text: value, cls })
+    else runs.push({ text: value, cls, at })
   }
   let index = 0
   while (index < text.length) {
@@ -325,44 +501,251 @@ function ideTokenize(text, lang) {
         if (text[end] === quote) { end += 1; break }
         end += 1
       }
-      push(text.slice(index, end), 'iw-str')
+      push(text.slice(index, end), 'iw-str', index)
       index = end
       continue
     }
     if (quote === '/' && rest[1] === '/') {
-      push(rest, 'iw-com')
+      push(rest, 'iw-com', index)
       break
     }
     if (quote === '@' && /[A-Za-z]/.test(rest[1] ?? '')) {
       const match = /^@[A-Za-z_][\w.]*/.exec(rest)
-      push(match[0], 'iw-ann')
+      push(match[0], 'iw-ann', index)
       index += match[0].length
       continue
     }
     if (hashComments && quote === '#') {
-      push(rest, 'iw-com')
+      push(rest, 'iw-com', index)
       break
     }
     const word = /^[A-Za-z_$][\w$]*/.exec(rest)
     if (word !== null) {
       const value = word[0]
-      if (IDE_KEYWORDS.has(value)) push(value, 'iw-kw')
-      else if (/^[A-Z]/.test(value)) push(value, 'iw-type')
-      else if (text[index + value.length] === '(') push(value, 'iw-fn')
-      else push(value, '')
+      // `A::b` 里的 b 是方法引用：后面没有 `(`，但仍按方法上色，
+      // 否则同一个名字在这里和 `.b(` 那里会两种颜色。
+      const reference = text.slice(Math.max(0, index - 2), index) === '::'
+      // `StringUtils.isBlank(`、`UrlVersionConstant.WEB`：接收者首字母大写 → 大概率是静态成员，
+      // Material 主题把静态成员显示成斜体。
+      const receiver = /(?:^|[^\w$.])([A-Z][\w$]*)\.$/.exec(text.slice(0, index))
+      const statics = receiver === null ? '' : ' iw-static'
+      if (keywords.has(value)) push(value, 'iw-kw', index)
+      // 常量（WEB / UTF_8 / CONTENT_DISPOSITION）：Material 里用数字色，和类型分开。
+      else if (/^[A-Z][A-Z0-9_]{2,}$/.test(value)) push(value, `iw-type iw-const${statics}`, index)
+      else if (/^[A-Z]/.test(value)) push(value, `iw-type${statics}`, index)
+      else if (text[index + value.length] === '(' || reference) push(value, `iw-fn${statics}`, index)
+      else push(value, statics === '' ? '' : 'iw-static', index)
       index += value.length
+      continue
+    }
+    if (quote === '{' || quote === '}' || quote === '(' || quote === ')' || quote === '[' || quote === ']') {
+      // 闭合括号用它那一层的颜色，和开括号对上；其余括号用当前层。
+      const closing = quote === '}' || quote === ')' || quote === ']'
+      const use = closing ? Math.max(0, nesting - 1) : nesting
+      const family = quote === '(' || quote === ')' || quote === '[' || quote === ']' ? 'iw-pa' : 'iw-br'
+      push(quote, `${family} ${level(use)}`, index)
+      nesting = closing ? Math.max(0, nesting - 1) : nesting + 1
+      index += 1
       continue
     }
     const numeric = /^0[xXbB][0-9a-fA-F_]+|^\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?[fFdDlL]?/.exec(rest)
     if (numeric !== null) {
-      push(numeric[0], 'iw-num')
+      push(numeric[0], 'iw-num', index)
       index += numeric[0].length
       continue
     }
-    push(quote, 'iw-punct')
+    push(quote, 'iw-punct', index)
     index += 1
   }
-  return runs
+  // 方法签名里的形参单独一色：和正文里的同名变量区分开。
+  const params = ideParamColumns(text)
+  if (params.size > 0) {
+    for (const run of runs) {
+      if (run.cls === '' && params.has(run.at)) run.cls = 'iw-param'
+    }
+  }
+  return { runs, depth: nesting }
+}
+
+/**
+ * Split one code line into coloured runs (no nesting context).
+ *
+ * @param text - the source line.
+ * @param lang - language id from {@link ideLangOf}.
+ * @param depth - bracket depth at the start of the line, when the caller tracks it.
+ * @returns `{ text, cls }` runs; a single plain run when nothing matches.
+ */
+function ideTokenize(text, lang, depth = 0) {
+  return ideTokenizeTracked(text, lang, depth).runs.map((run) => ({ text: run.text, cls: run.cls }))
+}
+
+/**
+ * 文件内查找：把查询编译成匹配器。
+ *
+ * @param options - `{ query, regex, caseSensitive, whole }`
+ * @returns `(line) => ranges`，或 `undefined`（查询为空 / 正则写错）。
+ */
+function ideFindMatcher(options) {
+  const query = String(options?.query ?? '')
+  if (query === '') return undefined
+  // 不开正则时把查询当纯文本：`.`、`(` 这些不能当元字符。
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const source = options?.regex === true ? query : escaped
+  const whole = options?.whole === true ? `\\b(?:${source})\\b` : source
+  let pattern
+  try {
+    pattern = new RegExp(whole, options?.caseSensitive === true ? 'g' : 'gi')
+  } catch {
+    return undefined
+  }
+  return (line) => {
+    const ranges = []
+    pattern.lastIndex = 0
+    let match = pattern.exec(line)
+    while (match !== null) {
+      // 零宽匹配（`^`、`a*`）不会自己前进，必须手动跳过，否则死循环。
+      if (match[0] === '') {
+        pattern.lastIndex += 1
+        match = pattern.exec(line)
+        continue
+      }
+      ranges.push([match.index, match.index + match[0].length])
+      if (ranges.length >= 500) break
+      match = pattern.exec(line)
+    }
+    return ranges
+  }
+}
+
+/**
+ * Scan every line for the current query.
+ *
+ * @param lines - the file's lines.
+ * @param options - `{ query, regex, caseSensitive, whole }`
+ * @returns `{ invalid, perLine, total }`；`perLine[i]` 是 `{ start, end, order }`，
+ *   `order` 是整份文件里的序号，上下跳转按它走。
+ */
+function ideFindScan(lines, options) {
+  const matcher = ideFindMatcher(options)
+  if (matcher === undefined) {
+    return { invalid: String(options?.query ?? '') !== '', perLine: [], total: 0 }
+  }
+  const perLine = []
+  let total = 0
+  for (const line of lines) {
+    const hits = []
+    for (const [start, end] of matcher(line)) {
+      hits.push({ start, end, order: total })
+      total += 1
+    }
+    perLine.push(hits)
+  }
+  return { invalid: false, perLine, total }
+}
+
+/**
+ * Split tokenizer runs at find-hit boundaries so a hit can be wrapped without
+ * losing its syntax colour.
+ *
+ * @param runs - tokenizer runs, each carrying the column it starts at (`at`).
+ * @param hits - `{ start, end, order }` for this line, ascending.
+ * @returns `{ text, cls, find? }` segments; `find` is the global hit order.
+ */
+function ideFindSegments(runs, hits) {
+  if (!Array.isArray(hits) || hits.length === 0) {
+    return runs.map((run) => ({ text: run.text, cls: run.cls }))
+  }
+  const out = []
+  for (const run of runs) {
+    const at = Number(run.at ?? 0)
+    const end = at + run.text.length
+    let cursor = at
+    for (const hit of hits) {
+      if (hit.end <= cursor || hit.start >= end) continue
+      if (hit.start > cursor) out.push({ text: run.text.slice(cursor - at, hit.start - at), cls: run.cls })
+      const from = Math.max(hit.start, cursor)
+      const to = Math.min(hit.end, end)
+      out.push({ text: run.text.slice(from - at, to - at), cls: run.cls, find: hit.order })
+      cursor = to
+    }
+    if (cursor < end) out.push({ text: run.text.slice(cursor - at), cls: run.cls })
+  }
+  return out
+}
+
+/**
+ * 让同一个形参在**整条方法体里**保持同一种颜色。
+ *
+ * 词法器只能认出签名里的声明；正文里的 `billType` 会被当成普通标识符，于是同一个
+ * 字段在签名里一个色、在正文里另一个色（用户实测反馈）。这里按「签名声明 → 方法体
+ * 作用域」补一遍：进入方法体时记下形参名，遇到同名标识符就标成 `iw-param`。
+ *
+ * @param lines - the file's lines.
+ * @param runsByLine - tokenizer runs per line (each run keeps `at`).
+ * @returns 新的 runsByLine（不改入参）。
+ */
+function ideMarkParamScopes(lines, runsByLine) {
+  const out = runsByLine.map((runs) => runs.map((run) => ({ ...run })))
+  let depth = 0
+  const scopes = []
+  // 签名可能跨行（`String a,` 换行 `String b)` 再接方法体开括号），
+  // 形参名要跨行攒着，等方法体真的开始（深度增加）时再一起登记。
+  // 注意：这个函数里不能出现花括号字面量，grabSource 靠括号配对截取函数体。
+  let pending = new Set()
+  for (let index = 0; index < lines.length; index += 1) {
+    const runs = out[index]
+    const start = depth
+    const scope = scopes[scopes.length - 1]
+    if (scope !== undefined) {
+      for (const run of runs) {
+        if (run.cls === '' && scope.names.has(run.text)) run.cls = 'iw-param'
+      }
+    }
+    const declared = runs.filter((run) => run.cls === 'iw-param').map((run) => run.text)
+    for (const name of declared) pending.add(name)
+    // 只数花括号：开括号 123、闭括号 125。这里刻意不写字符字面量——
+    // harness 的 grabSource 按括号配对截取函数体，字符串里的花括号会让它数错。
+    for (const run of runs) {
+      if (run.cls.startsWith('iw-br') !== true) continue
+      if (run.text.charCodeAt(0) === 125) depth -= 1
+      else depth += 1
+    }
+    if (pending.size > 0 && depth > start) {
+      scopes.push({ depth: start, names: pending })
+      pending = new Set()
+    } else if (pending.size > 0 && runs.some((run) => run.cls === 'iw-punct' && run.text === ';')) {
+      // 抽象/接口方法：只有签名没有方法体，别把名字带进下一个方法。
+      pending = new Set()
+    }
+    while (scopes.length > 0 && depth <= scopes[scopes.length - 1].depth) scopes.pop()
+  }
+  return out
+}
+
+/**
+ * `static` 成员的声明行也标成斜体（Material 主题的静态成员约定）。
+ *
+ * `ClassName.member` 这种访问词法器里就能认出来，但声明行（`private static final
+ * String X = …` / `public static void run(`）要靠这一遍：行里出现 static 就把它
+ * 声明的那个名字标上。
+ *
+ * 注意：函数体里不能写花括号字面量，harness 按括号配对截取源码。
+ */
+function ideMarkStatics(lines, runsByLine) {
+  const out = runsByLine.map((runs) => runs.map((run) => ({ ...run })))
+  const declared = /^\s*(?:(?:public|private|protected)\s+)?static\b[^=(]*?([A-Za-z_]\w*)\s*(?:\(|;|=)/
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = declared.exec(lines[index])
+    if (match === null) continue
+    const name = match[1]
+    for (const run of out[index]) {
+      if (run.text !== name) continue
+      if (run.cls.split(' ').includes('iw-static')) break
+      run.cls = run.cls === '' ? 'iw-static' : `${run.cls} iw-static`
+      break
+    }
+  }
+  return out
 }
 
 /**
@@ -497,6 +880,8 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    // 「在文件中查找」的一次性请求：右键菜单写它，代码视图读到就打开查找条并清空。
+    findRequest: null,
     // The symbol last clicked in the code view: `{path, line, symbol}`. The
     // keyboard shortcut for 「复制引用回对话」 has no pointer to read it from, so
     // the click leaves it here instead of keeping it inside the context menu.
@@ -1040,6 +1425,11 @@ function ideCreateStore(refs) {
   /** Hand one reference to the floating card; it appends it to its draft. */
   function setFloatInsert(floatInsert) {
     patch({ floatInsert })
+  }
+
+  /** Ask the source view to open its find bar with `query` (one-shot). */
+  function setFindRequest(findRequest) {
+    patch({ findRequest })
   }
 
   /** Fold the card into its ball, or unfold it. */
@@ -1720,6 +2110,7 @@ function ideCreateStore(refs) {
     setFloatDetached,
     setFloatClosed,
     setFloatInsert,
+    setFindRequest,
     setRoot,
     enterProject,
     layout: () => refs.layout?.current,

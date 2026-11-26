@@ -346,6 +346,66 @@ const IDE_CSS = `
   line-height: var(--iw-code-line-height, 20px);
   tab-size: 4;
 }
+.iw-code-view { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* 文件内查找条：浮在代码右上角（IDEA 的 Find in File），不占代码行。 */
+.iw-find-bar {
+  position: absolute;
+  top: 6px;
+  right: 22px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #202226));
+  box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.35));
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-find-bar.invalid .iw-find-input { border-color: var(--dsw-alias-state-error-primary, #e06c75); }
+.iw-find-input {
+  width: 190px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-sm, 5px);
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.14));
+  background: var(--dsw-alias-bg-layer-1, #16181c);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+.iw-find-input:focus { border-color: var(--dsw-alias-brand-primary, #5b9dff); }
+.iw-find-tool {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 5px);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font: inherit;
+  cursor: pointer;
+}
+.iw-find-tool:hover { background: var(--dsw-alias-bg-layer-3, rgba(255, 255, 255, 0.08)); color: var(--dsw-alias-label-primary, #e6e8ec); }
+.iw-find-tool.on { background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 26%, transparent); color: var(--dsw-alias-label-primary, #e6e8ec); }
+.iw-find-count {
+  min-width: 46px;
+  text-align: center;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-variant-numeric: tabular-nums;
+}
+/* 命中：深色底 + 当前项更重；颜色与语法色互不干扰。 */
+.iw-find-hit {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 40%, #000 12%);
+  border-radius: 2px;
+  color: inherit;
+}
+.iw-find-hit.current {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 72%, #000 10%);
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary, #5b9dff);
+}
 .iw-code-inner { min-width: 100%; }
 .iw-line {
   display: flex;
@@ -406,14 +466,41 @@ const IDE_CSS = `
 /* Syntax colours are their own layer: a palette sets --iw-syn-* because a
    keyword colour that reads on #282a36 is unreadable on #ffffff. The literals
    are the DSH-palette defaults for "follow DSH". */
-.iw-kw { color: var(--iw-syn-keyword, #cf8ee6); }
+/* 语法色是单独一层：主题通过 --iw-syn-* 覆盖，因为关键字色在 #282a36 上好看、
+   放到白底上就读不清。括号里的兜底值是「跟随 DSH」时的默认色。 */
+/* 关键字斜体（Material 主题的约定），注释本来就斜体。 */
+.iw-kw { color: var(--iw-syn-keyword, #cf8ee6); font-style: italic; }
 .iw-str { color: var(--iw-syn-string, #9ddc8b); }
 .iw-num { color: var(--iw-syn-number, #e0b072); }
 .iw-com { color: var(--iw-syn-comment, #6d7683); font-style: italic; }
-.iw-ann { color: var(--iw-syn-annotation, #e0c56b); }
+.iw-ann { color: var(--iw-syn-annotation, var(--iw-syn-function, #8fd7d0)); }
 .iw-type { color: var(--iw-syn-type, #7fc8f0); }
 .iw-fn { color: var(--iw-syn-function, #8fd7d0); }
 .iw-punct { color: var(--iw-syn-punct, var(--dsw-alias-label-secondary, #98a0ad)); }
+/* 形参：签名与正文里的同名形参同一个颜色（由 ideMarkParamScopes 保证）。
+   主题把 --iw-syn-param 指到数字色（Material 的做法）。 */
+.iw-param { color: var(--iw-syn-param, var(--iw-syn-number, #e0b072)); }
+/* 常量：Material 里和数字同色 */
+.iw-const { color: var(--iw-syn-number, #e0b072); }
+/* 静态成员（Upper.member 这种访问、static 声明）：Material 用斜体表示 */
+.iw-static { font-style: italic; }
+
+/* 括号按嵌套层级分色：每套主题定义 10 个括号色（--iw-br-0..9，色相 36° 一档），
+   超过 10 层回到第 0 档。兜底值是深色主题那一组，没选主题时也能分辨。
+   注意：这个文件整体是模板字符串，注释里不能出现反引号。 */
+.iw-br.level-0, .iw-pa.level-0 { color: var(--iw-br-0, #e87373); }
+.iw-br.level-1, .iw-pa.level-1 { color: var(--iw-br-1, #e8b973); }
+.iw-br.level-2, .iw-pa.level-2 { color: var(--iw-br-2, #d1e873); }
+.iw-br.level-3, .iw-pa.level-3 { color: var(--iw-br-3, #8ae873); }
+.iw-br.level-4, .iw-pa.level-4 { color: var(--iw-br-4, #73e8a2); }
+.iw-br.level-5, .iw-pa.level-5 { color: var(--iw-br-5, #73e8e8); }
+.iw-br.level-6, .iw-pa.level-6 { color: var(--iw-br-6, #73a2e8); }
+.iw-br.level-7, .iw-pa.level-7 { color: var(--iw-br-7, #8a73e8); }
+.iw-br.level-8, .iw-pa.level-8 { color: var(--iw-br-8, #d173e8); }
+.iw-br.level-9, .iw-pa.level-9 { color: var(--iw-br-9, #e873b9); }
+/* 圆括号更密，淡一档，别盖住花括号的结构。 */
+.iw-pa { opacity: 0.78; }
+
 .iw-sym { cursor: pointer; border-radius: 3px; }
 .iw-sym:hover {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 22%, transparent);

@@ -39,8 +39,19 @@
   --iw-syn-string: #067d17;
   --iw-syn-number: #1750eb;
   --iw-syn-comment: #6f6f6f;
-  --iw-syn-annotation: #9e880d;
+  --iw-syn-annotation: #00627a;
   --iw-syn-type: #1f2329;
   --iw-syn-function: #00627a;
   --iw-syn-punct: #1f2329;
+  --iw-syn-param: #1750eb;
+  --iw-br-0: #a52727;
+  --iw-br-1: #a57327;
+  --iw-br-2: #8ca527;
+  --iw-br-3: #40a527;
+  --iw-br-4: #27a559;
+  --iw-br-5: #27a5a5;
+  --iw-br-6: #2759a5;
+  --iw-br-7: #4027a5;
+  --iw-br-8: #8c27a5;
+  --iw-br-9: #a52773;
 }

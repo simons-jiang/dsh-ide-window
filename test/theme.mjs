@@ -31,14 +31,14 @@ const registry = [...clientSource.matchAll(/\{ id: '([a-z0-9-]+)', mode: '(dark|
   .map((match) => ({ id: match[1], mode: match[2] }))
 
 // ① 清单与客户端注册表一致
-check(registry.length === 10, '客户端登记了 10 个主题', String(registry.length))
+check(registry.length === 29, '客户端登记了 29 个主题', String(registry.length))
 check(
   JSON.stringify(registry) === JSON.stringify(manifest),
   'themes/index.json 与客户端注册表一致',
   JSON.stringify({ registry: registry.map((theme) => theme.id), manifest: manifest.map((theme) => theme.id) }),
 )
-check(manifest.filter((theme) => theme.mode === 'dark').length === 5, '深色主题 5 个', String(manifest.filter((theme) => theme.mode === 'dark').length))
-check(manifest.filter((theme) => theme.mode === 'light').length === 5, '浅色主题 5 个', String(manifest.filter((theme) => theme.mode === 'light').length))
+check(manifest.filter((theme) => theme.mode === 'dark').length === 21, '深色主题 21 个', String(manifest.filter((theme) => theme.mode === 'dark').length))
+check(manifest.filter((theme) => theme.mode === 'light').length === 8, '浅色主题 8 个', String(manifest.filter((theme) => theme.mode === 'light').length))
 
 // ② 每个主题都有文件，且变量集合完全相同
 const files = readdirSync(themeDir).filter((name) => name.endsWith('.css')).sort()
@@ -55,9 +55,35 @@ check(mismatched.length === 0, '所有主题定义同一组变量', JSON.stringi
 check(reference.tokens.length >= 20, 'palette 覆盖了整套 alias token', String(reference.tokens.length))
 
 // 语法高亮的八种颜色也是主题的一部分：深色主题的关键字色放到白底上根本看不清
-const SYNTAX = ['keyword', 'string', 'number', 'comment', 'annotation', 'type', 'function', 'punct']
+const SYNTAX = ['keyword', 'string', 'number', 'comment', 'annotation', 'type', 'function', 'punct', 'param']
 const missingSyntax = sets.filter((entry) => SYNTAX.some((name) => !entry.tokens.includes(`--iw-syn-${name}`))).map((entry) => entry.id)
-check(missingSyntax.length === 0, '每套主题都定义了 8 个语法色变量', JSON.stringify(missingSyntax))
+check(missingSyntax.length === 0, '每套主题都定义了 9 个语法色变量（含形参色）', JSON.stringify(missingSyntax))
+
+// Material 语义：形参跟数字同色、注解跟方法同色（用户指定的规则，别漂移）。
+const colorOf = (text, name) => (new RegExp(`--iw-syn-${name}:\\s*([^;]+);`).exec(text)?.[1] ?? '').trim().toLowerCase()
+const paramDrift = manifest.filter((theme) => {
+  const text = readFileSync(join(themeDir, `${theme.id}.css`), 'utf8')
+  return colorOf(text, 'param') !== colorOf(text, 'number')
+}).map((theme) => theme.id)
+check(paramDrift.length === 0, '形参色 = 数字色（Material 的语义）', JSON.stringify(paramDrift))
+
+const annotationDrift = manifest.filter((theme) => {
+  const text = readFileSync(join(themeDir, `${theme.id}.css`), 'utf8')
+  return colorOf(text, 'annotation') !== colorOf(text, 'function')
+}).map((theme) => theme.id)
+check(annotationDrift.length === 0, '注解色 = 方法色（Material 的语义）', JSON.stringify(annotationDrift))
+
+// 括号层级色：10 个 --iw-br-N// 括号层级色：10 个 --iw-br-N，每套主题都得有，且同一主题内两两不同
+const bracketMissing = manifest.filter((theme) => Array.from({ length: 10 }, (_, index) => index)
+  .some((index) => !readFileSync(join(themeDir, `${theme.id}.css`), 'utf8').includes(`--iw-br-${index}:`))).map((theme) => theme.id)
+check(bracketMissing.length === 0, '每套主题都定义了 10 个括号层级色', JSON.stringify(bracketMissing))
+const bracketColorOf = (text, index) => (new RegExp(`--iw-br-${index}:\\s*([^;]+);`).exec(text)?.[1] ?? '').trim().toLowerCase()
+const bracketClash = manifest.filter((theme) => {
+  const text = readFileSync(join(themeDir, `${theme.id}.css`), 'utf8')
+  const colors = Array.from({ length: 10 }, (_, index) => bracketColorOf(text, index))
+  return new Set(colors).size !== 10
+}).map((theme) => theme.id)
+check(bracketClash.length === 0, '同一主题里 10 个括号色互不相同', JSON.stringify(bracketClash))
 
 // ③ 作用域只落在面板上
 const scopes = manifest.every((theme) => {

@@ -1,0 +1,55 @@
+/**
+ * noctis (dark) — a palette for the code workspace.
+ *
+ * Generated from Noctis (liviuschera/noctis) → Noctis, see tools/gen-*.mjs. Only DSH alias tokens are
+ * overridden, scoped to the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="noctis"] {
+  --dsw-alias-bg-base: #052529;
+  --dsw-alias-bg-layer-1: #123034;
+  --dsw-alias-bg-layer-2: #1c393c;
+  --dsw-alias-bg-layer-3: #284447;
+  --dsw-alias-bg-overlay: #041e21;
+  --dsw-specific-sidebar-fill: #123034;
+  --dsw-specific-menu: #1c393c;
+  --dsw-alias-card-fill: #1c393c;
+  --dsw-alias-card-fill-hover: #284447;
+  --dsw-alias-card-tile-fill: #1c393c;
+  --dsw-alias-label-primary: #b2cacd;
+  --dsw-alias-label-secondary: #859fa2;
+  --dsw-alias-label-tertiary: #4e6b6e;
+  --dsw-alias-border-l1: #1c393c;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #284447;
+  --dsw-alias-border-l3: #516c6f;
+  --dsw-alias-border: #1c393c;
+  --dsw-alias-brand-primary: #073940;
+  --dsw-alias-interactive-bg-hover: #214246;
+  --dsw-alias-state-success-primary: #16b673;
+  --dsw-alias-state-warning-primary: #49e9a6;
+  --dsw-alias-state-error-primary: #e34e1c;
+  --dsw-alias-state-business-primary: #40d4e7;
+  --dsw-alias-state-idle-primary: #4e6b6e;
+  --dsw-focus-ring-color: #40d4e7;
+  --iw-changes-fill: #40d4e7;
+  --iw-changes-hover: #83e3ef;
+  --iw-syn-keyword: #df769b;
+  --iw-syn-string: #49e9a6;
+  --iw-syn-number: #7060eb;
+  --iw-syn-comment: #5b858b;
+  --iw-syn-annotation: #16a3b6;
+  --iw-syn-type: #d67e5c;
+  --iw-syn-function: #16a3b6;
+  --iw-syn-punct: #b2cacd;
+  --iw-syn-param: #7060eb;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

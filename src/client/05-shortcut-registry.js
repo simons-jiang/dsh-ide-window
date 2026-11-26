@@ -101,6 +101,18 @@ const IDE_SHORTCUTS = [
     action: 'focus-filter',
   },
   {
+    id: 'code-workspace.find-in-file',
+    kind: 'key',
+    labelKey: 'shortcutFindInFile',
+    aliases: ['find', 'findinfle', '查找', '搜索'],
+    // 面板内的文件查找；面板自己派发，不走全局命令。
+    defaults: {
+      desktop: { code: 'KeyF', modifiers: ['primary'] },
+      web: { code: 'KeyF', modifiers: ['primary'] },
+    },
+    action: 'find-in-file',
+  },
+  {
     id: 'code-workspace.screenshot',
     kind: 'key',
     labelKey: 'shortcutScreenshot',

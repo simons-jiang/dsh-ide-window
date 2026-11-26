@@ -1,0 +1,56 @@
+/**
+ * github-dark (dark) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "GitHub Dark" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="github-dark"] {
+  --dsw-alias-bg-base: #24292e;
+  --dsw-alias-bg-layer-1: #2f3438;
+  --dsw-alias-bg-layer-2: #383c41;
+  --dsw-alias-bg-layer-3: #43474b;
+  --dsw-alias-bg-overlay: #1d2125;
+  --dsw-specific-sidebar-fill: #2f3438;
+  --dsw-specific-menu: #383c41;
+  --dsw-alias-card-fill: #383c41;
+  --dsw-alias-card-fill-hover: #43474b;
+  --dsw-alias-card-tile-fill: #383c41;
+  --dsw-alias-label-primary: #e1e4e8;
+  --dsw-alias-label-secondary: #bfc4ca;
+  --dsw-alias-label-tertiary: #959da5;
+  --dsw-alias-border-l1: #383c41;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #43474b;
+  --dsw-alias-border-l3: #72767a;
+  --dsw-alias-border: #383c41;
+  --dsw-alias-brand-primary: #f9826c;
+  --dsw-alias-interactive-bg-hover: #3392FF;
+  --dsw-alias-state-success-primary: #79b8ff;
+  --dsw-alias-state-warning-primary: #b392f0;
+  --dsw-alias-state-error-primary: #85e89d;
+  --dsw-alias-state-business-primary: #b392f0;
+  --dsw-alias-state-idle-primary: #959da5;
+  --dsw-focus-ring-color: #b392f0;
+  --iw-changes-fill: #b392f0;
+  --iw-changes-hover: #ceb8f5;
+  --iw-syn-keyword: #f97583;
+  --iw-syn-string: #9ecbff;
+  --iw-syn-number: #79b8ff;
+  --iw-syn-comment: #959da5;
+  --iw-syn-annotation: #b392f0;
+  --iw-syn-type: #b392f0;
+  --iw-syn-function: #b392f0;
+  --iw-syn-punct: #d1d5da;
+  --iw-syn-param: #79b8ff;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

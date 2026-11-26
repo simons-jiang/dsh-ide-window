@@ -1,0 +1,56 @@
+/**
+ * material-sky-blue (light) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "Material Sky Blue" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="material-sky-blue"] {
+  --dsw-alias-bg-base: #f1fffe;
+  --dsw-alias-bg-layer-1: #e7f5f4;
+  --dsw-alias-bg-layer-2: #e0edec;
+  --dsw-alias-bg-layer-3: #d6e3e2;
+  --dsw-alias-bg-overlay: #e3f0ef;
+  --dsw-specific-sidebar-fill: #e7f5f4;
+  --dsw-specific-menu: #e0edec;
+  --dsw-alias-card-fill: #e0edec;
+  --dsw-alias-card-fill-hover: #d6e3e2;
+  --dsw-alias-card-tile-fill: #e0edec;
+  --dsw-alias-label-primary: #005761;
+  --dsw-alias-label-secondary: #00577b;
+  --dsw-alias-label-tertiary: #01579B;
+  --dsw-alias-border-l1: #e0edec;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #d6e3e2;
+  --dsw-alias-border-l3: #96b9bb;
+  --dsw-alias-border: #e0edec;
+  --dsw-alias-brand-primary: #00c6e0;
+  --dsw-alias-interactive-bg-hover: #ade2eb;
+  --dsw-alias-state-success-primary: #91B859;
+  --dsw-alias-state-warning-primary: #F6A434;
+  --dsw-alias-state-error-primary: #E53935;
+  --dsw-alias-state-business-primary: #6182B8;
+  --dsw-alias-state-idle-primary: #01579B;
+  --dsw-focus-ring-color: #6182B8;
+  --iw-changes-fill: #6182B8;
+  --iw-changes-hover: #98aed1;
+  --iw-syn-keyword: #945eb8;
+  --iw-syn-string: #91b859;
+  --iw-syn-number: #f76d47;
+  --iw-syn-comment: #01579b;
+  --iw-syn-annotation: #6182b8;
+  --iw-syn-type: #e2931d;
+  --iw-syn-function: #6182b8;
+  --iw-syn-punct: #39adb5;
+  --iw-syn-param: #f76d47;
+  --iw-br-0: #a52727;
+  --iw-br-1: #a57327;
+  --iw-br-2: #8ca527;
+  --iw-br-3: #40a527;
+  --iw-br-4: #27a559;
+  --iw-br-5: #27a5a5;
+  --iw-br-6: #2759a5;
+  --iw-br-7: #4027a5;
+  --iw-br-8: #8c27a5;
+  --iw-br-9: #a52773;
+}

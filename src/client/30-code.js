@@ -165,7 +165,10 @@ function ideSymbolOfRun(run) {
     if (!IDE_SYMBOL_RUN.test(simple)) return undefined
     return { name: simple, offset: run.text.length - simple.length }
   }
-  if (run.cls === '' || run.cls === 'iw-fn' || run.cls === 'iw-type') {
+  const classes = String(run.cls ?? '').split(' ')
+  const symbolic = run.cls === '' || classes.includes('iw-fn') || classes.includes('iw-type')
+    || classes.includes('iw-param') || classes.includes('iw-field')
+  if (symbolic) {
     if (!IDE_SYMBOL_RUN.test(run.text)) return undefined
     return { name: run.text, offset: 0 }
   }
@@ -173,28 +176,35 @@ function ideSymbolOfRun(run) {
 }
 
 /** One rendered source row. */
-function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
-  // Tokenising is the expensive part of a row; it depends on the text alone, so
-  // a highlight change or a notice re-render never repeats it.
-  const runs = useMemo(() => ideTokenize(text, lang), [text, lang])
+function IdeCodeLine({ index, runs, hit, vcs, vision, annotate, hits, current }) {
   let column = 0
-  const rendered = runs.map((run, order) => {
+  const segments = ideFindSegments(runs, hits)
+  const rendered = segments.map((run, order) => {
     const at = column
     column += run.text.length
+    // 命中只加类名与 data，不改 `cls` 本身：符号识别靠原来的类。
+    const marked = run.find === undefined
+      ? run.cls
+      : `${run.cls === '' ? '' : `${run.cls} `}iw-find-hit${run.find === current ? ' current' : ''}`
     const symbol = ideSymbolOfRun(run)
     if (symbol !== undefined) {
       // An identifier (or an annotation's type name): the container's click
       // handler resolves it through LSP.
       return h('span', {
         key: order,
-        className: `${run.cls} iw-sym`,
+        className: `${marked} iw-sym`,
         'data-iw-sym': symbol.name,
         'data-iw-col': at + symbol.offset,
         'data-iw-line': String(index + 1),
+        ...(run.find === undefined ? {} : { 'data-iw-find-order': String(run.find) }),
       }, run.text)
     }
-    if (run.cls === '') return run.text
-    return h('span', { key: order, className: run.cls }, run.text)
+    if (run.cls === '' && run.find === undefined) return run.text
+    return h('span', {
+      key: order,
+      className: marked,
+      ...(run.find === undefined ? {} : { 'data-iw-find-order': String(run.find) }),
+    }, run.text)
   })
   return h('div', {
     key: index,
@@ -688,6 +698,114 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   // first measurement could leave the rest of the file unrendered — the scroll
   // container is the browser's own, and a few thousand rows are cheap enough.
   const lines = useMemo(() => (tab.text === '' ? [] : tab.text.split('\n')), [tab.text])
+
+  // ---- 文件内查找（⌘F）：输入、正则/大小写/整词三个开关、命中序号 ----
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findRegex, setFindRegex] = useState(false)
+  const [findCase, setFindCase] = useState(false)
+  const [findWhole, setFindWhole] = useState(false)
+  const [findIndex, setFindIndex] = useState(0)
+  const findInputRef = useRef(null)
+  // 分词只跑一遍：括号层级要跨行累计，所以整份文件一起折，行组件拿现成的 runs。
+  // 注意：**所有 hook 必须在「空文件/加载中」那次提前 return 之前**，否则加载态和
+  // 就绪态里 hook 数量不一致，React 直接抛 #310（整个面板崩掉、看起来像「进不去」）。
+  // 这里用 `tab.text` 直接算语言，不依赖下面才声明的 `lang`。
+  const runsByLine = useMemo(() => {
+    const out = []
+    let depth = 0
+    const language = ideLangOf(tab.name)
+    for (const text of lines) {
+      const tracked = ideTokenizeTracked(text, language, depth)
+      out.push(tracked.runs)
+      depth = tracked.depth
+    }
+    return out
+  }, [lines, tab.name])
+
+  // 形参在签名与正文里要同色：分词只认签名，这里按方法体作用域补齐。
+  // 同样是 hook，必须留在「空文件/加载中」那次提前 return 之前。
+  const markedRuns = useMemo(() => ideMarkStatics(lines, ideMarkParamScopes(lines, runsByLine)), [lines, runsByLine])
+
+  const scan = useMemo(() => {
+    if (!findOpen) return { invalid: false, perLine: [], total: 0 }
+    return ideFindScan(lines, {
+      query: findQuery,
+      regex: findRegex,
+      caseSensitive: findCase,
+      whole: findWhole,
+    })
+  }, [lines, findOpen, findQuery, findRegex, findCase, findWhole])
+
+  // 改查询或开关就回到第一个命中，和 IDEA 一致。
+  useEffect(() => {
+    setFindIndex(0)
+  }, [findQuery, findRegex, findCase, findWhole])
+
+  // 右键菜单「在文件中查找」：读一次性请求，打开查找条并带上选中文本。
+  useEffect(() => {
+    const read = () => {
+      const request = store.getState().findRequest
+      if (request === null || request === undefined) return
+      store.setFindRequest(null)
+      setFindOpen(true)
+      setFindQuery(String(request.query ?? ''))
+      globalThis.requestAnimationFrame?.(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
+    }
+    read()
+    return store.subscribe(read)
+  }, [store])
+
+  // 查找条开着时 Esc 一定要能关掉——焦点可能已经从输入框跑到 ↑/↓ 按钮上了。
+  useEffect(() => {
+    if (!findOpen) return undefined
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setFindOpen(false)
+      setFindQuery('')
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [findOpen])
+
+  // 当前命中滚进视野（切换标签页后元素会被换掉，所以跟着 scan 一起重跑）。
+  useEffect(() => {
+    if (!findOpen || scan.total === 0) return
+    const host = scrollRef.current
+    const node = host === null || host === undefined
+      ? null
+      : host.querySelector(`[data-iw-find-order="${findIndex}"]`)
+    if (node !== null && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'center' })
+  }, [findOpen, scan, findIndex])
+
+  const findStep = (delta) => {
+    if (scan.total === 0) return
+    setFindIndex((value) => (value + delta + scan.total) % scan.total)
+  }
+
+  // 快捷键走登记处，用户改键后即时生效（和文件树筛选同一条路子）。
+  const findCommand = IDE_SHORTCUTS.find((entry) => entry.action === 'find-in-file')
+  useEffect(() => {
+    const onKey = (event) => {
+      const stored = store.getState().shortcutBindings?.[findCommand?.id]
+      const binding = stored ?? (findCommand === undefined
+        ? { code: 'KeyF', modifiers: ['primary'] }
+        : ideShortcutDefault(findCommand, ideRuntimeContext.runtime))
+      if (!ideBindingMatches(binding, event, ideRuntimeContext.platform)) return
+      event.preventDefault()
+      setFindOpen(true)
+      globalThis.requestAnimationFrame?.(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
+    }
+    globalThis.addEventListener('keydown', onKey)
+    return () => globalThis.removeEventListener('keydown', onKey)
+  }, [store, findCommand])
   const columns = useMemo(() => ideColumnsOf(lines), [lines])
   const changeKinds = useMemo(() => ideChangeKinds(tab.changes, lines.length), [tab.changes, lines.length])
   // Code Vision rows for this file version; a stamp re-renders the view when a
@@ -1394,7 +1512,9 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const rendered = lines.map((text, index) => h(IdeCodeLine, {
     key: index,
     index,
-    text,
+    runs: markedRuns[index],
+    hits: scan.perLine[index] ?? [],
+    current: findIndex,
     lang,
     hit: index === hitIndex,
     vcs: changeKinds.get(index),
@@ -1479,11 +1599,32 @@ function IdeCodeView({ tab, tr, store, navigate }) {
           })
           return
         }
+        // 源码上右键：有选中文本时给「在文件中查找」，没选中就留给平台菜单。
+        const selection = String(globalThis.getSelection?.() ?? '').trim()
+        if (selection !== '') {
+          event.preventDefault()
+          store.setCodeMenu({
+            path: tab.path,
+            x: event.clientX,
+            y: event.clientY,
+            selection: selection.slice(0, 200),
+            source: 'source',
+          })
+        }
         return
       }
       if (tab.kind === 'jar') return
       event.preventDefault()
-      store.setCodeMenu({ path: tab.path, x: event.clientX, y: event.clientY })
+      // 右键那一刻的选中文本随菜单一起带上：菜单点开后再读选区就没有了。
+      const selection = typeof globalThis.getSelection === 'function'
+        ? String(globalThis.getSelection() ?? '').trim()
+        : ''
+      store.setCodeMenu({
+        path: tab.path,
+        x: event.clientX,
+        y: event.clientY,
+        selection: selection.slice(0, 200),
+      })
     },
     onKeyDown: (event) => {
       if (event.key === 'Escape') closePopup()
@@ -1527,7 +1668,114 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       className: 'iw-md-body',
     }, h(IdeFloatMarkdown, { text: tab.text, tr })))
     : null
-  return h(React.Fragment, null, [markdownBar, markdownView === null ? code : markdownView, popupView])
+  const findBar = findOpen && markdownView === null && tab.status === 'ready'
+    ? h(IdeFindBar, {
+      key: 'find',
+      tr,
+      inputRef: findInputRef,
+      query: findQuery,
+      regex: findRegex,
+      caseSensitive: findCase,
+      whole: findWhole,
+      invalid: scan.invalid,
+      total: scan.total,
+      index: findIndex,
+      onChange: setFindQuery,
+      onToggle: (name) => {
+        if (name === 'regex') setFindRegex((value) => !value)
+        if (name === 'case') setFindCase((value) => !value)
+        if (name === 'whole') setFindWhole((value) => !value)
+      },
+      onNext: () => findStep(1),
+      onPrev: () => findStep(-1),
+      onClose: () => {
+        setFindOpen(false)
+        setFindQuery('')
+      },
+    })
+    : null
+  const body = findBar === null
+    ? code
+    : h('div', { key: 'codeview', className: 'iw-code-view' }, [code, findBar])
+  return h(React.Fragment, null, [markdownBar, markdownView === null ? body : markdownView, popupView])
+}
+
+/**
+ * 文件内查找条（IDEA 的 Find in File）：查询框 + `.*` / `Aa` / `W` 开关 + 命中计数
+ * + 上下跳转 + 关闭。回车下一个、Shift+回车上一个、Esc 关闭。
+ */
+function IdeFindBar(props) {
+  const tr = props.tr
+  const toggle = (name, on, label) => h('button', {
+    key: name,
+    type: 'button',
+    className: `iw-find-tool${on ? ' on' : ''}`,
+    title: label,
+    'aria-pressed': on ? 'true' : 'false',
+    onClick: () => props.onToggle(name),
+  }, name === 'regex' ? '.*' : name === 'case' ? 'Aa' : 'W')
+  const count = props.invalid
+    ? tr('findInvalid')
+    : props.total === 0
+      ? tr('findNothing')
+      : `${props.index + 1}/${props.total}`
+  return h('div', {
+    key: 'bar',
+    className: `iw-find-bar${props.invalid ? ' invalid' : ''}`,
+    role: 'search',
+  }, [
+    h('input', {
+      key: 'input',
+      ref: props.inputRef,
+      className: 'iw-find-input',
+      type: 'text',
+      value: props.query,
+      placeholder: tr('findPlaceholder'),
+      spellCheck: false,
+      autoFocus: true,
+      onChange: (event) => props.onChange(event.target.value),
+      onKeyDown: (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          props.onClose()
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          if (event.shiftKey) props.onPrev()
+          else props.onNext()
+        }
+      },
+    }),
+    toggle('regex', props.regex, tr('findRegex')),
+    toggle('case', props.caseSensitive, tr('findCase')),
+    toggle('whole', props.whole, tr('findWhole')),
+    h('span', { key: 'count', className: 'iw-find-count' }, count),
+    h('button', {
+      key: 'prev',
+      type: 'button',
+      className: 'iw-find-tool',
+      title: tr('findPrev'),
+      'aria-label': tr('findPrev'),
+      onClick: () => props.onPrev(),
+    }, '↑'),
+    h('button', {
+      key: 'next',
+      type: 'button',
+      className: 'iw-find-tool',
+      title: tr('findNext'),
+      'aria-label': tr('findNext'),
+      onClick: () => props.onNext(),
+    }, '↓'),
+    h('button', {
+      key: 'close',
+      type: 'button',
+      className: 'iw-find-tool',
+      title: tr('close'),
+      'aria-label': tr('close'),
+      onClick: () => props.onClose(),
+    }, '×'),
+  ])
 }
 
 /** The bottom status bar. */

@@ -1,0 +1,56 @@
+/**
+ * material-volcano (dark) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "Material Volcano" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="material-volcano"] {
+  --dsw-alias-bg-base: #390000;
+  --dsw-alias-bg-layer-1: #430d0d;
+  --dsw-alias-bg-layer-2: #4b1717;
+  --dsw-alias-bg-layer-3: #552424;
+  --dsw-alias-bg-overlay: #2e0000;
+  --dsw-specific-sidebar-fill: #430d0d;
+  --dsw-specific-menu: #4b1717;
+  --dsw-alias-card-fill: #4b1717;
+  --dsw-alias-card-fill-hover: #552424;
+  --dsw-alias-card-tile-fill: #4b1717;
+  --dsw-alias-label-primary: #ffeaea;
+  --dsw-alias-label-secondary: #ffdecd;
+  --dsw-alias-label-tertiary: #ffd0aa;
+  --dsw-alias-border-l1: #4b1717;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #552424;
+  --dsw-alias-border-l3: #885f5f;
+  --dsw-alias-border: #4b1717;
+  --dsw-alias-brand-primary: #00bcd4;
+  --dsw-alias-interactive-bg-hover: #750000;
+  --dsw-alias-state-success-primary: #c3e88d;
+  --dsw-alias-state-warning-primary: #ffcb6b;
+  --dsw-alias-state-error-primary: #f07178;
+  --dsw-alias-state-business-primary: #82aaff;
+  --dsw-alias-state-idle-primary: #ffd0aa;
+  --dsw-focus-ring-color: #82aaff;
+  --iw-changes-fill: #82aaff;
+  --iw-changes-hover: #aec8ff;
+  --iw-syn-keyword: #c792ea;
+  --iw-syn-string: #c3e88d;
+  --iw-syn-number: #f78c6c;
+  --iw-syn-comment: #7f6451;
+  --iw-syn-annotation: #82aaff;
+  --iw-syn-type: #ffcb6b;
+  --iw-syn-function: #82aaff;
+  --iw-syn-punct: #89ddff;
+  --iw-syn-param: #f78c6c;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

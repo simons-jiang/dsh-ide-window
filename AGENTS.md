@@ -57,7 +57,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `06-platform.js` | **客户端平台层**：`toPosix/toNative`、`isAbsolutePath`、手势选项与按键文案（`apply()` 里按 `ctx.shortcuts.platform` 换实例） |
 | `07-log.js` | **客户端日志**：100 条环形缓冲 `ideLogRecord/ideLogSnapshot`，供「复制诊断信息」上报 |
 | `10-core.js` | store（`useSyncExternalStore` 订阅）、偏好持久化、标签页/历史/视图状态 |
-| `12-theme.js` | **配色主题**：注册表（10 套）、`<link id="iw-theme-link">` 切换、状态栏切换器；主题同时提供 8 个语法色变量；对外发布主题（见 3.6） |
+| `12-theme.js` | **配色主题**：注册表（29 套）、`<link id="iw-theme-link">` 切换、状态栏切换器；主题同时提供 9 个语法色变量（含形参色 `--iw-syn-param`）与 10 个括号层级色 `--iw-br-0..9`；对外发布主题（见 3.6） |
 | `20-tree.js` | 文件树（展开、筛选、拖宽、`⌘P` 定位） |
 | `30-code.js` | 代码视图（行渲染、符号点击、跳转、右键菜单挂载） |
 | `40-panel.js` | 面板骨架（工具栏、横幅、布局、字号 CSS 变量） |
@@ -70,6 +70,54 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `70-palette.js` | Search Everywhere（所有/类/符号/文件/文本/操作，默认所有） |
 | `72-screenshot.js` | **截图编辑器**：宿主按设备像素抓屏 → 铺满窗口显示 → 拖框选区（无预设）→ 选框下方浮动条（矩形/文字/撤销 | 截图/截图并跳转会话）→ 裁切导出（原始像素、≤1 MB）；含 macOS 授权引导 |
 | `90-apply.js` | 全部注册（槽位、快捷键、命令、设置项）+ `enter()/openPanel()` |
+
+### 3.1.1 语法着色（`ideTokenize`）
+
+逐行词法分析，不依赖编译器；命中顺序固定：整行注释 → 字符串 → `//` 注释 → `@注解` → 单词 → 数字 → 标点。
+
+**配色按 Material Theme UI 的语义**（用户选定；取值直接从它的 `src/main/resources/colors/*.xml` 核对过）：
+
+| 角色 | 判据 | 颜色类 | 样式 |
+|---|---|---|---|
+| 关键字 | 命中**本语言**关键字表 | `.iw-kw` | **斜体** |
+| 字符串 / 数字 | 字面量 | `.iw-str` / `.iw-num` | — |
+| 注释 | 注释 | `.iw-com` | 斜体 |
+| **注解** `@Override` | `@` + 名字 | `.iw-ann` | 颜色 = `--iw-syn-function`（Material 的注解就是方法色） |
+| 类型（类名） | 首字母大写 | `.iw-type` | 主题自己的类型色 |
+| **常量** `WEB` `UTF_8` | 全大写 + 下划线 | `.iw-type.iw-const` | 颜色 = `--iw-syn-number` |
+| 方法（**声明与调用同色**） | 后面跟 `(` 或前缀 `::` | `.iw-fn` | Material 里两者一色 |
+| **形参** | 签名里 `类型 名字`（可带注解前缀），并按方法体作用域补齐 | `.iw-param` | 颜色 = `--iw-syn-number` |
+| **静态成员** | `Upper.member` 访问、含 `static` 的声明行 | `.iw-static` | **斜体** |
+| 局部变量 / 实参 / 字段 | 其余 | 无色 | 正文色 |
+
+- **颜色与可点击性解耦**：`.iw-fn`/`.iw-param`/`.iw-static` 这些类只负责语义与命中测试，颜色由 CSS 决定；`ideSymbolOfRun` 必须按**类名集合**判断（`cls.split(' ')`），不能再用 `cls === 'iw-fn'`。
+- `ideMarkStatics(lines, runsByLine)` 补「声明行」的静态标记（`Upper.member` 在词法器里就能认）；它和 `ideMarkParamScopes` 一样：函数体里不能写花括号字面量（`harness` 的 `grabSource` 按括号配对截取）。
+- **`--iw-syn-annotation` 必须等于 `--iw-syn-function`、`--iw-syn-param` 必须等于 `--iw-syn-number`**，`test/theme.mjs` 断言这两条。
+
+括号按**嵌套层级**分色（`.iw-br` / `.iw-pa` + `level-0..9`，**10 档**一轮回）：
+
+- 层级由 `ideTokenizeTracked(text, lang, depth)` **跨行累计**，`30-code.js` 对整份文件折一次（`runsByLine`），行组件不再自己分词；
+- 闭合括号用它那一层的颜色（`nesting - 1`），和开括号对上；圆括号整体 `opacity: .78`，别抢花括号的视线；
+- **每套主题显式定义 10 个括号色 `--iw-br-0..9`**（色相 36° 一档铺满一圈；深色主题 L68/S72，浅色 L40/S62）。不要再「借语法色」：语法色只有 8–9 个且互相撞色（`annotation` 与 `type`/`function` 同色），4 档就到顶了——层级一多就分不开（用户实测反馈）；
+- 超过 10 层回到第 0 档（`depth % 10`）。`test/harness.mjs` 与 `test/theme.mjs` 都断言「同一主题里 10 色互不相同」；
+- 颜色**直接用主题变量，不做 `color-mix`**——混标点色会把颜色冲淡，深色主题里更难分辨；
+- `00-css.js` 整体是一个模板字符串，**注释里不能出现反引号**（会把字面量断开，构建产物直接语法错误）。
+
+**主题从哪来（29 套）**：23 套取自 Material Theme UI 官方仓库（`themes/regular/*.theme.json` 给界面色、`colors/*.xml` 给语法色），6 套移植主题取自各自上游 VS Code 仓库。生成脚本：
+
+- `tools/theme-shared.mjs`：颜色计算 + 一份 palette → 主题 CSS（token 名称/顺序必须和手写主题完全一致）
+- `tools/gen-material-themes.mjs <源目录>`：Material 的 json+xml → 主题
+- `tools/gen-vscode-themes.mjs <源目录>`：VS Code 主题 json（JSONC，可能需要去注释）→ 主题
+
+源文件**不入库**（上百 KB×20+），生成脚本头部写着仓库路径；新增主题 = 往 `SCHEMES/THEMES` 表里加一行 + 重新生成 + 在 `themes/index.json`、`IDE_THEMES`、`locale/{zh,en}.json`（`theme_<id 下划线>`）各加一条 + 改 `test/theme.mjs` 的三个计数。**仍未收录**：Prism Dark、Omni、Islands Dark——Material 只做了移植，仓库里没有它们的配色源。
+
+**主题变量（9 个语法色）**：`--iw-syn-keyword / string / number / comment / annotation / type / function / punct / param`，外加 10 个括号色 `--iw-br-0..9`。旧版本的 `--iw-syn-field` 已随路线 1 回滚删除。
+
+形参仍然可点击（`ideSymbolOfRun` 认 `iw-param`），⌘+单击/双击照常跳转。
+
+- **`grabSource` 截取的函数里不能出现花括号字面量**：`test/harness.mjs` 按括号配对取函数体，`{` 或 `}`（哪怕在注释、字符串里）都会让它数错并抛 `unbalanced`。比较括号请用 `run.text.charCodeAt(0) === 125` 这类写法。
+- **关键字表按语言分开**（`ideKeywordsOf(lang)`）：java / kotlin / scala / groovy / ts+js / go / py / rs / c+cpp+cs / sh / sql / swift / 数据类（json+yaml+toml+conf）/ 无关键字（xml、css、未知后缀）。**不要再合并回一张多语言大表**——早先就是一张表，Java 里名叫 `type`、`object`、`range` 的普通参数被染成关键字色，同一行参数有的有色有的没有（用户实测反馈）。
+- 新增语言 = 加一张 `IDE_KEYWORDS_*` 表 + 在 `ideKeywordsOf` 里 `case`；`test/harness.mjs` 里有分词用例（`type` 在 Java 无色、在 TS 是关键字、`A::b` 上方法色…）。
 
 ### 3.2 平台层（`platform/`，只支持 macOS + Windows）
 
@@ -133,7 +181,7 @@ locale/{zh,en}.json    UI 文案（165 个键）；插件管理器也从这里�
 | `window` 事件 `dsh-theme` | `{ detail: { id } }` | 同页立即生效，不用刷新 |
 | `data-dsh-theme` 属性 + `/dsh-ide/theme?id=<id>` | 主题文件选择器就是 `[data-dsh-theme="<id>"]` | 对方给自己的根节点加属性、`link` 同一份样式表即可套用 |
 
-主题除了 alias token，还统一提供 `--dsw-alias-markdown-inline-code`（= `--dsw-alias-bg-layer-3`）给行内代码，`test/theme.mjs` 会断言 10 套主题的 token 集合一致。
+主题除了 alias token，还统一提供 `--iw-syn-param`（形参色）与 `--dsw-alias-markdown-inline-code`（= `--dsw-alias-bg-layer-3`）给行内代码，`test/theme.mjs` 会断言 10 套主题的 token 集合一致。
 
 改主题文件的选择器或键名 = 改接口，必须同步改 `dsh-git-window`（它的 `src/client/05-theme.js` 只读这三样）。对方没装本插件时样式请求 404，它保持自己的 token 外观，不会报错。
 
@@ -265,6 +313,21 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - **Search Everywhere**：双击 Shift / 工具栏放大镜 / 快捷键打开，六分类（所有 / 类 / 符号 / 文件 / 文本 / 操作），**默认「所有」**——`类` = 文件即类（`ideFqnOf` 出全限定名）；`符号` = 声明形状的 ripgrep 前缀搜索（`ideSymbolPattern`：类/接口/枚举/record、字段、方法、常量、`function/const/def`），**是文本启发式不是符号索引**，局部变量可能混入；`所有` = 类 → 符号 → 文件（非源码）→ 文本（**含源码文件**，仅去掉与符号行完全相同的行）→ 操作；**结果按匹配度排序**（符号 `ideSymbolRank`、文件 `ideFileRank`、文本 `ideMatchRank`、命令 `ideActionRank`）
 - 样式用 DSH 菜单 token；`⌘P` 聚焦文件树筛选框
 
+### 4.3.1 文件内查找（IDEA 的 Find in File）
+
+`⌘F` / `Ctrl+F` 在代码视图右上角浮出查找条（`.iw-find-bar`，绝对定位，不占代码行）：
+
+- 输入即搜；`.*` 正则、`Aa` 区分大小写、`W` 整词三个开关；右侧 `1/N` 命中计数（无结果是「无结果」，正则写错是「正则无效」+ 输入框红边）
+- 回车下一个、Shift+回车上一个、`↑`/`↓` 按钮同样；命中环绕（末尾回到第一个，和 IDEA 一致）；当前命中自动 `scrollIntoView({block:'center'})`
+- Esc 关闭并清空查询
+- 命中用**深色底**：`.iw-find-hit`（半透明品牌色压黑），`.current` 更重并带一圈描边；底图用 `color-mix` 派生，不给 10 套主题各加变量
+- **命中不破坏语法色**：`ideFindSegments(runs, hits)` 只按命中边界切段、`cls` 保持原样，命中信息另放 `find` 字段；`ideSymbolOfRun` 仍能认出标识符，⌘+单击/双击照常
+- 纯函数都在 `10-core.js`：`ideFindMatcher`（编译查询，非正则时转义元字符，零宽匹配手动推进防止死循环）、`ideFindScan`（逐行扫、给整份文件编号）、`ideFindSegments`（切段）；`test/harness.mjs` 有 8 条用例
+- 快捷键走登记处 `find-in-file`，由 `IdeCodeView` 自己派发（和文件树的 `⌘P` 一个路子，改键即时生效），不看面板是否可见
+- **右键也能查找**：源码上右键（有选中文本时）或符号上右键，菜单里都有「在文件中查找」，查询取当前选中文本 / 符号名；菜单用 `store.setFindRequest({ query })` 通知代码视图，代码视图读到就打开查找条并清空请求（一次性）。选中文本在 `contextmenu` 那一刻读出来随菜单带上——菜单打开后再读选区已经没了
+- **Esc 一定能关**：查找条开着时在 window 上挂一个**捕获阶段**的 keydown 监听；焦点跑到 ↑/↓ 按钮上时输入框自己的 keydown 收不到 Esc（踩过）
+- **hooks 必须全部在提前 return 之前**：`IdeCodeView` 在「空文件 / 加载中」时会 `return` 一个占位，之后再加 `useMemo` 就会让加载态与就绪态的 hook 数量不一致，React 抛 #310，**整个面板崩掉、表现为「进不去代码工作区」**（这次就踩了）。`test/harness.mjs` 有两条源码顺序断言锁住这件事；加新 hook 一律放在 `const lines` 那一带
+
 ### 4.4.1 与数据窗口联动
 
 `src/client/73-data-bridge.js` 是数据窗口（`dsh-data-window`）事件桥的**调用方**，契约在对方仓库的 `docs/BRIDGE.md`：
@@ -380,6 +443,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 | `dsh-ide-window.float-toggle` | key | `⌥`+空格（Windows `Alt+空格`）——显示/收起悬浮框 |
 | `code-workspace.search-everywhere` | sequence | 双击 `Shift`（窗口 400ms） |
 | `code-workspace.file-search` | key | `⌘P` |
+| `code-workspace.find-in-file` | key | `⌘F`（Windows `Ctrl+F`）——当前文件内查找 |
 | `code-workspace.screenshot` | key | `⌘⇧S`（Windows `Ctrl+Shift+S`） |
 | `code-workspace.copy-reference-to-chat` | key | 桌面 `⌘⇧C`；Web `⌘⌥C`（`Ctrl+Shift+C` 是浏览器审查元素） |
 | `code-workspace.open-table` | key | `⌘⌥T`（Windows `Ctrl+Alt+T`） |

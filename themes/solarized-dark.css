@@ -1,0 +1,56 @@
+/**
+ * solarized-dark (dark) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "Solarized Dark" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="solarized-dark"] {
+  --dsw-alias-bg-base: #002B36;
+  --dsw-alias-bg-layer-1: #0d3640;
+  --dsw-alias-bg-layer-2: #173e48;
+  --dsw-alias-bg-layer-3: #244952;
+  --dsw-alias-bg-overlay: #00222b;
+  --dsw-specific-sidebar-fill: #0d3640;
+  --dsw-specific-menu: #173e48;
+  --dsw-alias-card-fill: #173e48;
+  --dsw-alias-card-fill-hover: #244952;
+  --dsw-alias-card-tile-fill: #173e48;
+  --dsw-alias-label-primary: #839496;
+  --dsw-alias-label-secondary: #708387;
+  --dsw-alias-label-tertiary: #586e75;
+  --dsw-alias-border-l1: #173e48;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #244952;
+  --dsw-alias-border-l3: #416066;
+  --dsw-alias-border: #173e48;
+  --dsw-alias-brand-primary: #d33682;
+  --dsw-alias-interactive-bg-hover: #2E4C52;
+  --dsw-alias-state-success-primary: #2AA198;
+  --dsw-alias-state-warning-primary: #B58900;
+  --dsw-alias-state-error-primary: #268BD2;
+  --dsw-alias-state-business-primary: #B58900;
+  --dsw-alias-state-idle-primary: #586e75;
+  --dsw-focus-ring-color: #B58900;
+  --iw-changes-fill: #B58900;
+  --iw-changes-hover: #cfb259;
+  --iw-syn-keyword: #859900;
+  --iw-syn-string: #2aa198;
+  --iw-syn-number: #d33682;
+  --iw-syn-comment: #657b83;
+  --iw-syn-annotation: #b58900;
+  --iw-syn-type: #cb4b16;
+  --iw-syn-function: #b58900;
+  --iw-syn-punct: #2E5861;
+  --iw-syn-param: #d33682;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

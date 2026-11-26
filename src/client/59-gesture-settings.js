@@ -528,6 +528,12 @@ function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
   const lineSuffix = `${anchor}${symbolName === '' ? '' : ` ${symbolName}`}`
   const items = [
     { key: 'name', icon: IdeCopyIcon, label: tr('symbolMenuCopyName'), run: run(() => copy(name)) },
+    {
+      key: 'find',
+      icon: IdeSearchIcon,
+      label: tr('menuFind'),
+      run: run(() => store.setFindRequest({ query: String(name) })),
+    },
   ]
   if (menu.jar !== true) {
     items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(`${mention}${lineSuffix}`)) })
@@ -600,14 +606,29 @@ function IdeGutterMenu({ store, state, tr }) {
     store.setCodeMenu(null)
     action()
   }
-  const items = [
-    {
-      key: 'annotate',
-      icon: IdeClockIcon,
-      label: on ? tr('gutterMenuUnannotate') : tr('gutterMenuAnnotate'),
-      run: () => store.toggleAnnotate(path),
-    },
-  ]
+  const selection = String(menu.selection ?? '')
+  // 从源码上右键进来（有选中文本）只给查找；从行号/Git 条进来才带注解开关。
+  const items = menu.source === 'source'
+    ? [{
+      key: 'find',
+      icon: IdeSearchIcon,
+      label: tr('menuFind'),
+      run: () => store.setFindRequest({ query: selection }),
+    }]
+    : [
+      {
+        key: 'annotate',
+        icon: IdeClockIcon,
+        label: on ? tr('gutterMenuUnannotate') : tr('gutterMenuAnnotate'),
+        run: () => store.toggleAnnotate(path),
+      },
+      {
+        key: 'find',
+        icon: IdeSearchIcon,
+        label: tr('menuFind'),
+        run: () => store.setFindRequest({ query: selection }),
+      },
+    ]
   return h(React.Fragment, null, [
     h(IdeStyles, { key: 'style' }),
     h('div', {

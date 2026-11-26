@@ -11,7 +11,7 @@
  * It is a test double, not a renderer: hooks are inert, so the check is that
  * components exist and that the store behaves — not that pixels are right.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
@@ -1729,10 +1729,13 @@ check(mode.record.selected === 'dsh-ide-window:code', 'open selects the code pan
 // ---- the single shortcut registry ------------------------------------------
 {
   const registry = new Function(`${grabSource('IDE_SHORTCUTS', '05-shortcut-registry.js')}\nreturn IDE_SHORTCUTS`)()
-  check(Array.isArray(registry) && registry.length === 11, 'the registry holds every code-workspace shortcut', String(registry?.length))
+  check(Array.isArray(registry) && registry.length === 12, 'the registry holds every code-workspace shortcut', String(registry?.length))
   const kinds = registry.map((entry) => entry.kind)
-  check(kinds.filter((kind) => kind === 'key').length === 7,
-    'seven keyboard commands (toggle, back, float, ⌘P, screenshot, copy reference, open table)', kinds.join(','))
+  check(kinds.filter((kind) => kind === 'key').length === 8,
+    'eight keyboard commands (toggle, back, float, ⌘P, ⌘F, screenshot, copy reference, open table)', kinds.join(','))
+  const findInFile = registry.find((entry) => entry.action === 'find-in-file')
+  check(findInFile?.kind === 'key' && findInFile?.defaults?.desktop?.code === 'KeyF'
+    && findInFile?.defaults?.web?.code === 'KeyF', '⌘F/Ctrl+F 文件内查找 in a bindable key', JSON.stringify(findInFile?.defaults))
   const floatToggle = registry.find((entry) => entry.action === 'float-toggle')
   check(floatToggle?.kind === 'key' && floatToggle?.defaults?.desktop?.code === 'Space'
     && floatToggle?.defaults?.desktop?.modifiers?.join(',') === 'alt',
@@ -2430,8 +2433,182 @@ function floatTranscriptSource() {
     check(stepOf({ hasMore: false, total: 120, limit: 200, history: true }) === 'start', 'only then is it the start')
     check(stepOf({ hasMore: false, total: 5000, limit: 5000, history: true }) === 'start', 'a complete window is the start')
     check(stepOf({ hasMore: true, loadable: false, total: 10, limit: 200 }) === 'none', 'a session without paging does nothing')
+    // 00-css.js 整体是模板字符串：正文里出现反引号会把字面量断开，构建产物直接语法错误。
+    const cssFileText = readFileSync(new URL('../src/client/00-css.js', import.meta.url), 'utf8')
+    const cssBody = cssFileText.slice(cssFileText.indexOf('const IDE_CSS = `') + 'const IDE_CSS = `'.length, cssFileText.lastIndexOf('`'))
+    check(!cssBody.includes('`'), '00-css.js 的样式正文里没有反引号')
+
+    check(bundle.includes('menuFind') && bundle.includes('setFindRequest'),
+      '代码右键菜单里有「在文件中查找」')
+    check(bundle.includes("addEventListener('keydown', onKey, true)"),
+      '查找条开着时用捕获阶段的 Esc 关掉（焦点在按钮上也生效）')
     check(bundle.includes('floatStartReached') && !bundle.includes('floatRowsTrimmed'),
       '走到尽头只给一句话，并把人引到会话框')
+
+    // 分词：关键字按语言分开取，参数名不该被当成关键字。
+    const coreText = readFileSync(new URL('../src/client/10-core.js', import.meta.url), 'utf8')
+    const setsBlock = coreText.slice(
+      coreText.indexOf('function ideKeywordSet'),
+      coreText.indexOf('/** Call one `workspaceFiles` method'),
+    )
+    check(setsBlock.includes('IDE_KEYWORDS_JAVA') && setsBlock.includes('function ideKeywordsOf'),
+      'per-language keyword tables exist')
+    const tracked = new Function(`${setsBlock}
+      return { ideTokenize, ideTokenizeTracked }`)()
+    const tokenize = tracked.ideTokenize
+    const runsOf = (line, lang) => tokenize(line, lang)
+      .filter((run) => run.text.trim() !== '')
+      .map((run) => `${run.text}:${run.cls}`)
+    const signature = 'BillTypeEnum type, Long objectId, String periodCode, String currency'
+    const java = runsOf(signature, 'java')
+    check(!java.includes('type:iw-kw') && java.includes('type:iw-param'),
+      'Java 里 type 只是形参（形参色），不再染成关键字')
+    check(java.includes('objectId:iw-param'), 'Java 形参统一走形参色')
+    check(runsOf('SupplierEntity object = repo.get();', 'java').includes('object:'),
+      'Java 里叫 object 的变量不被当成关键字')
+    check(runsOf('ReconPeriodRangeDto range = validator.resolve();', 'java').includes('range:'),
+      'Java 里叫 range 的变量不被当成关键字')
+    check(runsOf('type Foo = string;', 'ts').includes('type:iw-kw'), 'TypeScript 里 type 是关键字')
+    check(runsOf('map range select', 'go').every((run) => run.endsWith(':iw-kw')), 'Go 的关键字来自 Go 那张表')
+    check(runsOf('def foo(self):', 'py').includes('def:iw-kw'), 'Python 的关键字来自 Python 那张表')
+    check(runsOf('val x = 1', 'kotlin').includes('val:iw-kw'), 'Kotlin 有关键字 val')
+    check(runsOf('List<String> names = new ArrayList<>();', 'java').includes('List:iw-type'), '首字母大写仍是类型色')
+    check(runsOf('.map(ReconBillEntity::getCurrency)', 'java').includes('getCurrency:iw-fn'),
+      '方法引用 A::b 里的 b 上方法色')
+    check(runsOf('private void doGenerate(', 'java').includes('doGenerate:iw-fn'), '名字后面跟 ( 仍是方法色')
+    check(runsOf('type', 'conf').every((run) => !run.endsWith(':iw-kw')), '没关键字的语言不瞎染色')
+    // 形参单独一色；调用实参保持无色。
+    check(runsOf('public void run(String billType, Long objectId) {', 'java').includes('billType:iw-param'),
+      '方法签名里的形参有自己的颜色')
+    check(runsOf('  String currency, String generateMode) {', 'java').includes('currency:iw-param'),
+      '签名换行后的形参同样上色')
+    check(runsOf('assertNoDuplicateBill(type, objectId, periodCode);', 'java')
+      .filter((run) => run.includes(':iw-param')).length === 0, '调用实参不会被当成形参')
+    check(runsOf('String lockKey = prefix + type.getCode();', 'java').every((run) => !run.endsWith(':iw-param')),
+      '本地变量声明不是形参')
+    // 括号按嵌套层级分色，闭合括号和开括号同层。
+    const level = (line, depth) => tracked.ideTokenizeTracked(line, 'java', depth)
+    const braces = level('  if (ready) {', 1)
+    check(braces.runs.some((run) => run.text === '(' && run.cls === 'iw-pa level-1'),
+      '圆括号按层级取色')
+    check(braces.runs.some((run) => run.text === '{' && run.cls === 'iw-br level-1'),
+      '花括号按层级取色')
+    check(braces.depth === 2, '一行结束时把层级带到下一行')
+    const closing = level('}', 2)
+    check(closing.runs.some((run) => run.text === '}' && run.cls === 'iw-br level-1'),
+      '闭合括号和它的开括号同一层')
+    check(closing.depth === 1, '闭合括号把层级还回去')
+    check(level('  x = list[0];', 12).runs.some((run) => run.text === '[' && run.cls.includes('level-2')),
+      '方括号也参与层级（10 档一轮回，12 → 2）')
+    // 括号层级色：每套主题定义 10 个 --iw-br-N，必须两两不同，否则相邻层级撞色。
+    const themeDir = new URL('../themes/', import.meta.url)
+    const themeFiles = readdirSync(themeDir).filter((name) => name.endsWith('.css'))
+    check(themeFiles.length >= 10, '每套主题都在', String(themeFiles.length))
+    const collisions = []
+    for (const name of themeFiles) {
+      const css = readFileSync(new URL(name, themeDir), 'utf8')
+      const palette = Array.from({ length: 10 }, (_, index) => {
+        const color = new RegExp(`--iw-br-${index}:\\s*([^;]+);`).exec(css)?.[1] ?? ''
+        return color.trim().toLowerCase()
+      })
+      if (palette.some((color) => color === '')) collisions.push(`${name}:missing`)
+      else if (new Set(palette).size !== 10) collisions.push(`${name}:${palette.join('/')}`)
+    }
+    check(collisions.length === 0, '括号 10 档颜色在每套主题里都互不相同', collisions.join(' '))
+    const cssSource = readFileSync(new URL('../src/client/00-css.js', import.meta.url), 'utf8')
+    const bound = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter((index) => !cssSource.includes(
+      `.iw-br.level-${index}, .iw-pa.level-${index} { color: var(--iw-br-${index}`,
+    ))
+    check(bound.length === 0, '每个 level-N 都绑定 --iw-br-N', JSON.stringify(bound))
+    // 形参作用域：同一个形参在签名与正文里同色，别的方法里的同名标识符不受影响。
+    const markScopes = new Function(`${setsBlock}
+      ${grabSource('ideMarkParamScopes', '10-core.js')}
+      return { ideTokenizeTracked, ideMarkParamScopes }`)()
+    const scopeLines = [
+      'public List<X> generate(String billType, Long objectId,',
+      '    String currency) {',
+      '    log.info("x", billType, objectId, currency);',
+      '    BillTypeEnum type = BillTypeEnum.getEnum(billType);',
+      '}',
+      'private void third() {',
+      '    use(billType);',
+      '}',
+    ]
+    let scopeDepth = 0
+    const scopeRuns = scopeLines.map((line) => {
+      const tracked = markScopes.ideTokenizeTracked(line, 'java', scopeDepth)
+      scopeDepth = tracked.depth
+      return tracked.runs
+    })
+    const scopeMarked = markScopes.ideMarkParamScopes(scopeLines, scopeRuns)
+    // Material 语义：常量 = 数字色、静态成员斜体
+    const staticApi = new Function(`${setsBlock}
+      ${grabSource('ideMarkParamScopes', '10-core.js')}
+      ${grabSource('ideMarkStatics', '10-core.js')}
+      return { ideTokenizeTracked, ideMarkParamScopes, ideMarkStatics }`)()
+    const staticLines = [
+      'public class Foo {',
+      '    private static final String LOCK_KEY = "x";',
+      '    public static void run(String a) {',
+      '        StringUtils.isBlank(a);',
+      '        service.run(a);',
+      '    }',
+      '}',
+    ]
+    let staticDepth = 0
+    const staticRuns = staticLines.map((line) => {
+      const tracked = staticApi.ideTokenizeTracked(line, 'java', staticDepth)
+      staticDepth = tracked.depth
+      return tracked.runs
+    })
+    const staticMarked = staticApi.ideMarkStatics(staticLines, staticApi.ideMarkParamScopes(staticLines, staticRuns))
+    const clsAt = (row, text) => (staticMarked[row] ?? []).filter((run) => run.text === text).map((run) => run.cls)
+    check(clsAt(1, 'LOCK_KEY').some((cls) => cls.includes('iw-const') && cls.includes('iw-static')),
+      'static final 常量标成 iw-const + iw-static')
+    check(clsAt(2, 'run').some((cls) => cls.includes('iw-static')), 'static 方法声明标成 iw-static')
+    check(clsAt(3, 'isBlank').some((cls) => cls.includes('iw-static')), 'Upper.member 访问标成 iw-static')
+    check(!clsAt(4, 'run').some((cls) => cls.includes('iw-static')), '小写接收者（实例调用）不加斜体')
+
+    const paramsAt = (row) => scopeMarked[row].filter((run) => run.cls === 'iw-param').map((run) => run.text)
+    check(paramsAt(0).includes('billType') && paramsAt(2).includes('billType') && paramsAt(3).includes('billType'),
+      '形参在正文里保持同一种颜色（签名跨行也对）')
+    check(paramsAt(2).includes('currency'), '换行后的形参也进同一个作用域')
+    check(paramsAt(6).length === 0, '别的方法里同名标识符不会被当成形参')
+    // hooks 顺序：代码视图在「空文件/加载中」时提前 return，之后的 hook 会让
+    // 加载态与就绪态的 hook 数量不一致（React #310，整个面板崩掉）。
+    const codeSource = readFileSync(new URL('../src/client/30-code.js', import.meta.url), 'utf8')
+    const earlyReturn = codeSource.indexOf("if (lines.length === 0 && tab.text === '')")
+    const runsHook = codeSource.indexOf('const runsByLine = useMemo(')
+    check(earlyReturn > 0 && runsHook > 0 && runsHook < earlyReturn,
+      '代码视图的每一处 useMemo 都在提前 return 之前（否则 #310 崩面板）')
+    const afterReturn = codeSource.slice(earlyReturn, codeSource.indexOf('const findCommand', earlyReturn))
+    check(!/\buse(Memo|State|Effect|LayoutEffect|Ref|Callback)\(/.test(afterReturn),
+      '提前 return 之后不再出现任何 hook')
+
+    // 文件内查找：纯文本 / 正则 / 大小写 / 整词 / 非法正则 / 命中切段。
+    const findFns = new Function(`${setsBlock}
+      ${grabSource('ideFindMatcher', '10-core.js')}
+      ${grabSource('ideFindScan', '10-core.js')}
+      ${grabSource('ideFindSegments', '10-core.js')}
+      return { ideFindMatcher, ideFindScan, ideFindSegments }`)()
+    const sample = ['String lockKey = a.b();', 'if (x.y()) {', 'x = 1.0 + 2.5']
+    const plain = findFns.ideFindScan(sample, { query: '.' })
+    check(plain.total === 4, '不开正则时点号按纯文本匹配', String(plain.total))
+    const digits = findFns.ideFindScan(sample, { query: '\\d+', regex: true })
+    check(digits.total === 4, '正则 \\d+ 找到四段数字', String(digits.total))
+    check(findFns.ideFindScan(sample, { query: '(', regex: true }).invalid === true, '正则写错时标记为无效')
+    check(findFns.ideFindScan(['type typed type'], { query: 'type', whole: true }).total === 2, '整词匹配只算两个 type')
+    check(findFns.ideFindScan(['Type type'], { query: 'type', caseSensitive: true }).total === 1, '区分大小写')
+    check(findFns.ideFindScan(['aaa'], { query: 'a*', regex: true }).total === 1, '零宽匹配不会死循环')
+    const hit = findFns.ideFindScan(['String lockKey = 1;'], { query: 'lockKey' })
+    const segs = findFns.ideFindSegments(
+      [{ text: 'String ', cls: 'iw-type', at: 0 }, { text: 'lockKey', cls: '', at: 7 }, { text: ' = 1;', cls: '', at: 14 }],
+      hit.perLine[0],
+    )
+    check(segs.some((seg) => seg.text === 'lockKey' && seg.find === 0 && seg.cls === ''),
+      '命中切段保留原来的语法类名')
+    check(segs.map((seg) => seg.text).join('') === 'String lockKey = 1;', '切段后整行文本不变')
+
 
     // 会话模式：读 agentPreset 投影，内置模式用 DSH 自己的文案，自定义用预设名字。
     const presetOf = new Function(`${grabSource('ideFloatPresetId', '74-float.js')}\nreturn ideFloatPresetId`)()

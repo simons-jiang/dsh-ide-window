@@ -472,6 +472,35 @@ window.__ModuleLoader__.load({
     "floatLiveAnalyze": "Analyzing the request",
     "chainRecursive": "recursive",
     "chainTruncated": "More callers exist (display limit reached)",
+    "findPlaceholder": "Find (regex supported)",
+    "findRegex": "Regex",
+    "findCase": "Match case",
+    "findWhole": "Whole word",
+    "findPrev": "Previous (Shift+Enter)",
+    "findNext": "Next (Enter)",
+    "findNothing": "No results",
+    "findInvalid": "Invalid regex",
+    "shortcutFindInFile": "Find in file",
+    "menuFind": "Find in file",
+    "theme_material_darker": "Darker",
+    "theme_material_deep_ocean": "Deep Ocean",
+    "theme_material_forest": "Forest",
+    "theme_material_volcano": "Volcano",
+    "theme_material_space": "Space",
+    "theme_arc_dark": "Arc Dark",
+    "theme_github_dark": "GitHub Dark",
+    "theme_atom_one_dark": "Atom One Dark",
+    "theme_solarized_dark": "Solarized Dark",
+    "theme_moonlight": "Moonlight",
+    "theme_synthwave_84": "SynthWave '84",
+    "theme_material_sky_blue": "Sky Blue",
+    "theme_material_sandy_beach": "Sandy Beach",
+    "theme_horizon_neo": "Horizon Neo",
+    "theme_horizon_bright": "Horizon Bright",
+    "theme_cobalt2": "Cobalt2",
+    "theme_shades_of_purple": "Shades of Purple",
+    "theme_winter_is_coming": "Winter is Coming",
+    "theme_noctis": "Noctis",
   }
   const IDE_TEXT_ZH = {
     "floatCommandNoEditor": "对话框还没就绪，稍后再试",
@@ -937,6 +966,35 @@ window.__ModuleLoader__.load({
     "floatLiveAnalyze": "正在分析请求",
     "chainRecursive": "递归",
     "chainTruncated": "还有调用方未展开（已达展开上限）",
+    "findPlaceholder": "查找（支持正则）",
+    "findRegex": "正则表达式",
+    "findCase": "区分大小写",
+    "findWhole": "全字匹配",
+    "findPrev": "上一个（Shift+回车）",
+    "findNext": "下一个（回车）",
+    "findNothing": "无结果",
+    "findInvalid": "正则无效",
+    "shortcutFindInFile": "文件内查找",
+    "menuFind": "在文件中查找",
+    "theme_material_darker": "极暗 Darker",
+    "theme_material_deep_ocean": "深海 Deep Ocean",
+    "theme_material_forest": "森林 Forest",
+    "theme_material_volcano": "火山 Volcano",
+    "theme_material_space": "星海 Space",
+    "theme_arc_dark": "弧光 Arc Dark",
+    "theme_github_dark": "GitHub 暗色",
+    "theme_atom_one_dark": "Atom 暗色",
+    "theme_solarized_dark": "Solarized 暗色",
+    "theme_moonlight": "月光 Moonlight",
+    "theme_synthwave_84": "合成波 '84",
+    "theme_material_sky_blue": "天蓝 Sky Blue",
+    "theme_material_sandy_beach": "沙丘 Sandy Beach",
+    "theme_horizon_neo": "地平线 Horizon Neo",
+    "theme_horizon_bright": "晨曦 Horizon Bright",
+    "theme_cobalt2": "钴蓝 Cobalt2",
+    "theme_shades_of_purple": "紫影 Shades of Purple",
+    "theme_winter_is_coming": "凛冬 Winter is Coming",
+    "theme_noctis": "夜曲 Noctis",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1288,6 +1346,66 @@ const IDE_CSS = `
   line-height: var(--iw-code-line-height, 20px);
   tab-size: 4;
 }
+.iw-code-view { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* 文件内查找条：浮在代码右上角（IDEA 的 Find in File），不占代码行。 */
+.iw-find-bar {
+  position: absolute;
+  top: 6px;
+  right: 22px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: var(--dsw-specific-menu, var(--dsw-alias-bg-layer-2, #202226));
+  box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.35));
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-primary, #e6e8ec);
+}
+.iw-find-bar.invalid .iw-find-input { border-color: var(--dsw-alias-state-error-primary, #e06c75); }
+.iw-find-input {
+  width: 190px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-sm, 5px);
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.14));
+  background: var(--dsw-alias-bg-layer-1, #16181c);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+.iw-find-input:focus { border-color: var(--dsw-alias-brand-primary, #5b9dff); }
+.iw-find-tool {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 5px);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font: inherit;
+  cursor: pointer;
+}
+.iw-find-tool:hover { background: var(--dsw-alias-bg-layer-3, rgba(255, 255, 255, 0.08)); color: var(--dsw-alias-label-primary, #e6e8ec); }
+.iw-find-tool.on { background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 26%, transparent); color: var(--dsw-alias-label-primary, #e6e8ec); }
+.iw-find-count {
+  min-width: 46px;
+  text-align: center;
+  color: var(--dsw-alias-label-secondary, #98a0ad);
+  font-variant-numeric: tabular-nums;
+}
+/* 命中：深色底 + 当前项更重；颜色与语法色互不干扰。 */
+.iw-find-hit {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 40%, #000 12%);
+  border-radius: 2px;
+  color: inherit;
+}
+.iw-find-hit.current {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 72%, #000 10%);
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary, #5b9dff);
+}
 .iw-code-inner { min-width: 100%; }
 .iw-line {
   display: flex;
@@ -1348,14 +1466,41 @@ const IDE_CSS = `
 /* Syntax colours are their own layer: a palette sets --iw-syn-* because a
    keyword colour that reads on #282a36 is unreadable on #ffffff. The literals
    are the DSH-palette defaults for "follow DSH". */
-.iw-kw { color: var(--iw-syn-keyword, #cf8ee6); }
+/* 语法色是单独一层：主题通过 --iw-syn-* 覆盖，因为关键字色在 #282a36 上好看、
+   放到白底上就读不清。括号里的兜底值是「跟随 DSH」时的默认色。 */
+/* 关键字斜体（Material 主题的约定），注释本来就斜体。 */
+.iw-kw { color: var(--iw-syn-keyword, #cf8ee6); font-style: italic; }
 .iw-str { color: var(--iw-syn-string, #9ddc8b); }
 .iw-num { color: var(--iw-syn-number, #e0b072); }
 .iw-com { color: var(--iw-syn-comment, #6d7683); font-style: italic; }
-.iw-ann { color: var(--iw-syn-annotation, #e0c56b); }
+.iw-ann { color: var(--iw-syn-annotation, var(--iw-syn-function, #8fd7d0)); }
 .iw-type { color: var(--iw-syn-type, #7fc8f0); }
 .iw-fn { color: var(--iw-syn-function, #8fd7d0); }
 .iw-punct { color: var(--iw-syn-punct, var(--dsw-alias-label-secondary, #98a0ad)); }
+/* 形参：签名与正文里的同名形参同一个颜色（由 ideMarkParamScopes 保证）。
+   主题把 --iw-syn-param 指到数字色（Material 的做法）。 */
+.iw-param { color: var(--iw-syn-param, var(--iw-syn-number, #e0b072)); }
+/* 常量：Material 里和数字同色 */
+.iw-const { color: var(--iw-syn-number, #e0b072); }
+/* 静态成员（Upper.member 这种访问、static 声明）：Material 用斜体表示 */
+.iw-static { font-style: italic; }
+
+/* 括号按嵌套层级分色：每套主题定义 10 个括号色（--iw-br-0..9，色相 36° 一档），
+   超过 10 层回到第 0 档。兜底值是深色主题那一组，没选主题时也能分辨。
+   注意：这个文件整体是模板字符串，注释里不能出现反引号。 */
+.iw-br.level-0, .iw-pa.level-0 { color: var(--iw-br-0, #e87373); }
+.iw-br.level-1, .iw-pa.level-1 { color: var(--iw-br-1, #e8b973); }
+.iw-br.level-2, .iw-pa.level-2 { color: var(--iw-br-2, #d1e873); }
+.iw-br.level-3, .iw-pa.level-3 { color: var(--iw-br-3, #8ae873); }
+.iw-br.level-4, .iw-pa.level-4 { color: var(--iw-br-4, #73e8a2); }
+.iw-br.level-5, .iw-pa.level-5 { color: var(--iw-br-5, #73e8e8); }
+.iw-br.level-6, .iw-pa.level-6 { color: var(--iw-br-6, #73a2e8); }
+.iw-br.level-7, .iw-pa.level-7 { color: var(--iw-br-7, #8a73e8); }
+.iw-br.level-8, .iw-pa.level-8 { color: var(--iw-br-8, #d173e8); }
+.iw-br.level-9, .iw-pa.level-9 { color: var(--iw-br-9, #e873b9); }
+/* 圆括号更密，淡一档，别盖住花括号的结构。 */
+.iw-pa { opacity: 0.78; }
+
 .iw-sym { cursor: pointer; border-radius: 3px; }
 .iw-sym:hover {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary, #5b9dff) 22%, transparent);
@@ -4471,6 +4616,18 @@ const IDE_SHORTCUTS = [
     action: 'focus-filter',
   },
   {
+    id: 'code-workspace.find-in-file',
+    kind: 'key',
+    labelKey: 'shortcutFindInFile',
+    aliases: ['find', 'findinfle', '查找', '搜索'],
+    // 面板内的文件查找；面板自己派发，不走全局命令。
+    defaults: {
+      desktop: { code: 'KeyF', modifiers: ['primary'] },
+      web: { code: 'KeyF', modifiers: ['primary'] },
+    },
+    action: 'find-in-file',
+  },
+  {
     id: 'code-workspace.screenshot',
     kind: 'key',
     labelKey: 'shortcutScreenshot',
@@ -5025,17 +5182,140 @@ function ideLangLabel(lang) {
   return map[lang] ?? (lang === '' ? 'Text' : lang)
 }
 
-/** Words the tokenizer paints as keywords — the shapes this plugin realistically shows. */
-const IDE_KEYWORDS = new Set((
+/**
+ * One language family's keyword set.
+ *
+ * 关键字**按语言分开**，不要混成一份：早先是一张多语言大表，于是 Java 里名叫
+ * `type` / `object` / `range` 的普通参数被当成关键字染色，同一行里有的参数有色、
+ * 有的没有（用户实测反馈）。现在按 `ideLangOf` 的语言 id 取自己对的那张表。
+ */
+function ideKeywordSet(words) {
+  return new Set(words.split(/\s+/).filter(Boolean))
+}
+
+/** Java：`type` / `object` / `map` 都不是关键字。 */
+const IDE_KEYWORDS_JAVA = ideKeywordSet(
   'abstract assert boolean break byte case catch char class const continue default do double else enum extends ' +
   'final finally float for goto if implements import instanceof int interface long native new package private ' +
   'protected public return short static strictfp super switch synchronized this throw throws transient try void ' +
-  'volatile while true false null var let function typeof delete in of export async await yield type namespace ' +
-  'declare module readonly string number any unknown never object fun val when is as try catch finally ' +
-  'func go defer chan map range select struct fallthrough pub fn mut impl trait match loop ' +
-  'where unsafe use mod crate self Self static ref dyn override sealed record permits non-sealed ' +
-  'get set constructor undefined extends implements readonly satisfies keyof infer asserts'
-).split(/\s+/).filter(Boolean))
+  'volatile while true false null var yield record sealed permits',
+)
+
+/** Kotlin：比 Java 多 `fun`/`val`/`when`/`object` 等，但同样没有 `type`。 */
+const IDE_KEYWORDS_KOTLIN = ideKeywordSet(
+  'as break class continue do else false for fun if in interface is null object package return super this throw ' +
+  'true try typealias typeof val var when while by catch constructor delegate dynamic field file finally get ' +
+  'import init param property receiver set setparam where actual abstract annotation companion const ' +
+  'crossinline data enum expect external final infix inline inner internal lateinit noinline open operator out ' +
+  'override private protected public reified sealed suspend tailrec vararg',
+)
+
+/** JavaScript / TypeScript / JSON：`type` 在这里**是**关键字。 */
+const IDE_KEYWORDS_TS = ideKeywordSet(
+  'break case catch class const continue debugger default delete do else enum export extends false finally for ' +
+  'function if import in instanceof let new null return static super switch this throw true try typeof var void ' +
+  'while with yield async await as from of get set constructor declare infer keyof module namespace readonly ' +
+  'satisfies type interface implements abstract any boolean number object string symbol unknown never undefined ' +
+  'public private protected',
+)
+
+/** Go。 */
+const IDE_KEYWORDS_GO = ideKeywordSet(
+  'break case chan const continue default defer else fallthrough for func go goto if import interface map ' +
+  'package range return select struct switch type var nil true false iota',
+)
+
+/** Python。 */
+const IDE_KEYWORDS_PY = ideKeywordSet(
+  'and as assert async await break class continue def del elif else except False finally for from global if ' +
+  'import in is lambda None nonlocal not or pass raise return True try while with yield self match case',
+)
+
+/** Rust。 */
+const IDE_KEYWORDS_RUST = ideKeywordSet(
+  'as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod ' +
+  'move mut pub ref return self Self static struct super trait true type unsafe use where while',
+)
+
+/** C / C++ / C#：`type`、`object` 都只是普通标识符。 */
+const IDE_KEYWORDS_C = ideKeywordSet(
+  'auto break case char const continue default do double else enum extern float for goto if inline int long ' +
+  'register return short signed sizeof static struct switch typedef union unsigned void volatile while class ' +
+  'namespace new delete public private protected virtual template typename using bool true false nullptr constexpr ' +
+  'nullptr_t override final abstract async await base catch decimal explicit fixed foreach implicit in internal ' +
+  'is lock object out params readonly ref sbyte sealed stackalloc string throw try uint ulong unchecked unsafe ' +
+  'ushort var volatile',
+)
+
+/** Shell。 */
+const IDE_KEYWORDS_SH = ideKeywordSet(
+  'if then else elif fi for while until do done case esac function return local export declare readonly shift ' +
+  'break continue in select time',
+)
+
+/** SQL。 */
+const IDE_KEYWORDS_SQL = ideKeywordSet(
+  'add all alter and any as asc between by case cast check column commit constraint create cross current ' +
+  'database default delete desc distinct drop else end escape except exists foreign from full group having in ' +
+  'index inner insert intersect into is join key left like limit not null offset on or order outer primary ' +
+  'references right rollback select set table then to transaction union unique update values view when where ' +
+  'with',
+)
+
+/** JSON / YAML / TOML 这类只有字面量的语言。 */
+const IDE_KEYWORDS_DATA = ideKeywordSet('true false null yes no on off')
+
+/** Swift。 */
+const IDE_KEYWORDS_SWIFT = ideKeywordSet(
+  'associatedtype class deinit enum extension fileprivate func import init inout internal let open operator ' +
+  'private protocol public rethrows static struct subscript typealias var break case continue default defer do ' +
+  'else fallthrough for guard if in repeat return switch where while as Any catch false is nil super self Self ' +
+  'throw throws true try',
+)
+
+/** Scala / Groovy。 */
+const IDE_KEYWORDS_SCALA = ideKeywordSet(
+  'abstract case catch class def do else extends false final finally for forSome if implicit import lazy match ' +
+  'new null object override package private protected return sealed super this throw trait true try type val ' +
+  'var while with yield def as in trait',
+)
+
+/** 没有关键字可染色的语言（XML / CSS / 纯文本 / 未知后缀）。 */
+const IDE_KEYWORDS_NONE = new Set()
+
+/**
+ * The keyword table for one language id.
+ *
+ * @param lang - language id from {@link ideLangOf}.
+ * @returns the set to paint as keywords; empty when the language has none we know.
+ */
+function ideKeywordsOf(lang) {
+  switch (lang) {
+    case 'java': return IDE_KEYWORDS_JAVA
+    case 'kotlin': return IDE_KEYWORDS_KOTLIN
+    case 'scala': return IDE_KEYWORDS_SCALA
+    case 'groovy': return IDE_KEYWORDS_SCALA
+    case 'js': return IDE_KEYWORDS_TS
+    case 'ts': return IDE_KEYWORDS_TS
+    case 'json': return IDE_KEYWORDS_DATA
+    case 'yaml': return IDE_KEYWORDS_DATA
+    case 'toml': return IDE_KEYWORDS_DATA
+    case 'properties': return IDE_KEYWORDS_DATA
+    case 'conf': return IDE_KEYWORDS_DATA
+    case 'go': return IDE_KEYWORDS_GO
+    case 'py': return IDE_KEYWORDS_PY
+    case 'rs': return IDE_KEYWORDS_RUST
+    case 'c': return IDE_KEYWORDS_C
+    case 'cpp': return IDE_KEYWORDS_C
+    case 'cs': return IDE_KEYWORDS_C
+    case 'sh': return IDE_KEYWORDS_SH
+    case 'sql': return IDE_KEYWORDS_SQL
+    case 'swift': return IDE_KEYWORDS_SWIFT
+    case 'php': return IDE_KEYWORDS_TS
+    case 'rb': return IDE_KEYWORDS_PY
+    default: return IDE_KEYWORDS_NONE
+  }
+}
 
 /** Languages whose `#` starts a line comment. */
 const IDE_HASH_COMMENT = new Set(['py', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'rb', 'toml', 'conf', 'properties', 'dockerfile'])
@@ -5045,25 +5325,78 @@ const IDE_PLAIN_LANGS = new Set(['md', 'txt', 'log', 'csv', 'tsv', 'lock'])
 
 /**
  * Split one code line into coloured runs.
+ *
+ * 单词只有三条判断：命中本语言的关键字 → 关键字色；首字母大写 → 类型色；
+ * 后面跟 `(` 或前面是 `::` → 方法色；其余一律无色（参数名大多落在这里）。
+ *
  * @param text - the source line.
- * @param lang - language id from {@link ideLangOf}.
+ * @param lang - language id from {@link ideLangOf}; also picks the keyword table.
  * @returns `{ text, cls }` runs; a single plain run when nothing matches.
  */
-function ideTokenize(text, lang) {
-  if (text === '' || IDE_PLAIN_LANGS.has(lang) || text.length > 1200) return [{ text, cls: '' }]
+/**
+ * 括号层级一共几档颜色（超过 10 层回到第 0 档）。
+ *
+ * 颜色不再是「借语法色」：语法色只有 8–9 个且互相撞色（`annotation` 与
+ * `type`/`function` 同色），最多撑到 4 档。现在每套主题显式定义
+ * `--iw-br-0..9` 十个括号色（色相 36° 一档铺满一圈），层级色直接取它。
+ */
+const IDE_BRACKET_LEVELS = 10
+
+/**
+ * 参数名：`类型 名字` 形状、且这段后面紧接 `,` 或 `)`。
+ *
+ * 只在「看起来就是参数表」的位置匹配——段内不能出现 `=`、调用、分号，
+ * 所以 `foo(a, b)` 这种调用不会误判，`String lockKey = …` 也不会。
+ */
+const IDE_PARAM_PAIR = /(?:^|[(,])\s*(?:@[A-Za-z_][\w.]*(?:\([^()]*\))?\s*)*(?:final\s+)?([A-Za-z_$][\w$.]*(?:\s*<[^<>()]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_$][\w$]*)\s*(?=[,)])/g
+
+/** Columns of the parameter names on one line. */
+function ideParamColumns(text) {
+  const columns = new Set()
+  IDE_PARAM_PAIR.lastIndex = 0
+  let match = IDE_PARAM_PAIR.exec(text)
+  while (match !== null) {
+    const name = match[2]
+    // 这一段的起点到名字之间不能出现 `=`/`(`/`;`，否则就不是声明。
+    // 名字在整段里的位置：注解前缀里可能出现同名，所以取最后一次出现。
+    const offset = match[0].lastIndexOf(name)
+    const head = text.slice(0, match.index + offset)
+    const segment = head.slice(Math.max(head.lastIndexOf('('), head.lastIndexOf(','), head.lastIndexOf(';')) + 1)
+    if (!/[=(;]/.test(segment)) columns.add(match.index + offset)
+    match = IDE_PARAM_PAIR.exec(text)
+  }
+  return columns
+}
+
+/**
+ * Split one code line into coloured runs, tracking bracket nesting.
+ *
+ * @param text - the source line.
+ * @param lang - language id; also picks the keyword table.
+ * @param depth - bracket depth at the start of this line (from the previous line).
+ * @returns `{ runs, depth }` — the runs and the depth at the next line.
+ */
+function ideTokenizeTracked(text, lang, depth = 0) {
+  const start = Number.isFinite(depth) ? Math.max(0, depth) : 0
+  if (text === '' || IDE_PLAIN_LANGS.has(lang) || text.length > 1200) {
+    return { runs: [{ text, cls: '', at: 0 }], depth: start }
+  }
+  const keywords = ideKeywordsOf(lang)
   const hashComments = IDE_HASH_COMMENT.has(lang)
+  const level = (value) => `level-${value % IDE_BRACKET_LEVELS}`
+  let nesting = start
   const trimmed = text.trimStart()
   if (trimmed.startsWith('*') || trimmed.startsWith('*/') || trimmed.startsWith('//') || (hashComments && trimmed.startsWith('#'))) {
-    return [{ text, cls: 'iw-com' }]
+    return { runs: [{ text, cls: 'iw-com', at: 0 }], depth: nesting }
   }
-  if (trimmed.startsWith('/*') && trimmed.indexOf('*/') < 0) return [{ text, cls: 'iw-com' }]
+  if (trimmed.startsWith('/*') && trimmed.indexOf('*/') < 0) return { runs: [{ text, cls: 'iw-com', at: 0 }], depth: nesting }
 
   const runs = []
-  const push = (value, cls) => {
+  const push = (value, cls, at) => {
     if (value === '') return
     const last = runs[runs.length - 1]
     if (last !== undefined && last.cls === cls) last.text += value
-    else runs.push({ text: value, cls })
+    else runs.push({ text: value, cls, at })
   }
   let index = 0
   while (index < text.length) {
@@ -5076,44 +5409,251 @@ function ideTokenize(text, lang) {
         if (text[end] === quote) { end += 1; break }
         end += 1
       }
-      push(text.slice(index, end), 'iw-str')
+      push(text.slice(index, end), 'iw-str', index)
       index = end
       continue
     }
     if (quote === '/' && rest[1] === '/') {
-      push(rest, 'iw-com')
+      push(rest, 'iw-com', index)
       break
     }
     if (quote === '@' && /[A-Za-z]/.test(rest[1] ?? '')) {
       const match = /^@[A-Za-z_][\w.]*/.exec(rest)
-      push(match[0], 'iw-ann')
+      push(match[0], 'iw-ann', index)
       index += match[0].length
       continue
     }
     if (hashComments && quote === '#') {
-      push(rest, 'iw-com')
+      push(rest, 'iw-com', index)
       break
     }
     const word = /^[A-Za-z_$][\w$]*/.exec(rest)
     if (word !== null) {
       const value = word[0]
-      if (IDE_KEYWORDS.has(value)) push(value, 'iw-kw')
-      else if (/^[A-Z]/.test(value)) push(value, 'iw-type')
-      else if (text[index + value.length] === '(') push(value, 'iw-fn')
-      else push(value, '')
+      // `A::b` 里的 b 是方法引用：后面没有 `(`，但仍按方法上色，
+      // 否则同一个名字在这里和 `.b(` 那里会两种颜色。
+      const reference = text.slice(Math.max(0, index - 2), index) === '::'
+      // `StringUtils.isBlank(`、`UrlVersionConstant.WEB`：接收者首字母大写 → 大概率是静态成员，
+      // Material 主题把静态成员显示成斜体。
+      const receiver = /(?:^|[^\w$.])([A-Z][\w$]*)\.$/.exec(text.slice(0, index))
+      const statics = receiver === null ? '' : ' iw-static'
+      if (keywords.has(value)) push(value, 'iw-kw', index)
+      // 常量（WEB / UTF_8 / CONTENT_DISPOSITION）：Material 里用数字色，和类型分开。
+      else if (/^[A-Z][A-Z0-9_]{2,}$/.test(value)) push(value, `iw-type iw-const${statics}`, index)
+      else if (/^[A-Z]/.test(value)) push(value, `iw-type${statics}`, index)
+      else if (text[index + value.length] === '(' || reference) push(value, `iw-fn${statics}`, index)
+      else push(value, statics === '' ? '' : 'iw-static', index)
       index += value.length
+      continue
+    }
+    if (quote === '{' || quote === '}' || quote === '(' || quote === ')' || quote === '[' || quote === ']') {
+      // 闭合括号用它那一层的颜色，和开括号对上；其余括号用当前层。
+      const closing = quote === '}' || quote === ')' || quote === ']'
+      const use = closing ? Math.max(0, nesting - 1) : nesting
+      const family = quote === '(' || quote === ')' || quote === '[' || quote === ']' ? 'iw-pa' : 'iw-br'
+      push(quote, `${family} ${level(use)}`, index)
+      nesting = closing ? Math.max(0, nesting - 1) : nesting + 1
+      index += 1
       continue
     }
     const numeric = /^0[xXbB][0-9a-fA-F_]+|^\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?[fFdDlL]?/.exec(rest)
     if (numeric !== null) {
-      push(numeric[0], 'iw-num')
+      push(numeric[0], 'iw-num', index)
       index += numeric[0].length
       continue
     }
-    push(quote, 'iw-punct')
+    push(quote, 'iw-punct', index)
     index += 1
   }
-  return runs
+  // 方法签名里的形参单独一色：和正文里的同名变量区分开。
+  const params = ideParamColumns(text)
+  if (params.size > 0) {
+    for (const run of runs) {
+      if (run.cls === '' && params.has(run.at)) run.cls = 'iw-param'
+    }
+  }
+  return { runs, depth: nesting }
+}
+
+/**
+ * Split one code line into coloured runs (no nesting context).
+ *
+ * @param text - the source line.
+ * @param lang - language id from {@link ideLangOf}.
+ * @param depth - bracket depth at the start of the line, when the caller tracks it.
+ * @returns `{ text, cls }` runs; a single plain run when nothing matches.
+ */
+function ideTokenize(text, lang, depth = 0) {
+  return ideTokenizeTracked(text, lang, depth).runs.map((run) => ({ text: run.text, cls: run.cls }))
+}
+
+/**
+ * 文件内查找：把查询编译成匹配器。
+ *
+ * @param options - `{ query, regex, caseSensitive, whole }`
+ * @returns `(line) => ranges`，或 `undefined`（查询为空 / 正则写错）。
+ */
+function ideFindMatcher(options) {
+  const query = String(options?.query ?? '')
+  if (query === '') return undefined
+  // 不开正则时把查询当纯文本：`.`、`(` 这些不能当元字符。
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const source = options?.regex === true ? query : escaped
+  const whole = options?.whole === true ? `\\b(?:${source})\\b` : source
+  let pattern
+  try {
+    pattern = new RegExp(whole, options?.caseSensitive === true ? 'g' : 'gi')
+  } catch {
+    return undefined
+  }
+  return (line) => {
+    const ranges = []
+    pattern.lastIndex = 0
+    let match = pattern.exec(line)
+    while (match !== null) {
+      // 零宽匹配（`^`、`a*`）不会自己前进，必须手动跳过，否则死循环。
+      if (match[0] === '') {
+        pattern.lastIndex += 1
+        match = pattern.exec(line)
+        continue
+      }
+      ranges.push([match.index, match.index + match[0].length])
+      if (ranges.length >= 500) break
+      match = pattern.exec(line)
+    }
+    return ranges
+  }
+}
+
+/**
+ * Scan every line for the current query.
+ *
+ * @param lines - the file's lines.
+ * @param options - `{ query, regex, caseSensitive, whole }`
+ * @returns `{ invalid, perLine, total }`；`perLine[i]` 是 `{ start, end, order }`，
+ *   `order` 是整份文件里的序号，上下跳转按它走。
+ */
+function ideFindScan(lines, options) {
+  const matcher = ideFindMatcher(options)
+  if (matcher === undefined) {
+    return { invalid: String(options?.query ?? '') !== '', perLine: [], total: 0 }
+  }
+  const perLine = []
+  let total = 0
+  for (const line of lines) {
+    const hits = []
+    for (const [start, end] of matcher(line)) {
+      hits.push({ start, end, order: total })
+      total += 1
+    }
+    perLine.push(hits)
+  }
+  return { invalid: false, perLine, total }
+}
+
+/**
+ * Split tokenizer runs at find-hit boundaries so a hit can be wrapped without
+ * losing its syntax colour.
+ *
+ * @param runs - tokenizer runs, each carrying the column it starts at (`at`).
+ * @param hits - `{ start, end, order }` for this line, ascending.
+ * @returns `{ text, cls, find? }` segments; `find` is the global hit order.
+ */
+function ideFindSegments(runs, hits) {
+  if (!Array.isArray(hits) || hits.length === 0) {
+    return runs.map((run) => ({ text: run.text, cls: run.cls }))
+  }
+  const out = []
+  for (const run of runs) {
+    const at = Number(run.at ?? 0)
+    const end = at + run.text.length
+    let cursor = at
+    for (const hit of hits) {
+      if (hit.end <= cursor || hit.start >= end) continue
+      if (hit.start > cursor) out.push({ text: run.text.slice(cursor - at, hit.start - at), cls: run.cls })
+      const from = Math.max(hit.start, cursor)
+      const to = Math.min(hit.end, end)
+      out.push({ text: run.text.slice(from - at, to - at), cls: run.cls, find: hit.order })
+      cursor = to
+    }
+    if (cursor < end) out.push({ text: run.text.slice(cursor - at), cls: run.cls })
+  }
+  return out
+}
+
+/**
+ * 让同一个形参在**整条方法体里**保持同一种颜色。
+ *
+ * 词法器只能认出签名里的声明；正文里的 `billType` 会被当成普通标识符，于是同一个
+ * 字段在签名里一个色、在正文里另一个色（用户实测反馈）。这里按「签名声明 → 方法体
+ * 作用域」补一遍：进入方法体时记下形参名，遇到同名标识符就标成 `iw-param`。
+ *
+ * @param lines - the file's lines.
+ * @param runsByLine - tokenizer runs per line (each run keeps `at`).
+ * @returns 新的 runsByLine（不改入参）。
+ */
+function ideMarkParamScopes(lines, runsByLine) {
+  const out = runsByLine.map((runs) => runs.map((run) => ({ ...run })))
+  let depth = 0
+  const scopes = []
+  // 签名可能跨行（`String a,` 换行 `String b)` 再接方法体开括号），
+  // 形参名要跨行攒着，等方法体真的开始（深度增加）时再一起登记。
+  // 注意：这个函数里不能出现花括号字面量，grabSource 靠括号配对截取函数体。
+  let pending = new Set()
+  for (let index = 0; index < lines.length; index += 1) {
+    const runs = out[index]
+    const start = depth
+    const scope = scopes[scopes.length - 1]
+    if (scope !== undefined) {
+      for (const run of runs) {
+        if (run.cls === '' && scope.names.has(run.text)) run.cls = 'iw-param'
+      }
+    }
+    const declared = runs.filter((run) => run.cls === 'iw-param').map((run) => run.text)
+    for (const name of declared) pending.add(name)
+    // 只数花括号：开括号 123、闭括号 125。这里刻意不写字符字面量——
+    // harness 的 grabSource 按括号配对截取函数体，字符串里的花括号会让它数错。
+    for (const run of runs) {
+      if (run.cls.startsWith('iw-br') !== true) continue
+      if (run.text.charCodeAt(0) === 125) depth -= 1
+      else depth += 1
+    }
+    if (pending.size > 0 && depth > start) {
+      scopes.push({ depth: start, names: pending })
+      pending = new Set()
+    } else if (pending.size > 0 && runs.some((run) => run.cls === 'iw-punct' && run.text === ';')) {
+      // 抽象/接口方法：只有签名没有方法体，别把名字带进下一个方法。
+      pending = new Set()
+    }
+    while (scopes.length > 0 && depth <= scopes[scopes.length - 1].depth) scopes.pop()
+  }
+  return out
+}
+
+/**
+ * `static` 成员的声明行也标成斜体（Material 主题的静态成员约定）。
+ *
+ * `ClassName.member` 这种访问词法器里就能认出来，但声明行（`private static final
+ * String X = …` / `public static void run(`）要靠这一遍：行里出现 static 就把它
+ * 声明的那个名字标上。
+ *
+ * 注意：函数体里不能写花括号字面量，harness 按括号配对截取源码。
+ */
+function ideMarkStatics(lines, runsByLine) {
+  const out = runsByLine.map((runs) => runs.map((run) => ({ ...run })))
+  const declared = /^\s*(?:(?:public|private|protected)\s+)?static\b[^=(]*?([A-Za-z_]\w*)\s*(?:\(|;|=)/
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = declared.exec(lines[index])
+    if (match === null) continue
+    const name = match[1]
+    for (const run of out[index]) {
+      if (run.text !== name) continue
+      if (run.cls.split(' ').includes('iw-static')) break
+      run.cls = run.cls === '' ? 'iw-static' : `${run.cls} iw-static`
+      break
+    }
+  }
+  return out
 }
 
 /**
@@ -5248,6 +5788,8 @@ function ideCreateStore(refs) {
     tabMenu: null,
     /** The code-gutter context menu, or null: `{ path, x, y }`. */
     codeMenu: null,
+    // 「在文件中查找」的一次性请求：右键菜单写它，代码视图读到就打开查找条并清空。
+    findRequest: null,
     // The symbol last clicked in the code view: `{path, line, symbol}`. The
     // keyboard shortcut for 「复制引用回对话」 has no pointer to read it from, so
     // the click leaves it here instead of keeping it inside the context menu.
@@ -5791,6 +6333,11 @@ function ideCreateStore(refs) {
   /** Hand one reference to the floating card; it appends it to its draft. */
   function setFloatInsert(floatInsert) {
     patch({ floatInsert })
+  }
+
+  /** Ask the source view to open its find bar with `query` (one-shot). */
+  function setFindRequest(findRequest) {
+    patch({ findRequest })
   }
 
   /** Fold the card into its ball, or unfold it. */
@@ -6471,6 +7018,7 @@ function ideCreateStore(refs) {
     setFloatDetached,
     setFloatClosed,
     setFloatInsert,
+    setFindRequest,
     setRoot,
     enterProject,
     layout: () => refs.layout?.current,
@@ -6649,11 +7197,30 @@ const IDE_THEMES = [
   { id: 'dracula', mode: 'dark' },
   { id: 'monokai-pro', mode: 'dark' },
   { id: 'night-owl', mode: 'dark' },
+  { id: 'material-darker', mode: 'dark' },
+  { id: 'material-deep-ocean', mode: 'dark' },
+  { id: 'material-forest', mode: 'dark' },
+  { id: 'material-volcano', mode: 'dark' },
+  { id: 'material-space', mode: 'dark' },
+  { id: 'arc-dark', mode: 'dark' },
+  { id: 'github-dark', mode: 'dark' },
+  { id: 'atom-one-dark', mode: 'dark' },
+  { id: 'solarized-dark', mode: 'dark' },
+  { id: 'moonlight', mode: 'dark' },
+  { id: 'synthwave-84', mode: 'dark' },
+  { id: 'horizon-neo', mode: 'dark' },
+  { id: 'cobalt2', mode: 'dark' },
+  { id: 'shades-of-purple', mode: 'dark' },
+  { id: 'winter-is-coming', mode: 'dark' },
+  { id: 'noctis', mode: 'dark' },
   { id: 'material-light', mode: 'light' },
   { id: 'github-light', mode: 'light' },
   { id: 'atom-one-light', mode: 'light' },
   { id: 'solarized-light', mode: 'light' },
   { id: 'intellij-light', mode: 'light' },
+  { id: 'material-sky-blue', mode: 'light' },
+  { id: 'material-sandy-beach', mode: 'light' },
+  { id: 'horizon-bright', mode: 'light' },
 ]
 
 /**
@@ -7707,7 +8274,10 @@ function ideSymbolOfRun(run) {
     if (!IDE_SYMBOL_RUN.test(simple)) return undefined
     return { name: simple, offset: run.text.length - simple.length }
   }
-  if (run.cls === '' || run.cls === 'iw-fn' || run.cls === 'iw-type') {
+  const classes = String(run.cls ?? '').split(' ')
+  const symbolic = run.cls === '' || classes.includes('iw-fn') || classes.includes('iw-type')
+    || classes.includes('iw-param') || classes.includes('iw-field')
+  if (symbolic) {
     if (!IDE_SYMBOL_RUN.test(run.text)) return undefined
     return { name: run.text, offset: 0 }
   }
@@ -7715,28 +8285,35 @@ function ideSymbolOfRun(run) {
 }
 
 /** One rendered source row. */
-function IdeCodeLine({ index, text, lang, hit, vcs, vision, annotate }) {
-  // Tokenising is the expensive part of a row; it depends on the text alone, so
-  // a highlight change or a notice re-render never repeats it.
-  const runs = useMemo(() => ideTokenize(text, lang), [text, lang])
+function IdeCodeLine({ index, runs, hit, vcs, vision, annotate, hits, current }) {
   let column = 0
-  const rendered = runs.map((run, order) => {
+  const segments = ideFindSegments(runs, hits)
+  const rendered = segments.map((run, order) => {
     const at = column
     column += run.text.length
+    // 命中只加类名与 data，不改 `cls` 本身：符号识别靠原来的类。
+    const marked = run.find === undefined
+      ? run.cls
+      : `${run.cls === '' ? '' : `${run.cls} `}iw-find-hit${run.find === current ? ' current' : ''}`
     const symbol = ideSymbolOfRun(run)
     if (symbol !== undefined) {
       // An identifier (or an annotation's type name): the container's click
       // handler resolves it through LSP.
       return h('span', {
         key: order,
-        className: `${run.cls} iw-sym`,
+        className: `${marked} iw-sym`,
         'data-iw-sym': symbol.name,
         'data-iw-col': at + symbol.offset,
         'data-iw-line': String(index + 1),
+        ...(run.find === undefined ? {} : { 'data-iw-find-order': String(run.find) }),
       }, run.text)
     }
-    if (run.cls === '') return run.text
-    return h('span', { key: order, className: run.cls }, run.text)
+    if (run.cls === '' && run.find === undefined) return run.text
+    return h('span', {
+      key: order,
+      className: marked,
+      ...(run.find === undefined ? {} : { 'data-iw-find-order': String(run.find) }),
+    }, run.text)
   })
   return h('div', {
     key: index,
@@ -8230,6 +8807,114 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   // first measurement could leave the rest of the file unrendered — the scroll
   // container is the browser's own, and a few thousand rows are cheap enough.
   const lines = useMemo(() => (tab.text === '' ? [] : tab.text.split('\n')), [tab.text])
+
+  // ---- 文件内查找（⌘F）：输入、正则/大小写/整词三个开关、命中序号 ----
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findRegex, setFindRegex] = useState(false)
+  const [findCase, setFindCase] = useState(false)
+  const [findWhole, setFindWhole] = useState(false)
+  const [findIndex, setFindIndex] = useState(0)
+  const findInputRef = useRef(null)
+  // 分词只跑一遍：括号层级要跨行累计，所以整份文件一起折，行组件拿现成的 runs。
+  // 注意：**所有 hook 必须在「空文件/加载中」那次提前 return 之前**，否则加载态和
+  // 就绪态里 hook 数量不一致，React 直接抛 #310（整个面板崩掉、看起来像「进不去」）。
+  // 这里用 `tab.text` 直接算语言，不依赖下面才声明的 `lang`。
+  const runsByLine = useMemo(() => {
+    const out = []
+    let depth = 0
+    const language = ideLangOf(tab.name)
+    for (const text of lines) {
+      const tracked = ideTokenizeTracked(text, language, depth)
+      out.push(tracked.runs)
+      depth = tracked.depth
+    }
+    return out
+  }, [lines, tab.name])
+
+  // 形参在签名与正文里要同色：分词只认签名，这里按方法体作用域补齐。
+  // 同样是 hook，必须留在「空文件/加载中」那次提前 return 之前。
+  const markedRuns = useMemo(() => ideMarkStatics(lines, ideMarkParamScopes(lines, runsByLine)), [lines, runsByLine])
+
+  const scan = useMemo(() => {
+    if (!findOpen) return { invalid: false, perLine: [], total: 0 }
+    return ideFindScan(lines, {
+      query: findQuery,
+      regex: findRegex,
+      caseSensitive: findCase,
+      whole: findWhole,
+    })
+  }, [lines, findOpen, findQuery, findRegex, findCase, findWhole])
+
+  // 改查询或开关就回到第一个命中，和 IDEA 一致。
+  useEffect(() => {
+    setFindIndex(0)
+  }, [findQuery, findRegex, findCase, findWhole])
+
+  // 右键菜单「在文件中查找」：读一次性请求，打开查找条并带上选中文本。
+  useEffect(() => {
+    const read = () => {
+      const request = store.getState().findRequest
+      if (request === null || request === undefined) return
+      store.setFindRequest(null)
+      setFindOpen(true)
+      setFindQuery(String(request.query ?? ''))
+      globalThis.requestAnimationFrame?.(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
+    }
+    read()
+    return store.subscribe(read)
+  }, [store])
+
+  // 查找条开着时 Esc 一定要能关掉——焦点可能已经从输入框跑到 ↑/↓ 按钮上了。
+  useEffect(() => {
+    if (!findOpen) return undefined
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setFindOpen(false)
+      setFindQuery('')
+    }
+    globalThis.addEventListener('keydown', onKey, true)
+    return () => globalThis.removeEventListener('keydown', onKey, true)
+  }, [findOpen])
+
+  // 当前命中滚进视野（切换标签页后元素会被换掉，所以跟着 scan 一起重跑）。
+  useEffect(() => {
+    if (!findOpen || scan.total === 0) return
+    const host = scrollRef.current
+    const node = host === null || host === undefined
+      ? null
+      : host.querySelector(`[data-iw-find-order="${findIndex}"]`)
+    if (node !== null && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'center' })
+  }, [findOpen, scan, findIndex])
+
+  const findStep = (delta) => {
+    if (scan.total === 0) return
+    setFindIndex((value) => (value + delta + scan.total) % scan.total)
+  }
+
+  // 快捷键走登记处，用户改键后即时生效（和文件树筛选同一条路子）。
+  const findCommand = IDE_SHORTCUTS.find((entry) => entry.action === 'find-in-file')
+  useEffect(() => {
+    const onKey = (event) => {
+      const stored = store.getState().shortcutBindings?.[findCommand?.id]
+      const binding = stored ?? (findCommand === undefined
+        ? { code: 'KeyF', modifiers: ['primary'] }
+        : ideShortcutDefault(findCommand, ideRuntimeContext.runtime))
+      if (!ideBindingMatches(binding, event, ideRuntimeContext.platform)) return
+      event.preventDefault()
+      setFindOpen(true)
+      globalThis.requestAnimationFrame?.(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
+    }
+    globalThis.addEventListener('keydown', onKey)
+    return () => globalThis.removeEventListener('keydown', onKey)
+  }, [store, findCommand])
   const columns = useMemo(() => ideColumnsOf(lines), [lines])
   const changeKinds = useMemo(() => ideChangeKinds(tab.changes, lines.length), [tab.changes, lines.length])
   // Code Vision rows for this file version; a stamp re-renders the view when a
@@ -8936,7 +9621,9 @@ function IdeCodeView({ tab, tr, store, navigate }) {
   const rendered = lines.map((text, index) => h(IdeCodeLine, {
     key: index,
     index,
-    text,
+    runs: markedRuns[index],
+    hits: scan.perLine[index] ?? [],
+    current: findIndex,
     lang,
     hit: index === hitIndex,
     vcs: changeKinds.get(index),
@@ -9021,11 +9708,32 @@ function IdeCodeView({ tab, tr, store, navigate }) {
           })
           return
         }
+        // 源码上右键：有选中文本时给「在文件中查找」，没选中就留给平台菜单。
+        const selection = String(globalThis.getSelection?.() ?? '').trim()
+        if (selection !== '') {
+          event.preventDefault()
+          store.setCodeMenu({
+            path: tab.path,
+            x: event.clientX,
+            y: event.clientY,
+            selection: selection.slice(0, 200),
+            source: 'source',
+          })
+        }
         return
       }
       if (tab.kind === 'jar') return
       event.preventDefault()
-      store.setCodeMenu({ path: tab.path, x: event.clientX, y: event.clientY })
+      // 右键那一刻的选中文本随菜单一起带上：菜单点开后再读选区就没有了。
+      const selection = typeof globalThis.getSelection === 'function'
+        ? String(globalThis.getSelection() ?? '').trim()
+        : ''
+      store.setCodeMenu({
+        path: tab.path,
+        x: event.clientX,
+        y: event.clientY,
+        selection: selection.slice(0, 200),
+      })
     },
     onKeyDown: (event) => {
       if (event.key === 'Escape') closePopup()
@@ -9069,7 +9777,114 @@ function IdeCodeView({ tab, tr, store, navigate }) {
       className: 'iw-md-body',
     }, h(IdeFloatMarkdown, { text: tab.text, tr })))
     : null
-  return h(React.Fragment, null, [markdownBar, markdownView === null ? code : markdownView, popupView])
+  const findBar = findOpen && markdownView === null && tab.status === 'ready'
+    ? h(IdeFindBar, {
+      key: 'find',
+      tr,
+      inputRef: findInputRef,
+      query: findQuery,
+      regex: findRegex,
+      caseSensitive: findCase,
+      whole: findWhole,
+      invalid: scan.invalid,
+      total: scan.total,
+      index: findIndex,
+      onChange: setFindQuery,
+      onToggle: (name) => {
+        if (name === 'regex') setFindRegex((value) => !value)
+        if (name === 'case') setFindCase((value) => !value)
+        if (name === 'whole') setFindWhole((value) => !value)
+      },
+      onNext: () => findStep(1),
+      onPrev: () => findStep(-1),
+      onClose: () => {
+        setFindOpen(false)
+        setFindQuery('')
+      },
+    })
+    : null
+  const body = findBar === null
+    ? code
+    : h('div', { key: 'codeview', className: 'iw-code-view' }, [code, findBar])
+  return h(React.Fragment, null, [markdownBar, markdownView === null ? body : markdownView, popupView])
+}
+
+/**
+ * 文件内查找条（IDEA 的 Find in File）：查询框 + `.*` / `Aa` / `W` 开关 + 命中计数
+ * + 上下跳转 + 关闭。回车下一个、Shift+回车上一个、Esc 关闭。
+ */
+function IdeFindBar(props) {
+  const tr = props.tr
+  const toggle = (name, on, label) => h('button', {
+    key: name,
+    type: 'button',
+    className: `iw-find-tool${on ? ' on' : ''}`,
+    title: label,
+    'aria-pressed': on ? 'true' : 'false',
+    onClick: () => props.onToggle(name),
+  }, name === 'regex' ? '.*' : name === 'case' ? 'Aa' : 'W')
+  const count = props.invalid
+    ? tr('findInvalid')
+    : props.total === 0
+      ? tr('findNothing')
+      : `${props.index + 1}/${props.total}`
+  return h('div', {
+    key: 'bar',
+    className: `iw-find-bar${props.invalid ? ' invalid' : ''}`,
+    role: 'search',
+  }, [
+    h('input', {
+      key: 'input',
+      ref: props.inputRef,
+      className: 'iw-find-input',
+      type: 'text',
+      value: props.query,
+      placeholder: tr('findPlaceholder'),
+      spellCheck: false,
+      autoFocus: true,
+      onChange: (event) => props.onChange(event.target.value),
+      onKeyDown: (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          props.onClose()
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          if (event.shiftKey) props.onPrev()
+          else props.onNext()
+        }
+      },
+    }),
+    toggle('regex', props.regex, tr('findRegex')),
+    toggle('case', props.caseSensitive, tr('findCase')),
+    toggle('whole', props.whole, tr('findWhole')),
+    h('span', { key: 'count', className: 'iw-find-count' }, count),
+    h('button', {
+      key: 'prev',
+      type: 'button',
+      className: 'iw-find-tool',
+      title: tr('findPrev'),
+      'aria-label': tr('findPrev'),
+      onClick: () => props.onPrev(),
+    }, '↑'),
+    h('button', {
+      key: 'next',
+      type: 'button',
+      className: 'iw-find-tool',
+      title: tr('findNext'),
+      'aria-label': tr('findNext'),
+      onClick: () => props.onNext(),
+    }, '↓'),
+    h('button', {
+      key: 'close',
+      type: 'button',
+      className: 'iw-find-tool',
+      title: tr('close'),
+      'aria-label': tr('close'),
+      onClick: () => props.onClose(),
+    }, '×'),
+  ])
 }
 
 /** The bottom status bar. */
@@ -10318,6 +11133,12 @@ function IdeSymbolMenu({ store, state, tr, copy, onReferenceToChat }) {
   const lineSuffix = `${anchor}${symbolName === '' ? '' : ` ${symbolName}`}`
   const items = [
     { key: 'name', icon: IdeCopyIcon, label: tr('symbolMenuCopyName'), run: run(() => copy(name)) },
+    {
+      key: 'find',
+      icon: IdeSearchIcon,
+      label: tr('menuFind'),
+      run: run(() => store.setFindRequest({ query: String(name) })),
+    },
   ]
   if (menu.jar !== true) {
     items.push({ key: 'ref', icon: IdeLinkIcon, label: tr('symbolMenuCopyReference'), run: run(() => copy(`${mention}${lineSuffix}`)) })
@@ -10390,14 +11211,29 @@ function IdeGutterMenu({ store, state, tr }) {
     store.setCodeMenu(null)
     action()
   }
-  const items = [
-    {
-      key: 'annotate',
-      icon: IdeClockIcon,
-      label: on ? tr('gutterMenuUnannotate') : tr('gutterMenuAnnotate'),
-      run: () => store.toggleAnnotate(path),
-    },
-  ]
+  const selection = String(menu.selection ?? '')
+  // 从源码上右键进来（有选中文本）只给查找；从行号/Git 条进来才带注解开关。
+  const items = menu.source === 'source'
+    ? [{
+      key: 'find',
+      icon: IdeSearchIcon,
+      label: tr('menuFind'),
+      run: () => store.setFindRequest({ query: selection }),
+    }]
+    : [
+      {
+        key: 'annotate',
+        icon: IdeClockIcon,
+        label: on ? tr('gutterMenuUnannotate') : tr('gutterMenuAnnotate'),
+        run: () => store.toggleAnnotate(path),
+      },
+      {
+        key: 'find',
+        icon: IdeSearchIcon,
+        label: tr('menuFind'),
+        run: () => store.setFindRequest({ query: selection }),
+      },
+    ]
   return h(React.Fragment, null, [
     h(IdeStyles, { key: 'style' }),
     h('div', {
@@ -16487,12 +17323,20 @@ function IdeFloatCodeBlock({ code, lang, tr }) {
     h('pre', {
       key: 'pre',
       className: `iw-float-md-pre${wrap ? ' iw-float-md-wrapped' : ''}`,
-    }, lines.map((line, lineIndex) => h('div', {
-      key: lineIndex,
-      className: 'iw-float-md-line',
-    }, ideTokenize(line, language).map((run, runIndex) => (run.cls === ''
-      ? run.text
-      : h('span', { key: runIndex, className: run.cls }, run.text)))))),
+    }, (() => {
+      // 代码块也按行累计括号层级，和代码工作区里看到的一致。
+      let depth = 0
+      return lines.map((line, lineIndex) => {
+        const tracked = ideTokenizeTracked(line, language, depth)
+        depth = tracked.depth
+        return h('div', {
+          key: lineIndex,
+          className: 'iw-float-md-line',
+        }, tracked.runs.map((run, runIndex) => (run.cls === ''
+          ? run.text
+          : h('span', { key: runIndex, className: run.cls }, run.text))))
+      })
+    })()),
   ])
 }
 

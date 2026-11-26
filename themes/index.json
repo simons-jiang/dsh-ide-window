@@ -20,6 +20,70 @@
     "mode": "dark"
   },
   {
+    "id": "material-darker",
+    "mode": "dark"
+  },
+  {
+    "id": "material-deep-ocean",
+    "mode": "dark"
+  },
+  {
+    "id": "material-forest",
+    "mode": "dark"
+  },
+  {
+    "id": "material-volcano",
+    "mode": "dark"
+  },
+  {
+    "id": "material-space",
+    "mode": "dark"
+  },
+  {
+    "id": "arc-dark",
+    "mode": "dark"
+  },
+  {
+    "id": "github-dark",
+    "mode": "dark"
+  },
+  {
+    "id": "atom-one-dark",
+    "mode": "dark"
+  },
+  {
+    "id": "solarized-dark",
+    "mode": "dark"
+  },
+  {
+    "id": "moonlight",
+    "mode": "dark"
+  },
+  {
+    "id": "synthwave-84",
+    "mode": "dark"
+  },
+  {
+    "id": "horizon-neo",
+    "mode": "dark"
+  },
+  {
+    "id": "cobalt2",
+    "mode": "dark"
+  },
+  {
+    "id": "shades-of-purple",
+    "mode": "dark"
+  },
+  {
+    "id": "winter-is-coming",
+    "mode": "dark"
+  },
+  {
+    "id": "noctis",
+    "mode": "dark"
+  },
+  {
     "id": "material-light",
     "mode": "light"
   },
@@ -37,6 +101,18 @@
   },
   {
     "id": "intellij-light",
+    "mode": "light"
+  },
+  {
+    "id": "material-sky-blue",
+    "mode": "light"
+  },
+  {
+    "id": "material-sandy-beach",
+    "mode": "light"
+  },
+  {
+    "id": "horizon-bright",
     "mode": "light"
   }
 ]

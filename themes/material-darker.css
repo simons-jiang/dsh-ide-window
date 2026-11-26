@@ -1,0 +1,56 @@
+/**
+ * material-darker (dark) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "Material Darker" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="material-darker"] {
+  --dsw-alias-bg-base: #212121;
+  --dsw-alias-bg-layer-1: #2c2c2c;
+  --dsw-alias-bg-layer-2: #353535;
+  --dsw-alias-bg-layer-3: #404040;
+  --dsw-alias-bg-overlay: #1a1a1a;
+  --dsw-specific-sidebar-fill: #2c2c2c;
+  --dsw-specific-menu: #353535;
+  --dsw-alias-card-fill: #353535;
+  --dsw-alias-card-fill-hover: #404040;
+  --dsw-alias-card-tile-fill: #353535;
+  --dsw-alias-label-primary: #B0BEC5;
+  --dsw-alias-label-secondary: #949ca0;
+  --dsw-alias-label-tertiary: #727272;
+  --dsw-alias-border-l1: #353535;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #404040;
+  --dsw-alias-border-l3: #626668;
+  --dsw-alias-border: #353535;
+  --dsw-alias-brand-primary: #FF9800;
+  --dsw-alias-interactive-bg-hover: #404040;
+  --dsw-alias-state-success-primary: #c3e88d;
+  --dsw-alias-state-warning-primary: #ffcb6b;
+  --dsw-alias-state-error-primary: #f07178;
+  --dsw-alias-state-business-primary: #82aaff;
+  --dsw-alias-state-idle-primary: #727272;
+  --dsw-focus-ring-color: #82aaff;
+  --iw-changes-fill: #82aaff;
+  --iw-changes-hover: #aec8ff;
+  --iw-syn-keyword: #c792ea;
+  --iw-syn-string: #c3e88d;
+  --iw-syn-number: #f78c6c;
+  --iw-syn-comment: #616161;
+  --iw-syn-annotation: #82aaff;
+  --iw-syn-type: #ffcb6b;
+  --iw-syn-function: #82aaff;
+  --iw-syn-punct: #89ddff;
+  --iw-syn-param: #f78c6c;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

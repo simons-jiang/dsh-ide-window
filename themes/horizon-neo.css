@@ -1,0 +1,55 @@
+/**
+ * horizon-neo (dark) — a palette for the code workspace.
+ *
+ * Generated from Horizon (jolaleye/horizon-theme-vscode) → Horizon Neo, see tools/gen-*.mjs. Only DSH alias tokens are
+ * overridden, scoped to the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="horizon-neo"] {
+  --dsw-alias-bg-base: #1c1e26;
+  --dsw-alias-bg-layer-1: #272931;
+  --dsw-alias-bg-layer-2: #30323a;
+  --dsw-alias-bg-layer-3: #3c3e44;
+  --dsw-alias-bg-overlay: #16181e;
+  --dsw-specific-sidebar-fill: #272931;
+  --dsw-specific-menu: #30323a;
+  --dsw-alias-card-fill: #30323a;
+  --dsw-alias-card-fill-hover: #3c3e44;
+  --dsw-alias-card-tile-fill: #30323a;
+  --dsw-alias-label-primary: #d5d8da;
+  --dsw-alias-label-secondary: #d5d8da;
+  --dsw-alias-label-tertiary: #d5d8da;
+  --dsw-alias-border-l1: #30323a;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #3c3e44;
+  --dsw-alias-border-l3: #6a6c71;
+  --dsw-alias-border: #30323a;
+  --dsw-alias-brand-primary: #1a1c23;
+  --dsw-alias-interactive-bg-hover: #35373d;
+  --dsw-alias-state-success-primary: #27d797;
+  --dsw-alias-state-warning-primary: #fab38e;
+  --dsw-alias-state-error-primary: #f43e5c;
+  --dsw-alias-state-business-primary: #1a1c23;
+  --dsw-alias-state-idle-primary: #d5d8da;
+  --dsw-focus-ring-color: #1a1c23;
+  --iw-changes-fill: #1a1c23;
+  --iw-changes-hover: #6a6b70;
+  --iw-syn-keyword: #b877db;
+  --iw-syn-string: #fab795;
+  --iw-syn-number: #d5d8da;
+  --iw-syn-comment: #bbbbbb;
+  --iw-syn-annotation: #25b0bc;
+  --iw-syn-type: #fac29a;
+  --iw-syn-function: #25b0bc;
+  --iw-syn-punct: #bbbbbb;
+  --iw-syn-param: #d5d8da;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

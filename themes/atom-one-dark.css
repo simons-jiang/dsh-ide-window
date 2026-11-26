@@ -1,0 +1,56 @@
+/**
+ * atom-one-dark (dark) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "Atom One Dark" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="atom-one-dark"] {
+  --dsw-alias-bg-base: #282C34;
+  --dsw-alias-bg-layer-1: #33373e;
+  --dsw-alias-bg-layer-2: #3b3f46;
+  --dsw-alias-bg-layer-3: #464a50;
+  --dsw-alias-bg-overlay: #20232a;
+  --dsw-specific-sidebar-fill: #33373e;
+  --dsw-specific-menu: #3b3f46;
+  --dsw-alias-card-fill: #3b3f46;
+  --dsw-alias-card-fill-hover: #464a50;
+  --dsw-alias-card-tile-fill: #3b3f46;
+  --dsw-alias-label-primary: #979FAD;
+  --dsw-alias-label-secondary: #979fad;
+  --dsw-alias-label-tertiary: #979FAD;
+  --dsw-alias-border-l1: #3b3f46;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #464a50;
+  --dsw-alias-border-l3: #5e646c;
+  --dsw-alias-border: #3b3f46;
+  --dsw-alias-brand-primary: #2979ff;
+  --dsw-alias-interactive-bg-hover: #4D515D;
+  --dsw-alias-state-success-primary: #98C379;
+  --dsw-alias-state-warning-primary: #E5C17C;
+  --dsw-alias-state-error-primary: #e06c75;
+  --dsw-alias-state-business-primary: #61AEEF;
+  --dsw-alias-state-idle-primary: #979FAD;
+  --dsw-focus-ring-color: #61AEEF;
+  --iw-changes-fill: #61AEEF;
+  --iw-changes-hover: #98caf5;
+  --iw-syn-keyword: #c679dd;
+  --iw-syn-string: #98c379;
+  --iw-syn-number: #d19a66;
+  --iw-syn-comment: #59626f;
+  --iw-syn-annotation: #61aeef;
+  --iw-syn-type: #e5c17c;
+  --iw-syn-function: #61aeef;
+  --iw-syn-punct: #a6b2c0;
+  --iw-syn-param: #d19a66;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

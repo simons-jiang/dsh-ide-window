@@ -1,0 +1,56 @@
+/**
+ * synthwave-84 (dark) — a palette for the code workspace.
+ *
+ * Generated from Material Theme UI's "SynthWave '84" (themes/regular + colors), see
+ * tools/gen-material-themes.mjs. Only DSH alias tokens are overridden, scoped to
+ * the panel, so every `.iw-*` rule picks the palette up.
+ */
+[data-dsh-theme="synthwave-84"] {
+  --dsw-alias-bg-base: #2a2139;
+  --dsw-alias-bg-layer-1: #352c43;
+  --dsw-alias-bg-layer-2: #3d354b;
+  --dsw-alias-bg-layer-3: #484055;
+  --dsw-alias-bg-overlay: #221a2e;
+  --dsw-specific-sidebar-fill: #352c43;
+  --dsw-specific-menu: #3d354b;
+  --dsw-alias-card-fill: #3d354b;
+  --dsw-alias-card-fill-hover: #484055;
+  --dsw-alias-card-tile-fill: #3d354b;
+  --dsw-alias-label-primary: #ffffff;
+  --dsw-alias-label-secondary: #d1d1d1;
+  --dsw-alias-label-tertiary: #999999;
+  --dsw-alias-border-l1: #3d354b;
+  --dsw-alias-markdown-inline-code: var(--dsw-alias-bg-layer-3);
+  --dsw-alias-border-l2: #484055;
+  --dsw-alias-border-l3: #7f7988;
+  --dsw-alias-border: #3d354b;
+  --dsw-alias-brand-primary: #f92aad;
+  --dsw-alias-interactive-bg-hover: #463465;
+  --dsw-alias-state-success-primary: #ff8b39;
+  --dsw-alias-state-warning-primary: #fede5d;
+  --dsw-alias-state-error-primary: #72f1b8;
+  --dsw-alias-state-business-primary: #36f9f6;
+  --dsw-alias-state-idle-primary: #999999;
+  --dsw-focus-ring-color: #36f9f6;
+  --iw-changes-fill: #36f9f6;
+  --iw-changes-hover: #7cfbf9;
+  --iw-syn-keyword: undefined;
+  --iw-syn-string: undefined;
+  --iw-syn-number: undefined;
+  --iw-syn-comment: undefined;
+  --iw-syn-annotation: undefined;
+  --iw-syn-type: #ffffff;
+  --iw-syn-function: undefined;
+  --iw-syn-punct: #848bbd;
+  --iw-syn-param: undefined;
+  --iw-br-0: #e87373;
+  --iw-br-1: #e8b973;
+  --iw-br-2: #d1e873;
+  --iw-br-3: #8ae873;
+  --iw-br-4: #73e8a2;
+  --iw-br-5: #73e8e8;
+  --iw-br-6: #73a2e8;
+  --iw-br-7: #8a73e8;
+  --iw-br-8: #d173e8;
+  --iw-br-9: #e873b9;
+}

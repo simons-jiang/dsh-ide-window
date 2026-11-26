@@ -1954,12 +1954,20 @@ function IdeFloatCodeBlock({ code, lang, tr }) {
     h('pre', {
       key: 'pre',
       className: `iw-float-md-pre${wrap ? ' iw-float-md-wrapped' : ''}`,
-    }, lines.map((line, lineIndex) => h('div', {
-      key: lineIndex,
-      className: 'iw-float-md-line',
-    }, ideTokenize(line, language).map((run, runIndex) => (run.cls === ''
-      ? run.text
-      : h('span', { key: runIndex, className: run.cls }, run.text)))))),
+    }, (() => {
+      // 代码块也按行累计括号层级，和代码工作区里看到的一致。
+      let depth = 0
+      return lines.map((line, lineIndex) => {
+        const tracked = ideTokenizeTracked(line, language, depth)
+        depth = tracked.depth
+        return h('div', {
+          key: lineIndex,
+          className: 'iw-float-md-line',
+        }, tracked.runs.map((run, runIndex) => (run.cls === ''
+          ? run.text
+          : h('span', { key: runIndex, className: run.cls }, run.text))))
+      })
+    })()),
   ])
 }
 
