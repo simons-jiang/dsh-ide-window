@@ -628,6 +628,16 @@ html.iw-select-code .iw-code .iw-vision {
   font-size: 11px;
   white-space: nowrap;
 }
+/* A branch that stopped because the caller is already on this path. */
+.iw-chain-recursive {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(240, 178, 107, 0.16);
+  color: #f0b26b;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
 .iw-pop-section-head {
   position: sticky;
   top: -4px;

@@ -464,5 +464,7 @@
   "settingsFloatEvents": "显示详细过程",
   "settingsFloatEventsHint": "把思考、上下文注入、工具参数与系统事件全部列出来；关闭时只显示最新一条状态",
   "floatWrap": "自动换行",
-  "floatLiveAnalyze": "正在分析请求"
+  "floatLiveAnalyze": "正在分析请求",
+  "chainRecursive": "递归",
+  "chainTruncated": "还有调用方未展开（已达展开上限）"
 }

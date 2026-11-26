@@ -342,6 +342,12 @@ window.__ModuleLoader__.load({
     "floatExpand": "Expand assistant",
     "floatEmpty": "Ask something; the answer lands in this session",
     "floatLoadingOlder": "Loading earlier messages…",
+    "floatPullOlder": "Keep pulling for earlier messages",
+    "floatPullArmed": "Loading…",
+    "floatStartReached": "No messages left to load",
+    "floatRowsTrimmed": "The card keeps recent messages only; open the conversation for older ones",
+    "floatLoadOlder": "↑ Keep scrolling up for earlier messages",
+    "floatLoadOlderHint": "Pull past the top, or click here",
     "floatNoSession": "No session bound yet",
     "floatNoWorkspace": "no workspace",
     "floatPlaceholder": "Message or create a task, / for commands, @ for files or chats",
@@ -465,6 +471,8 @@ window.__ModuleLoader__.load({
     "settingsFloatEventsHint": "List reasoning, context, Tool arguments and system events; off shows only the latest status line",
     "floatWrap": "Wrap lines",
     "floatLiveAnalyze": "Analyzing the request",
+    "chainRecursive": "recursive",
+    "chainTruncated": "More callers exist (display limit reached)",
   }
   const IDE_TEXT_ZH = {
     "floatCommandNoEditor": "对话框还没就绪，稍后再试",
@@ -800,6 +808,12 @@ window.__ModuleLoader__.load({
     "floatExpand": "展开助手",
     "floatEmpty": "问点什么，回答会出现在当前会话里",
     "floatLoadingOlder": "正在加载更早的消息…",
+    "floatPullOlder": "上滑加载更早",
+    "floatPullArmed": "即将加载…",
+    "floatStartReached": "没有更多可加载的消息了",
+    "floatRowsTrimmed": "卡片只显示最近的消息，更早的请在对话里查看",
+    "floatLoadOlder": "↑ 继续上滑加载更早",
+    "floatLoadOlderHint": "滚到顶后继续上滑，或点这里",
     "floatNoSession": "还没有绑定会话",
     "floatNoWorkspace": "未选择工作区",
     "floatPlaceholder": "发消息或创建任务，/ 调用指令，@ 文件或对话",
@@ -923,6 +937,8 @@ window.__ModuleLoader__.load({
     "settingsFloatEventsHint": "把思考、上下文注入、工具参数与系统事件全部列出来；关闭时只显示最新一条状态",
     "floatWrap": "自动换行",
     "floatLiveAnalyze": "正在分析请求",
+    "chainRecursive": "递归",
+    "chainTruncated": "还有调用方未展开（已达展开上限）",
   }
 
 // ---- 00-css.js -----------------------------------------------------------
@@ -1554,6 +1570,16 @@ html.iw-select-code .iw-code .iw-vision {
   margin-left: 2px;
   color: var(--dsw-alias-label-tertiary, #6f7783);
   font-size: 11px;
+  white-space: nowrap;
+}
+/* A branch that stopped because the caller is already on this path. */
+.iw-chain-recursive {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(240, 178, 107, 0.16);
+  color: #f0b26b;
+  font-size: 10.5px;
   white-space: nowrap;
 }
 .iw-pop-section-head {
@@ -2715,6 +2741,31 @@ html.iw-select-code .iw-code .iw-vision {
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary, #81858c);
 }
+/* 已经到顶还继续上滑：内容被拉下来一段（回弹），到阈值自动加载更早一页。 */
+.iw-float-puller {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  padding-bottom: 4px;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font-size: 12.5px;
+  line-height: 16px;
+  /* 高度跟着滚轮实时走，不加 transition——否则每来一个 wheel 事件都会重启过渡，
+     看着像「拉不动」。 */
+}
+.iw-float-puller.armed { color: var(--dsw-alias-brand-primary, #4f7cf7); }
+/* 还有更早历史时常驻的一行提示；点一下也能加载（手势之外的口子）。 */
+.iw-float-older-hint {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  text-align: center;
+}
+.iw-float-older-hint:hover { color: var(--dsw-alias-brand-primary, #4f7cf7); }
 .iw-float-title-btn:hover { background: var(--dsw-alias-card-fill-hover, rgba(255, 255, 255, 0.08)); }
 /* A model row must be clickable across its whole width, not just on the text. */
 .iw-float-menu-item {
@@ -11651,10 +11702,14 @@ async function ideLspHoverText(store, tabPath, position) {
  * resolving each call site to the method that contains it — is what produces the
  * chain from an entry point down to the clicked method. Every node carries the
  * location of its declaration, so a click in the popup is an ordinary jump.
+ *
+ * The walk has no depth limit: it keeps climbing level by level until a level
+ * finds no caller at all. A branch stops early only for recursion — a caller
+ * that already sits on the same path — so "the chain ends here" means the
+ * entry point really was reached. The two limits below bound rows, not hops.
  */
 
-const IDE_CHAIN_DEPTH = 3
-const IDE_CHAIN_NODES = 40
+const IDE_CHAIN_NODES = 160
 const IDE_CHAIN_CHILDREN = 6
 
 /** The last declaration strictly above `line` (1-based) in one file. */
@@ -11734,6 +11789,85 @@ function ideChainDeclaresAt(lines, line) {
 }
 
 /**
+ * Index of the `(` that opens `name(...)` on one line, or `-1`.
+ *
+ * `indexOf(name)` alone is not enough: the receiver may contain the name
+ * (`generateService.generate(`) and a name that is a prefix of another
+ * identifier would point at the wrong place.
+ */
+function ideChainParenAt(text, name) {
+  const line = String(text ?? '')
+  let from = 0
+  while (from < line.length) {
+    const at = line.indexOf(name, from)
+    if (at < 0) return -1
+    const before = at === 0 ? '' : line[at - 1]
+    const rest = line.slice(at + name.length)
+    const indent = rest.length - rest.trimStart().length
+    if (!/[\w$]/.test(before) && rest[indent] === '(') return at + name.length + indent
+    from = at + name.length
+  }
+  return -1
+}
+
+/**
+ * How many arguments (or parameters) sit inside the `(...)` that starts at
+ * `line`/`column`.
+ *
+ * `-1` means "could not read it with confidence" — the list never closes inside
+ * a 200-line window, or it holds a comma whose nesting is ambiguous (`<>`,
+ * `{}`, a comment). Callers must treat that as unknown, never as zero: the
+ * count is what tells overloads apart, and a wrong number would drop a real
+ * call edge.
+ */
+function ideChainArity(lines, line, column) {
+  let depth = 0
+  let commas = 0
+  let content = false
+  let started = false
+  for (let index = Math.max(0, line); index < lines.length && index <= line + 200; index += 1) {
+    const text = String(lines[index] ?? '')
+    for (let at = index === line ? Math.max(0, column) : 0; at < text.length; at += 1) {
+      const char = text[at]
+      if (char === '"' || char === "'") {
+        const quote = char
+        at += 1
+        while (at < text.length && text[at] !== quote) {
+          if (text[at] === '\\') at += 1
+          at += 1
+        }
+        if (started && depth === 1) content = true
+        continue
+      }
+      if (char === '/' && (text[at + 1] === '/' || text[at + 1] === '*')) return -1
+      if (char === '<' || char === '>' || char === '{' || char === '}') {
+        if (started) return -1
+        continue
+      }
+      if (char === '(') {
+        depth += 1
+        started = true
+        continue
+      }
+      if (char === ')') {
+        if (depth === 0) return -1
+        depth -= 1
+        if (depth === 0 && started) return content ? commas + 1 : 0
+        continue
+      }
+      if (!started || depth !== 1) continue
+      if (char === ',') {
+        commas += 1
+        content = true
+        continue
+      }
+      if (char !== ' ' && char !== '\t') content = true
+    }
+  }
+  return -1
+}
+
+/**
  * Turn the caller tree into the tree the popup shows.
  *
  * The caller tree points down at callers; people read a chain the other way —
@@ -11758,6 +11892,7 @@ function ideChainInverted(tree) {
     line: node.line,
     callSite: node.callSite,
     focus: node.focus === true,
+    recursive: node.recursive === true,
     children: parentOf.has(node) ? [build(parentOf.get(node))] : [],
   })
   return leaves.map(build)
@@ -11779,7 +11914,16 @@ function ideChainCount(node) {
  * @returns the tree, filled in.
  */
 async function ideCallChain(store, root, options = {}) {
-  const tree = { ...root, focus: true, children: [] }
+  // Which declarations already sit on the path from the clicked method to this
+  // node. Recursion is the only natural stop, and it has to be per path: a
+  // method reached through two routes is drawn on both.
+  const tree = {
+    ...root,
+    focus: true,
+    children: [],
+    chainKeys: new Set([`${root.path}:${root.line}`]),
+    childKeys: new Set(),
+  }
   const files = new Map()
   const linesOf = (path) => {
     let pending = files.get(path)
@@ -11788,6 +11932,34 @@ async function ideCallChain(store, root, options = {}) {
       files.set(path, pending)
     }
     return pending
+  }
+  const declarationsByFile = new Map()
+  const declarationsOf = (path) => {
+    let pending = declarationsByFile.get(path)
+    if (pending === undefined) {
+      pending = linesOf(path).then((lines) => ideDeclarations(lines, 0, lines.length))
+      declarationsByFile.set(path, pending)
+    }
+    return pending
+  }
+  /**
+   * Whether a call site belongs to a different declaration of the same name.
+   *
+   * `findReferences` may answer with the whole overload group, and the text
+   * fallback cannot tell two overloads apart at all — both hand a 4-argument
+   * call to the 5-parameter method. Arity is the one thing a call site states
+   * about itself, so it decides; when either side cannot be read the call is
+   * kept, because a missing caller is worse than a doubtful one.
+   */
+  const belongsToAnotherOverload = async (node, location) => {
+    const callerLines = await linesOf(location.path)
+    const open = ideChainParenAt(callerLines[location.line - 1], node.name)
+    if (open < 0) return false
+    const overloads = (await declarationsOf(node.path)).filter((entry) => entry.name === node.name)
+    if (overloads.length < 2) return false
+    const args = ideChainArity(callerLines, location.line - 1, open)
+    const params = ideChainArity(await linesOf(node.path), node.position.line, node.position.character)
+    return args >= 0 && params >= 0 && args !== params
   }
   /**
    * The method containing a call site, or nothing when it sits outside one.
@@ -11831,16 +12003,23 @@ async function ideCallChain(store, root, options = {}) {
     return rows.map((row) => ({ path: row.path, line: row.line }))
   }
 
-  const seen = new Set([`${root.path}:${root.line}`])
   let level = [tree]
   let count = 1
-  for (let depth = 1; depth <= IDE_CHAIN_DEPTH && level.length > 0; depth += 1) {
+  let truncated = false
+  while (level.length > 0) {
+    if (count >= IDE_CHAIN_NODES) {
+      truncated = true
+      break
+    }
     const next = []
     /** Turn caller locations into child nodes; returns how many were added. */
     const attach = async (node, list) => {
       let added = 0
       for (const location of list) {
-        if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
+        if (count >= IDE_CHAIN_NODES) {
+          truncated = true
+          break
+        }
         if (typeof location?.path !== 'string' || typeof location?.line !== 'number') continue
         // The declaration of the method we are walking is not a call to it.
         if (location.path === node.path && location.line === node.line) continue
@@ -11854,15 +12033,38 @@ async function ideCallChain(store, root, options = {}) {
           position: { line: location.line - 1, character: 0 },
         }
         const key = `${location.path}:${target.line}`
-        if (seen.has(key)) continue
-        seen.add(key)
+        if (node.childKeys.has(key)) continue
+        // A call site names its method by name alone, so it can land under the
+        // wrong overload — the same line then shows up in two branches.
+        if (await belongsToAnotherOverload(node, location)) continue
+        // Checked after the filters, so the flag means a real caller was left
+        // out — a seventh declaration on the line is not "more callers".
+        if (added >= IDE_CHAIN_CHILDREN) {
+          truncated = true
+          break
+        }
+        node.childKeys.add(key)
         count += 1
         added += 1
+        if (node.chainKeys.has(key)) {
+          // The caller is already on this path: recursion, the one case where a
+          // branch stops while callers still exist.
+          node.children.push({
+            ...target,
+            path: location.path,
+            callSite: { path: location.path, line: location.line },
+            recursive: true,
+            children: [],
+          })
+          continue
+        }
         const child = {
           ...target,
           path: location.path,
           callSite: { path: location.path, line: location.line },
           children: [],
+          chainKeys: new Set([...node.chainKeys, key]),
+          childKeys: new Set(),
         }
         node.children.push(child)
         next.push(child)
@@ -11905,6 +12107,7 @@ async function ideCallChain(store, root, options = {}) {
   }
   tree.textual = textual
   tree.failed = textual ? '' : failure
+  tree.truncated = truncated
   return tree
 }
 
@@ -11914,8 +12117,45 @@ function ideChainFileOf(path) {
   return name.endsWith('.java') ? name.slice(0, -'.java'.length) : name
 }
 
+/**
+ * Branch order for the popup: by the caller's file name, so every branch that
+ * starts in one file sits together. A same-name tie falls back to the whole
+ * path and then the line, which keeps the list stable while it is being filled
+ * in level by level.
+ *
+ * Plain code-unit comparison, not `localeCompare`: the order must not depend on
+ * the machine's locale (and the same list has to be checked by the tests).
+ */
+function ideChainCompareBranches(a, b) {
+  const compare = (left, right) => (left < right ? -1 : (left > right ? 1 : 0))
+  const byFile = compare(ideChainFileOf(a?.path ?? '').toLowerCase(), ideChainFileOf(b?.path ?? '').toLowerCase())
+  if (byFile !== 0) return byFile
+  const byPath = compare(String(a?.path ?? ''), String(b?.path ?? ''))
+  if (byPath !== 0) return byPath
+  return (Number(a?.line) || 0) - (Number(b?.line) || 0)
+}
+
+/** The rows one branch would draw, as a single comparable string. */
+function ideChainSignature(node) {
+  const site = node.callSite === undefined ? '' : node.callSite.line
+  return `${node.path}:${node.line}@${site}/${node.children.map(ideChainSignature).join(',')}`
+}
+
+/** One row per distinct chain: two walks that draw the same rows are noise. */
+function ideChainDistinct(forest) {
+  const seen = new Set()
+  const out = []
+  for (const entry of forest) {
+    const key = ideChainSignature(entry)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+  }
+  return out
+}
+
 /** One node card plus its children, joined by rounded elbows. */
-function IdeChainNode({ node, depth, onPick }) {
+function IdeChainNode({ node, depth, onPick, tr }) {
   const where = `${ideChainFileOf(node.path)}:${node.line}`
   return h('div', { className: 'iw-chain-node' }, [
     h('button', {
@@ -11928,6 +12168,9 @@ function IdeChainNode({ node, depth, onPick }) {
       h('span', { key: 'dot', className: 'iw-chain-dot' }),
       h('span', { key: 'n', className: 'iw-chain-name' }, node.name),
       h('span', { key: 'p', className: 'iw-chain-where' }, where),
+      node.recursive === true
+        ? h('span', { key: 'r', className: 'iw-chain-recursive' }, tr('chainRecursive'))
+        : null,
       node.callSite === undefined
         ? null
         : h('span', { key: 's', className: 'iw-chain-site', title: `${node.callSite.path}:${node.callSite.line}` }, `← :${node.callSite.line}`),
@@ -11939,6 +12182,7 @@ function IdeChainNode({ node, depth, onPick }) {
         node: child,
         depth: depth + 1,
         onPick,
+        tr,
       }))),
   ])
 }
@@ -11982,12 +12226,14 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
   const status = popup.state === 'loading'
     ? tr('chainLoading')
     : `${count}${typeof popup.ms === 'number' ? ` · ${popup.ms}ms` : ''}`
-  const forest = root === undefined ? [] : ideChainInverted(root)
-  const note = root === undefined
-    ? ''
-    : (typeof root.failed === 'string' && root.failed.startsWith('license:')
-      ? tr('lspLicense')
-      : (root.textual === true ? tr('chainTextual') : (root.failed ? tr('chainTextual') : '')))
+  const forest = root === undefined ? [] : ideChainDistinct(ideChainInverted(root).sort(ideChainCompareBranches))
+  const notes = []
+  if (root !== undefined) {
+    if (typeof root.failed === 'string' && root.failed.startsWith('license:')) notes.push(tr('lspLicense'))
+    else if (root.textual === true || root.failed) notes.push(tr('chainTextual'))
+    if (root.truncated === true) notes.push(tr('chainTruncated'))
+  }
+  const note = notes.join(' · ')
   const body = h(React.Fragment, null, [
     h('div', { key: 'rule', className: 'iw-chain-rule' }, tr('chainRule')),
     note === '' ? null : h('div', { key: 'note', className: 'iw-chain-note' }, note),
@@ -11998,6 +12244,7 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
         node: entry,
         depth: 0,
         onPick,
+        tr,
       }))),
   ])
   return h('div', {
@@ -14305,6 +14552,15 @@ async function ideDataWindowOpenMapper(store, tr, root, path, symbol, line) {
 // everything but the last few rows off a long turn; the card scrolls, so the
 // whole tail of the log is worth keeping.
 const IDE_FLOAT_MESSAGES = 200
+/** 往回翻历史时卡片最多渲染这么多行（再多就该去对话里看了）。 */
+const IDE_FLOAT_MESSAGES_MAX = 1200
+/** 上拉回弹：到阈值自动加载更早一页（像素）。 */
+const IDE_FLOAT_PULL_TRIGGER = 64
+/** 回弹最多拉这么高，再多也没有意义。 */
+const IDE_FLOAT_PULL_MAX = 96
+/** 停止滚动这么久后回弹归零。 */
+const IDE_FLOAT_PULL_IDLE_MS = 420
+
 /** 表头标题最多显示多少个字（超出加省略号）。 */
 const IDE_FLOAT_TITLE_CHARS = 20
 /** Longest text a folded row shows once opened; longer payloads are clipped. */
@@ -14464,6 +14720,27 @@ function ideFloatTargetSession(state) {
   return pinned !== '' ? pinned : panel
 }
 
+/**
+ * 往回翻历史时的下一步。判定与副作用分开，方便测。
+ *
+ * `hasMore` 只说明窗口里还有没有更早的**页**；卡片自己还有 `rowLimit` 这个渲染上限，
+ * 两者不是一回事——早先只看 `hasMore`，于是在「上限截掉了更早的行」时也宣布
+ * 「已经到会话开头」，和 DSH 对话显示的开头对不上（用户实测反馈）。
+ */
+function ideFloatOlderStep(state) {
+  const hasMore = state?.hasMore === true
+  const total = Number(state?.total ?? 0)
+  const limit = Number(state?.limit ?? 0)
+  const history = state?.history === true
+  if (state?.loadable === false) return 'none'
+  if (hasMore) return 'load'
+  // 窗口没有更早的页了，但手里的行还没放完：先放开上限。
+  if (total > limit) return 'raise'
+  // 放完了，但正文还停在「本轮状态板」：先展开整段已加载的历史。
+  if (!history) return 'expand'
+  return 'start'
+}
+
 /** 会话的模式：`agentPreset` 投影的值（字符串或 `{currentValue}`，没配置就是空）。 */
 function ideFloatPresetId(value) {
   if (typeof value === 'string') return value
@@ -14479,6 +14756,75 @@ function ideFloatPresetName(presets, id, translate) {
   if (named !== '') return named
   const text = typeof translate === 'function' ? translate(id) : ''
   return typeof text === 'string' && text !== '' ? text : id
+}
+
+/**
+ * 到顶继续上滑的手势：累积回弹距离，到阈值回调 `load`。
+ *
+ * 返回解绑函数。所有可变输入都走 `api`（`pull` 是同一个对象引用、`setPull` 是稳定的
+ * setState），所以监听器不需要随每次渲染重建。
+ */
+function createOlderGesture(node, api) {
+  const settle = (timer) => {
+    if (timer !== 0) globalThis.clearTimeout(timer)
+  }
+  const reset = () => {
+    api.pull.value = 0
+    api.setPull(0)
+  }
+  const decay = () => {
+    settle(api.pull.timer)
+    api.pull.timer = globalThis.setTimeout(reset, IDE_FLOAT_PULL_IDLE_MS)
+  }
+  const push = (distance) => {
+    if (api.isBusy() === true) return
+    if (node.scrollTop > 2) return
+    const next = Math.min(IDE_FLOAT_PULL_MAX, api.pull.value + distance)
+    api.pull.value = next
+    api.setPull(next)
+    if (next >= IDE_FLOAT_PULL_TRIGGER) {
+      settle(api.pull.timer)
+      reset()
+      api.load({ reveal: true })
+      return
+    }
+    decay()
+  }
+  const onWheel = (event) => {
+    if (event.deltaY >= 0) return
+    // 到顶了才拦：否则正常滚动会被吃掉。
+    if (node.scrollTop > 2) return
+    event.preventDefault()
+    push(-event.deltaY)
+  }
+  let touchY = null
+  const onTouchStart = (event) => {
+    touchY = event.touches?.[0]?.clientY ?? null
+  }
+  const onTouchMove = (event) => {
+    if (touchY === null) return
+    const y = event.touches?.[0]?.clientY ?? touchY
+    const delta = y - touchY
+    touchY = y
+    if (delta <= 0) return
+    if (node.scrollTop > 2) return
+    push(delta)
+  }
+  const onTouchEnd = () => {
+    touchY = null
+    decay()
+  }
+  node.addEventListener('wheel', onWheel, { passive: false })
+  node.addEventListener('touchstart', onTouchStart, { passive: true })
+  node.addEventListener('touchmove', onTouchMove, { passive: true })
+  node.addEventListener('touchend', onTouchEnd, { passive: true })
+  return () => {
+    settle(api.pull.timer)
+    node.removeEventListener('wheel', onWheel)
+    node.removeEventListener('touchstart', onTouchStart)
+    node.removeEventListener('touchmove', onTouchMove)
+    node.removeEventListener('touchend', onTouchEnd)
+  }
 }
 
 /** 表头标题最多 `limit` 个字，超出用省略号——再长就分不清是哪个会话了。 */
@@ -16209,7 +16555,22 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   const olderRef = useRef({ busy: false, pending: false, height: 0 })
   // 「＋ 新建会话」之后，不跟随时把卡片收养到新会话上（只认卡片自己发起的创建）。
   const pinnedAdoptRef = useRef(false)
+  // 上拉回弹的实时值（不在 state 里累积，避免每帧渲染整个卡片）。
+  const pullRef = useRef({ value: 0, timer: 0 })
+  // 监听器里要调最新的 loadOlderRows（每次渲染都会重建）。
+  const loadOlderRef = useRef(null)
+  const olderAvailableRef = useRef(false)
+  // 当前窗口折出来的总行数（含被 rowLimit 截掉的部分）。
+  const transcriptTotalRef = useRef(0)
+  // 回调 ref 挂上的手势清理函数（节点卸载或重新渲染时先解绑）。
+  const gestureCleanupRef = useRef(null)
   const [olderBusy, setOlderBusy] = useState(false)
+  // 会话窗口里还有没有更早的一页（有才允许上拉加载）。
+  const [olderAvailable, setOlderAvailable] = useState(false)
+  // 上拉到顶后的「回弹」高度：内容整体往下推，松手/到阈值就加载。
+  const [pull, setPull] = useState(0)
+  // 拉到顶时的提示（已到开头 / 只保留最近若干行）：一句话，看完自己消失。
+  const [startHint, setStartHint] = useState('')
   // 会话的模式（Agent 预设）：DSH 表头显示的就是它，卡片只展示不改。
   const [presetId, setPresetId] = useState('')
   const [presets, setPresets] = useState([])
@@ -16374,25 +16735,54 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
 
   // 滚到「更早」补一页：DSH 的会话窗口是分页的（首屏 ≥50 条消息、最多 500 条），
   // 卡片自己不请求就只能看到那一屏。补完把滚动位置往下推同样高度，视觉上停在原处。
-  const loadOlderRows = async () => {
+  const loadOlderRows = async (options) => {
+    // 点「加载更早的消息」是明确要看旧内容：补完把视图挪到新加载那段的开头。
+    // 滚到顶触发时相反——保持原位置，新内容自然出现在上方。
+    const reveal = options?.reveal === true
     const session = binding?.session
     const source = binding?.eventSource
     if (olderRef.current.busy) return
+    // 往回翻就不再跟着最新一条走：否则补完历史，负责「贴底」的那个 effect 会
+    // 立刻把视图拽回底部，用户根本看不到刚加载出来的旧消息。
+    stickRef.current = false
     const element = bodyRef.current
     const taller = () => (element === null || element === undefined ? 0 : element.scrollHeight)
     const hasMore = source?.getSnapshot()?.hasMore === true
     const canLoad = session !== undefined && session !== null && typeof session.loadOlder === 'function'
     // 已经到会话开头（或这条会话没有分页）：不用请求，只把历史展开，
     // 让已经拿到的更早内容显示出来。
-    if (!hasMore || !canLoad) {
-      if (historyMode) return
+    const step = ideFloatOlderStep({
+      hasMore,
+      loadable: canLoad,
+      total: transcriptTotalRef.current,
+      limit: rowLimit,
+      history: historyMode,
+    })
+    if (step === 'raise') {
+      // 上限截掉了更早的行：先把它放出来，绝不在这时候说「已经到开头」。
       olderRef.current.height = taller()
+      olderRef.current.top = element === null || element === undefined ? 0 : element.scrollTop
+      setRowLimit(Math.min(transcriptTotalRef.current, IDE_FLOAT_MESSAGES_MAX))
+      olderRef.current.pending = true
+      return
+    }
+    if (step === 'expand') {
+      // 展开「已加载但被本轮过滤掉」的历史。
+      olderRef.current.height = taller()
+      olderRef.current.top = element === null || element === undefined ? 0 : element.scrollTop
       setHistoryMode(true)
       olderRef.current.pending = true
       return
     }
+    if (step === 'start' || step === 'none') {
+      // 真到头了：上限也装不下的（1200 行）如实说「只显示最近这些」。
+      setStartHint(transcriptTotalRef.current > rowLimit ? tr('floatRowsTrimmed') : tr('floatStartReached'))
+      globalThis.setTimeout(() => setStartHint(''), 1600)
+      return
+    }
     olderRef.current.busy = true
     olderRef.current.height = taller()
+    olderRef.current.top = element === null || element === undefined ? 0 : element.scrollTop
     setOlderBusy(true)
     if (!historyMode) setHistoryMode(true)
     try {
@@ -16400,6 +16790,7 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       // 窗口补进来了，但卡片只画最后 N 行；放宽上限，让补进来的行真的出现。
       setRowLimit((current) => Math.min(current + IDE_FLOAT_MESSAGES, IDE_FLOAT_MESSAGES * 10))
       olderRef.current.pending = true
+      olderRef.current.reveal = reveal
     } catch (error) {
       ideLogRecord('warn', 'float', 'load older failed', error?.message ?? String(error))
     } finally {
@@ -16408,6 +16799,29 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     }
   }
 
+  // 已经到顶还继续往上滑：内容被「拉」下来一段，到阈值就自动加载更早一页。
+  // 监听器挂在 body 节点上，用回调 ref（节点一出现就挂），不依赖 effect 的依赖数组：
+  // 收起成球时 body 不存在，靠 effect 重挂很容易错过，手势就整个失效（踩过）。
+  const attachBody = (node) => {
+    if (typeof gestureCleanupRef.current === 'function') {
+      gestureCleanupRef.current()
+      gestureCleanupRef.current = null
+    }
+    bodyRef.current = node
+    if (node === null || node === undefined) return
+    gestureCleanupRef.current = createOlderGesture(node, {
+      isBusy: () => olderRef.current.busy === true,
+      load: (options) => {
+        if (typeof loadOlderRef.current === 'function') void loadOlderRef.current(options)
+      },
+      pull: pullRef.current,
+      setPull,
+    })
+  }
+
+  loadOlderRef.current = loadOlderRows
+  olderAvailableRef.current = olderAvailable
+
   // 新行渲染完再量高度：把滚动条往下推「长出来的那一段」，视线不跳。
   useLayoutEffect(() => {
     const older = olderRef.current
@@ -16415,8 +16829,16 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     const element = bodyRef.current
     if (element === null || element === undefined) return
     const grown = element.scrollHeight - older.height
-    // 浏览器若已按 scroll anchoring 挪过位置，就保留它的结果，别把高度算两遍。
-    if (grown > 0) element.scrollTop = Math.max(element.scrollTop, grown)
+    // 下面这行是自己滚动：滚动事件会再进来一次，别把它当成用户在往回翻。
+    older.suppressUntil = Date.now() + 800
+    if (older.reveal === true) {
+      // 明确点了「加载更早」：直接看到新加载的那段（它的开头就是最上面一行）。
+      element.scrollTop = 0
+    } else if (grown > 0) {
+      // 滚到顶触发的：按点击时看到的位置还原，新内容自然出现在上方。
+      element.scrollTop = Math.max(0, Number(older.top ?? 0) + grown)
+    }
+    older.reveal = false
     older.height = element.scrollHeight
     older.pending = false
   })
@@ -16427,6 +16849,8 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   useEffect(() => {
     const element = bodyRef.current
     if (element === null || element === undefined || stickRef.current !== true) return undefined
+    // 正在往回补历史：这时候贴到底就等于把刚加载出来的旧消息藏起来。
+    if (olderRef.current.busy === true || olderRef.current.pending === true) return undefined
     const toBottom = () => { element.scrollTop = element.scrollHeight }
     toBottom()
     // A picture or a code block grows the transcript after it lays out, which
@@ -16473,14 +16897,20 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
       setRowLimit((current) => (current === IDE_FLOAT_MESSAGES ? current : IDE_FLOAT_MESSAGES))
       olderRef.current = { busy: false, pending: false, height: 0 }
       setHistoryMode(false)
+      setOlderAvailable(false)
       return undefined
     }
     const source = binding.eventSource
     const read = () => {
-      const raw = source.getSnapshot()?.entries
+      const snapshot = source.getSnapshot()
+      const raw = snapshot?.entries
       // The transcript drops Tool calls; the progress line needs them.
       rawEntries.current = Array.isArray(raw) ? raw : []
-      setEntries(ideFloatTranscript(raw, rowLimit))
+      // 一次折出全部行，再按上限截断：这样才能判断「截掉的那些是不是比窗口还早」。
+      const all = ideFloatTranscript(raw)
+      transcriptTotalRef.current = all.length
+      setEntries(all.length > rowLimit ? all.slice(-rowLimit) : all)
+      setOlderAvailable(snapshot?.hasMore === true)
     }
     read()
     return source.subscribe(read)
@@ -17587,15 +18017,36 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     h('div', {
       key: 'body',
       className: 'iw-float-body',
-      ref: bodyRef,
+      ref: attachBody,
       onScroll: (event) => {
         const element = event.currentTarget
         stickRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 40
-        // 滚到最顶再往上拉：补一页更早的历史（没有更多时是空操作）。
-        if (element.scrollTop <= 4) void loadOlderRows()
+        // 加载更早一页不在这里触发：到顶后继续上滑由上面的回弹累积器负责，
+        // 否则一碰到顶就立刻翻页，用户根本看不到「拉扯」的那一下。
       },
     }, [
-      olderBusy ? h('div', { key: 'older', className: 'iw-float-older' }, tr('floatLoadingOlder')) : null,
+      startHint !== '' && pull === 0
+        ? h('div', { key: 'start', className: 'iw-float-older' }, startHint)
+        : olderBusy
+        ? h('div', { key: 'older', className: 'iw-float-older' }, tr('floatLoadingOlder'))
+        : pull > 0
+          ? h('div', {
+            key: 'older',
+            className: `iw-float-puller${pull >= IDE_FLOAT_PULL_TRIGGER * 0.75 ? ' armed' : ''}`,
+            // 正文是 flex 列：只写 height 会被 flex-shrink 压回 padding 高度，
+            // 必须连 `flex` 一起钉住，回弹才拉得出来。
+            style: { height: `${pull}px`, flex: `0 0 ${pull}px`, minHeight: `${pull}px` },
+          }, pull >= IDE_FLOAT_PULL_TRIGGER * 0.75 ? tr('floatPullArmed') : tr('floatPullOlder'))
+          : olderAvailable
+            // 常驻一行提示：让人知道这个方向还有内容（点一下也能加载，手势失灵时的兜底）。
+            ? h('button', {
+              key: 'older',
+              type: 'button',
+              className: 'iw-float-older iw-float-older-hint',
+              title: tr('floatLoadOlderHint'),
+              onClick: () => { void loadOlderRows({ reveal: true }) },
+            }, tr('floatLoadOlder'))
+            : null,
       visibleEntries.length === 0 && running !== true
       ? h('div', { key: 'empty', className: 'iw-float-empty' }, sessionId === '' ? tr('floatNoSession') : tr('floatEmpty'))
       : visibleEntries.map((row) => {

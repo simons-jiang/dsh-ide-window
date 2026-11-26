@@ -2732,6 +2732,160 @@ function floatTranscriptSource() {
   check(forest[1].children[0]?.children[0]?.focus === true, 'the clicked method is the highlighted one', JSON.stringify(forest[1].children[0]?.children[0]))
   check(forest[0].children[0]?.children.length === 0, 'the clicked method has no caller below it', JSON.stringify(forest[0].children[0]?.children))
 
+  // The walk itself: no depth cap, recursion is the only early stop, and a
+  // caller reached through two routes is drawn on both.
+  const chainWalk = new Function('refsOf', [
+    'const IDE_CHAIN_NODES = 40',
+    'const IDE_CHAIN_CHILDREN = 6',
+    'const ideAbs = (root, path) => path',
+    'const ideBasename = (path) => path.split("/").pop()',
+    'const ideClassName = (path) => ideBasename(path).replace(/\\.java$/, "")',
+    'const ideLspPayload = (store, operation, path, position) => ({ path, position })',
+    'const ideLspQuery = async (payload) => ({ locations: refsOf(payload.path, payload.position.line + 1) })',
+    'const ideLspFailureText = () => "lsp-failed"',
+    'const ideContractReferences = async () => []',
+    'const ideTextualCallers = async () => []',
+    sourceFunction('ideDeclarations', '30-code.js'),
+    sourceFunction('ideContractNames', '66-callchain.js'),
+    sourceFunction('ideEnclosingDeclaration', '66-callchain.js'),
+    sourceFunction('ideChainDeclaresAt', '66-callchain.js'),
+    sourceFunction('ideChainParenAt', '66-callchain.js'),
+    sourceFunction('ideChainArity', '66-callchain.js'),
+    `async ${sourceFunction('ideCallChain', '66-callchain.js')}`,
+    'return ideCallChain',
+  ].join('\n'))
+  const declOf = (lines, path, name) => {
+    const index = lines.findIndex((line) => new RegExp(`\\b(?:void|int|String|boolean)\\s+${name}\\s*\\(`).test(line))
+    return { name, path, line: index + 1, position: { line: index, character: lines[index].indexOf(`${name}(`) } }
+  }
+  const walk = async (lines, path, name, calls) => {
+    const store = { getState: () => ({ rootPath: '/ws' }), readLines: async (file) => (file === path ? lines : []) }
+    return chainWalk((file, line) => calls[`${file}:${line}`] ?? [])(store, declOf(lines, path, name))
+  }
+  const nodeNames = (node) => [node.name, ...node.children.flatMap(nodeNames)]
+
+  const deepLines = [
+    'public class Svc {',
+    '    public void a() {',
+    '        b();',
+    '    }',
+    '    public void b() {',
+    '        c();',
+    '    }',
+    '    public void c() {',
+    '        d();',
+    '    }',
+    '    public void d() {',
+    '        e();',
+    '    }',
+    '    public void e() {',
+    '    }',
+    '}',
+  ]
+  const deepTree = await walk(deepLines, 'Svc.java', 'e', {
+    'Svc.java:14': [{ path: 'Svc.java', line: 12 }],
+    'Svc.java:11': [{ path: 'Svc.java', line: 9 }],
+    'Svc.java:8': [{ path: 'Svc.java', line: 6 }],
+    'Svc.java:5': [{ path: 'Svc.java', line: 3 }],
+  })
+  check(nodeNames(deepTree).join(',') === 'e,d,c,b,a', 'the walk climbs past three levels to the real entry', JSON.stringify(nodeNames(deepTree)))
+  check(deepTree.truncated === false, 'a chain that ran out of callers is not truncated', String(deepTree.truncated))
+
+  const loopLines = ['public class R {', '    public void loop() {', '        loop();', '    }', '}']
+  const loopTree = await walk(loopLines, 'R.java', 'loop', { 'R.java:2': [{ path: 'R.java', line: 3 }] })
+  check(loopTree.children.length === 1 && loopTree.children[0].recursive === true, 'a self call becomes a recursion leaf', JSON.stringify(loopTree.children))
+  check(loopTree.children[0].children.length === 0 && nodeNames(loopTree).length === 2, 'recursion ends the branch instead of looping', JSON.stringify(nodeNames(loopTree)))
+
+  const routeLines = [
+    'public class D {',
+    '    public void m() {',
+    '    }',
+    '    public void a() {',
+    '        m();',
+    '    }',
+    '    public void b() {',
+    '        m();',
+    '    }',
+    '    public void entry() {',
+    '        a();',
+    '        b();',
+    '    }',
+    '}',
+  ]
+  const routeTree = await walk(routeLines, 'D.java', 'm', {
+    'D.java:2': [{ path: 'D.java', line: 5 }, { path: 'D.java', line: 8 }],
+    'D.java:4': [{ path: 'D.java', line: 11 }],
+    'D.java:7': [{ path: 'D.java', line: 12 }],
+  })
+  check(routeTree.children.length === 2, 'both callers of the clicked method are kept', JSON.stringify(nodeNames(routeTree)))
+  check(routeTree.children.every((child) => child.children[0]?.name === 'entry'), 'an entry that reaches the method twice is drawn on both routes', JSON.stringify(routeTree.children.map(nodeNames)))
+
+  const wideLines = ['public class W {', '    public void m() {', '    }']
+  const wideCalls = { 'W.java:2': [] }
+  for (let index = 0; index < 7; index += 1) {
+    wideLines.push(`    public void c${index}() {`, '        m();', '    }')
+    wideCalls[`W.java:${4 + index * 3}`] = []
+    wideCalls['W.java:2'].push({ path: 'W.java', line: 5 + index * 3 })
+  }
+  wideLines.push('}')
+  const wideTree = await walk(wideLines, 'W.java', 'm', wideCalls)
+  check(wideTree.children.length === 6, 'one row holds at most six callers', String(wideTree.children.length))
+  check(wideTree.truncated === true, 'a capped tree says so instead of looking complete', String(wideTree.truncated))
+
+  // Overloads: the same call site must land under one declaration, not both.
+  const overloadLines = [
+    'public class O {',
+    '    public void target(String a) {',
+    '    }',
+    '    public void target(String a, String b) {',
+    '    }',
+    '    public void one() {',
+    '        target("x");',
+    '    }',
+    '    public void two() {',
+    '        target("x", "y");',
+    '    }',
+    '}',
+  ]
+  const overloadChain = chainWalk((file, line) => (line === 2 || line === 4 ? [{ path: 'O.java', line: 7 }, { path: 'O.java', line: 10 }] : []))
+  const overloadStore = { getState: () => ({ rootPath: '/ws' }), readLines: async () => overloadLines }
+  const rootAt = (line) => ({ name: 'target', path: 'O.java', line, position: { line: line - 1, character: overloadLines[line - 1].indexOf('target(') } })
+  const oneParam = await overloadChain(overloadStore, rootAt(2))
+  const twoParam = await overloadChain(overloadStore, rootAt(4))
+  check(nodeNames(oneParam).join(',') === 'target,one', 'a 1-argument call is not attached to the 2-parameter overload', JSON.stringify(nodeNames(oneParam)))
+  check(nodeNames(twoParam).join(',') === 'target,two', 'a 2-argument call is not attached to the 1-parameter overload', JSON.stringify(nodeNames(twoParam)))
+
+  const chainShape = (path, line, site, children = []) => ({ path, line, callSite: { path, line: site }, children })
+  const distinct = new Function([
+    sourceFunction('ideChainSignature', '66-callchain.js'),
+    sourceFunction('ideChainDistinct', '66-callchain.js'),
+    'return ideChainDistinct',
+  ].join('\n'))()
+  const drawnTwice = [
+    chainShape('/ws/A.java', 10, 20, [chainShape('/ws/B.java', 5, 6)]),
+    chainShape('/ws/A.java', 10, 20, [chainShape('/ws/B.java', 5, 6)]),
+    chainShape('/ws/A.java', 10, 21, [chainShape('/ws/B.java', 5, 6)]),
+  ]
+  check(distinct(drawnTwice).length === 2, 'two branches that draw the same rows appear once', String(distinct(drawnTwice).length))
+
+  // Branch order: the caller's file name, so one file's branches sit together.
+  const branchOrder = new Function([
+    'const idePlatform = { toPosix: (path) => String(path).replace(/\\\\/g, "/") }',
+    sourceFunction('ideBasename', '10-core.js'),
+    sourceFunction('ideChainFileOf', '66-callchain.js'),
+    sourceFunction('ideChainCompareBranches', '66-callchain.js'),
+    'return ideChainCompareBranches',
+  ].join('\n'))()
+  const branch = (path, line) => ({ path, line })
+  check(branchOrder(branch('/ws/controller/ReconBillController.java', 164), branch('/ws/service/ReconBillServiceImpl.java', 281)) < 0,
+    'branches are ordered by the caller file name', String(branchOrder(branch('/ws/controller/ReconBillController.java', 164), branch('/ws/service/ReconBillServiceImpl.java', 281))))
+  check(branchOrder(branch('/ws/a/ReconBillController.java', 164), branch('/ws/b/ReconBillController.java', 86)) < 0,
+    'a shared file name falls back to the path', String(branchOrder(branch('/ws/a/ReconBillController.java', 164), branch('/ws/b/ReconBillController.java', 86))))
+  check(branchOrder(branch('/ws/x/Svc.java', 300), branch('/ws/x/Svc.java', 95)) > 0,
+    'one file keeps its branches in line order', String(branchOrder(branch('/ws/x/Svc.java', 300), branch('/ws/x/Svc.java', 95))))
+  check(branchOrder(branch('/ws/a/alpha.java', 1), branch('/ws/b/Zulu.java', 1)) < 0,
+    'file names compare case-insensitively', String(branchOrder(branch('/ws/a/alpha.java', 1), branch('/ws/b/Zulu.java', 1))))
+
   // 键盘绑定由插件自己存：默认值来自注册表，改键写入偏好
   const defaults = new Function(`${grabSource('ideShortcutDefault', '05-shortcut-registry.js')}\nreturn ideShortcutDefault`)()
   const toggle = registry.find((entry) => entry.action === 'toggle')

@@ -5,10 +5,14 @@
  * resolving each call site to the method that contains it — is what produces the
  * chain from an entry point down to the clicked method. Every node carries the
  * location of its declaration, so a click in the popup is an ordinary jump.
+ *
+ * The walk has no depth limit: it keeps climbing level by level until a level
+ * finds no caller at all. A branch stops early only for recursion — a caller
+ * that already sits on the same path — so "the chain ends here" means the
+ * entry point really was reached. The two limits below bound rows, not hops.
  */
 
-const IDE_CHAIN_DEPTH = 3
-const IDE_CHAIN_NODES = 40
+const IDE_CHAIN_NODES = 160
 const IDE_CHAIN_CHILDREN = 6
 
 /** The last declaration strictly above `line` (1-based) in one file. */
@@ -88,6 +92,85 @@ function ideChainDeclaresAt(lines, line) {
 }
 
 /**
+ * Index of the `(` that opens `name(...)` on one line, or `-1`.
+ *
+ * `indexOf(name)` alone is not enough: the receiver may contain the name
+ * (`generateService.generate(`) and a name that is a prefix of another
+ * identifier would point at the wrong place.
+ */
+function ideChainParenAt(text, name) {
+  const line = String(text ?? '')
+  let from = 0
+  while (from < line.length) {
+    const at = line.indexOf(name, from)
+    if (at < 0) return -1
+    const before = at === 0 ? '' : line[at - 1]
+    const rest = line.slice(at + name.length)
+    const indent = rest.length - rest.trimStart().length
+    if (!/[\w$]/.test(before) && rest[indent] === '(') return at + name.length + indent
+    from = at + name.length
+  }
+  return -1
+}
+
+/**
+ * How many arguments (or parameters) sit inside the `(...)` that starts at
+ * `line`/`column`.
+ *
+ * `-1` means "could not read it with confidence" — the list never closes inside
+ * a 200-line window, or it holds a comma whose nesting is ambiguous (`<>`,
+ * `{}`, a comment). Callers must treat that as unknown, never as zero: the
+ * count is what tells overloads apart, and a wrong number would drop a real
+ * call edge.
+ */
+function ideChainArity(lines, line, column) {
+  let depth = 0
+  let commas = 0
+  let content = false
+  let started = false
+  for (let index = Math.max(0, line); index < lines.length && index <= line + 200; index += 1) {
+    const text = String(lines[index] ?? '')
+    for (let at = index === line ? Math.max(0, column) : 0; at < text.length; at += 1) {
+      const char = text[at]
+      if (char === '"' || char === "'") {
+        const quote = char
+        at += 1
+        while (at < text.length && text[at] !== quote) {
+          if (text[at] === '\\') at += 1
+          at += 1
+        }
+        if (started && depth === 1) content = true
+        continue
+      }
+      if (char === '/' && (text[at + 1] === '/' || text[at + 1] === '*')) return -1
+      if (char === '<' || char === '>' || char === '{' || char === '}') {
+        if (started) return -1
+        continue
+      }
+      if (char === '(') {
+        depth += 1
+        started = true
+        continue
+      }
+      if (char === ')') {
+        if (depth === 0) return -1
+        depth -= 1
+        if (depth === 0 && started) return content ? commas + 1 : 0
+        continue
+      }
+      if (!started || depth !== 1) continue
+      if (char === ',') {
+        commas += 1
+        content = true
+        continue
+      }
+      if (char !== ' ' && char !== '\t') content = true
+    }
+  }
+  return -1
+}
+
+/**
  * Turn the caller tree into the tree the popup shows.
  *
  * The caller tree points down at callers; people read a chain the other way —
@@ -112,6 +195,7 @@ function ideChainInverted(tree) {
     line: node.line,
     callSite: node.callSite,
     focus: node.focus === true,
+    recursive: node.recursive === true,
     children: parentOf.has(node) ? [build(parentOf.get(node))] : [],
   })
   return leaves.map(build)
@@ -133,7 +217,16 @@ function ideChainCount(node) {
  * @returns the tree, filled in.
  */
 async function ideCallChain(store, root, options = {}) {
-  const tree = { ...root, focus: true, children: [] }
+  // Which declarations already sit on the path from the clicked method to this
+  // node. Recursion is the only natural stop, and it has to be per path: a
+  // method reached through two routes is drawn on both.
+  const tree = {
+    ...root,
+    focus: true,
+    children: [],
+    chainKeys: new Set([`${root.path}:${root.line}`]),
+    childKeys: new Set(),
+  }
   const files = new Map()
   const linesOf = (path) => {
     let pending = files.get(path)
@@ -142,6 +235,34 @@ async function ideCallChain(store, root, options = {}) {
       files.set(path, pending)
     }
     return pending
+  }
+  const declarationsByFile = new Map()
+  const declarationsOf = (path) => {
+    let pending = declarationsByFile.get(path)
+    if (pending === undefined) {
+      pending = linesOf(path).then((lines) => ideDeclarations(lines, 0, lines.length))
+      declarationsByFile.set(path, pending)
+    }
+    return pending
+  }
+  /**
+   * Whether a call site belongs to a different declaration of the same name.
+   *
+   * `findReferences` may answer with the whole overload group, and the text
+   * fallback cannot tell two overloads apart at all — both hand a 4-argument
+   * call to the 5-parameter method. Arity is the one thing a call site states
+   * about itself, so it decides; when either side cannot be read the call is
+   * kept, because a missing caller is worse than a doubtful one.
+   */
+  const belongsToAnotherOverload = async (node, location) => {
+    const callerLines = await linesOf(location.path)
+    const open = ideChainParenAt(callerLines[location.line - 1], node.name)
+    if (open < 0) return false
+    const overloads = (await declarationsOf(node.path)).filter((entry) => entry.name === node.name)
+    if (overloads.length < 2) return false
+    const args = ideChainArity(callerLines, location.line - 1, open)
+    const params = ideChainArity(await linesOf(node.path), node.position.line, node.position.character)
+    return args >= 0 && params >= 0 && args !== params
   }
   /**
    * The method containing a call site, or nothing when it sits outside one.
@@ -185,16 +306,23 @@ async function ideCallChain(store, root, options = {}) {
     return rows.map((row) => ({ path: row.path, line: row.line }))
   }
 
-  const seen = new Set([`${root.path}:${root.line}`])
   let level = [tree]
   let count = 1
-  for (let depth = 1; depth <= IDE_CHAIN_DEPTH && level.length > 0; depth += 1) {
+  let truncated = false
+  while (level.length > 0) {
+    if (count >= IDE_CHAIN_NODES) {
+      truncated = true
+      break
+    }
     const next = []
     /** Turn caller locations into child nodes; returns how many were added. */
     const attach = async (node, list) => {
       let added = 0
       for (const location of list) {
-        if (count >= IDE_CHAIN_NODES || added >= IDE_CHAIN_CHILDREN) break
+        if (count >= IDE_CHAIN_NODES) {
+          truncated = true
+          break
+        }
         if (typeof location?.path !== 'string' || typeof location?.line !== 'number') continue
         // The declaration of the method we are walking is not a call to it.
         if (location.path === node.path && location.line === node.line) continue
@@ -208,15 +336,38 @@ async function ideCallChain(store, root, options = {}) {
           position: { line: location.line - 1, character: 0 },
         }
         const key = `${location.path}:${target.line}`
-        if (seen.has(key)) continue
-        seen.add(key)
+        if (node.childKeys.has(key)) continue
+        // A call site names its method by name alone, so it can land under the
+        // wrong overload — the same line then shows up in two branches.
+        if (await belongsToAnotherOverload(node, location)) continue
+        // Checked after the filters, so the flag means a real caller was left
+        // out — a seventh declaration on the line is not "more callers".
+        if (added >= IDE_CHAIN_CHILDREN) {
+          truncated = true
+          break
+        }
+        node.childKeys.add(key)
         count += 1
         added += 1
+        if (node.chainKeys.has(key)) {
+          // The caller is already on this path: recursion, the one case where a
+          // branch stops while callers still exist.
+          node.children.push({
+            ...target,
+            path: location.path,
+            callSite: { path: location.path, line: location.line },
+            recursive: true,
+            children: [],
+          })
+          continue
+        }
         const child = {
           ...target,
           path: location.path,
           callSite: { path: location.path, line: location.line },
           children: [],
+          chainKeys: new Set([...node.chainKeys, key]),
+          childKeys: new Set(),
         }
         node.children.push(child)
         next.push(child)
@@ -259,6 +410,7 @@ async function ideCallChain(store, root, options = {}) {
   }
   tree.textual = textual
   tree.failed = textual ? '' : failure
+  tree.truncated = truncated
   return tree
 }
 
@@ -268,8 +420,45 @@ function ideChainFileOf(path) {
   return name.endsWith('.java') ? name.slice(0, -'.java'.length) : name
 }
 
+/**
+ * Branch order for the popup: by the caller's file name, so every branch that
+ * starts in one file sits together. A same-name tie falls back to the whole
+ * path and then the line, which keeps the list stable while it is being filled
+ * in level by level.
+ *
+ * Plain code-unit comparison, not `localeCompare`: the order must not depend on
+ * the machine's locale (and the same list has to be checked by the tests).
+ */
+function ideChainCompareBranches(a, b) {
+  const compare = (left, right) => (left < right ? -1 : (left > right ? 1 : 0))
+  const byFile = compare(ideChainFileOf(a?.path ?? '').toLowerCase(), ideChainFileOf(b?.path ?? '').toLowerCase())
+  if (byFile !== 0) return byFile
+  const byPath = compare(String(a?.path ?? ''), String(b?.path ?? ''))
+  if (byPath !== 0) return byPath
+  return (Number(a?.line) || 0) - (Number(b?.line) || 0)
+}
+
+/** The rows one branch would draw, as a single comparable string. */
+function ideChainSignature(node) {
+  const site = node.callSite === undefined ? '' : node.callSite.line
+  return `${node.path}:${node.line}@${site}/${node.children.map(ideChainSignature).join(',')}`
+}
+
+/** One row per distinct chain: two walks that draw the same rows are noise. */
+function ideChainDistinct(forest) {
+  const seen = new Set()
+  const out = []
+  for (const entry of forest) {
+    const key = ideChainSignature(entry)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+  }
+  return out
+}
+
 /** One node card plus its children, joined by rounded elbows. */
-function IdeChainNode({ node, depth, onPick }) {
+function IdeChainNode({ node, depth, onPick, tr }) {
   const where = `${ideChainFileOf(node.path)}:${node.line}`
   return h('div', { className: 'iw-chain-node' }, [
     h('button', {
@@ -282,6 +471,9 @@ function IdeChainNode({ node, depth, onPick }) {
       h('span', { key: 'dot', className: 'iw-chain-dot' }),
       h('span', { key: 'n', className: 'iw-chain-name' }, node.name),
       h('span', { key: 'p', className: 'iw-chain-where' }, where),
+      node.recursive === true
+        ? h('span', { key: 'r', className: 'iw-chain-recursive' }, tr('chainRecursive'))
+        : null,
       node.callSite === undefined
         ? null
         : h('span', { key: 's', className: 'iw-chain-site', title: `${node.callSite.path}:${node.callSite.line}` }, `← :${node.callSite.line}`),
@@ -293,6 +485,7 @@ function IdeChainNode({ node, depth, onPick }) {
         node: child,
         depth: depth + 1,
         onPick,
+        tr,
       }))),
   ])
 }
@@ -336,12 +529,14 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
   const status = popup.state === 'loading'
     ? tr('chainLoading')
     : `${count}${typeof popup.ms === 'number' ? ` · ${popup.ms}ms` : ''}`
-  const forest = root === undefined ? [] : ideChainInverted(root)
-  const note = root === undefined
-    ? ''
-    : (typeof root.failed === 'string' && root.failed.startsWith('license:')
-      ? tr('lspLicense')
-      : (root.textual === true ? tr('chainTextual') : (root.failed ? tr('chainTextual') : '')))
+  const forest = root === undefined ? [] : ideChainDistinct(ideChainInverted(root).sort(ideChainCompareBranches))
+  const notes = []
+  if (root !== undefined) {
+    if (typeof root.failed === 'string' && root.failed.startsWith('license:')) notes.push(tr('lspLicense'))
+    else if (root.textual === true || root.failed) notes.push(tr('chainTextual'))
+    if (root.truncated === true) notes.push(tr('chainTruncated'))
+  }
+  const note = notes.join(' · ')
   const body = h(React.Fragment, null, [
     h('div', { key: 'rule', className: 'iw-chain-rule' }, tr('chainRule')),
     note === '' ? null : h('div', { key: 'note', className: 'iw-chain-note' }, note),
@@ -352,6 +547,7 @@ function IdeChainPopup({ popup, tr, onPick, onClose }) {
         node: entry,
         depth: 0,
         onPick,
+        tr,
       }))),
   ])
   return h('div', {

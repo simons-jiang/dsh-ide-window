@@ -464,5 +464,7 @@
   "settingsFloatEvents": "Show full detail",
   "settingsFloatEventsHint": "List reasoning, context, Tool arguments and system events; off shows only the latest status line",
   "floatWrap": "Wrap lines",
-  "floatLiveAnalyze": "Analyzing the request"
+  "floatLiveAnalyze": "Analyzing the request",
+  "chainRecursive": "recursive",
+  "chainTruncated": "More callers exist (display limit reached)"
 }
