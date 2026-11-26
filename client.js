@@ -406,6 +406,11 @@ window.__ModuleLoader__.load({
     "floatAttachReference": "Reference the open file",
     "floatNeedsFile": "Open a file first",
     "floatPermission": "Permission",
+    "floatMode": "Mode",
+    "floatModeStandard": "Standard mode",
+    "floatModePtc": "PTC mode",
+    "floatModeMinimal": "Minimal mode",
+    "floatModeCordis": "Cordis mode",
     "floatPermissionReadOnly": "Read only",
     "floatPermissionWorkspace": "Workspace write",
     "floatPermissionFull": "Full access",
@@ -858,6 +863,11 @@ window.__ModuleLoader__.load({
     "floatAttachReference": "引用当前文件",
     "floatNeedsFile": "先打开一个文件",
     "floatPermission": "权限",
+    "floatMode": "模式",
+    "floatModeStandard": "标准模式",
+    "floatModePtc": "PTC 模式",
+    "floatModeMinimal": "精简模式",
+    "floatModeCordis": "Cordis 模式",
     "floatPermissionReadOnly": "仅可查看",
     "floatPermissionWorkspace": "工作区内修改",
     "floatPermissionFull": "完全权限",
@@ -2681,6 +2691,19 @@ html.iw-select-code .iw-code .iw-vision {
     hsl(var(--iw-float-hue, 214) 68% 52%) 72%,
     var(--dsw-alias-label-primary, currentColor)
   );
+}
+.iw-float-mode {
+  flex: 0 0 auto;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-3, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 12.5px;
+  line-height: 18px;
 }
 .iw-float-older {
   flex: 0 0 auto;
@@ -13656,6 +13679,14 @@ function IdeScreenshotEditor({ store, tr, onInsert, onCopy, onOpenSettings, onCl
 const IDE_DATA_WINDOW_KEY = '__DSH_DATA_WINDOW_BRIDGE__'
 const IDE_DATA_WINDOW_REQUEST = 'dsh-data-window:request'
 const IDE_DATA_WINDOW_RESPONSE = 'dsh-data-window:response'
+/**
+ * 一个标签的属性区，引号里的 `>` 不算标签结束。
+ *
+ * `<if test="billStatusList != null and billStatusList.size() > 0">` 这种写法到处都是；
+ * 用 `[^>]*>` 会在第一个 `>` 处截断，把剩下的 ` 0">` 当成 SQL 留在语句里。
+ */
+const IDE_DATA_WINDOW_TAG_ATTRS = String.raw`(?:"[^"]*"|'[^']*'|[^>"'])*`
+
 const IDE_DATA_WINDOW_ACK_MS = 2000
 
 /** Whether the data window plugin is installed and active in this page. */
@@ -13844,7 +13875,10 @@ const IDE_DATA_WINDOW_INCLUDE_DEPTH = 8
  */
 function ideDataWindowSqlFragments(text) {
   const fragments = {}
-  const pattern = /<sql\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/\s*sql\s*>/gi
+  const pattern = new RegExp(
+    `<sql\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\bid\\s*=\\s*["']([^"']+)["']${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/\\s*sql\\s*>`,
+    'gi',
+  )
   let match
   while ((match = pattern.exec(String(text ?? ''))) !== null) {
     fragments[match[1]] = match[2]
@@ -13910,7 +13944,7 @@ function ideDataWindowIncludes(body) {
 /** `<include>` 里 `<property name=... value=.../>` 提供的占位符值。 */
 function ideDataWindowIncludeProps(body) {
   const props = {}
-  for (const match of String(body ?? '').matchAll(/<property\b[^>]*\/?\s*>/gi)) {
+  for (const match of String(body ?? '').matchAll(new RegExp(`<property\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\/?\\s*>`, 'gi'))) {
     const attrs = ideDataWindowXmlAttrs(match[0])
     if (attrs.name !== undefined && attrs.value !== undefined) props[attrs.name] = attrs.value
   }
@@ -13987,7 +14021,7 @@ async function ideDataWindowXmlSql(root, fqcn, symbol) {
   const text = await ideDataWindowReadFile(root, path)
   if (text === '') return null
   const pattern = new RegExp(
-    `<\\s*(select|insert|update|delete)\\b[^>]*\\bid\\s*=\\s*["']${ideDataWindowEscape(symbol)}["'][^>]*>([\\s\\S]*?)<\\s*/\\s*\\1\\s*>`,
+    `<\\s*(select|insert|update|delete)\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\bid\\s*=\\s*["']${ideDataWindowEscape(symbol)}["']${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\s*/\\s*\\1\\s*>`,
     'i',
   )
   const match = pattern.exec(text)
@@ -14069,7 +14103,7 @@ function ideDataWindowValueFor(expr, params, index, item) {
 /** Expand `<foreach>` into three default rows so the SQL can run as-is. */
 function ideDataWindowExpandForeach(sql, params) {
   let result = String(sql ?? '')
-  const pattern = /<foreach\b([^>]*)>([\s\S]*?)<\/foreach>/i
+  const pattern = new RegExp(`<foreach\\b(${IDE_DATA_WINDOW_TAG_ATTRS})>([\\s\\S]*?)<\\/foreach>`, 'i')
   let match
   while ((match = pattern.exec(result)) !== null) {
     const attrs = ideDataWindowXmlAttrs(match[1])
@@ -14095,19 +14129,20 @@ function ideDataWindowStripTags(sql) {
   let result = String(sql ?? '')
   // CDATA 里是原样 SQL，先去壳，否则会被下面「未知标签」那条清理连内容一起吞掉。
   result = result.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-  result = result.replace(/<\s*script\b[^>]*>/gi, '').replace(/<\s*\/\s*script\s*>/gi, '')
-  result = result.replace(/<choose\b[^>]*>([\s\S]*?)<\/choose>/gi, (whole, body) => {
-    const when = /<when\b[^>]*>([\s\S]*?)<\/when>/i.exec(body)
-    const otherwise = /<otherwise\b[^>]*>([\s\S]*?)<\/otherwise>/i.exec(body)
+  const open = (tag) => new RegExp(`<\\s*${tag}\\b${IDE_DATA_WINDOW_TAG_ATTRS}>`, 'gi')
+  result = result.replace(open('script'), '').replace(/<\s*\/\s*script\s*>/gi, '')
+  result = result.replace(new RegExp(`<choose\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/choose>`, 'gi'), (whole, body) => {
+    const when = new RegExp(`<when\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/when>`, 'i').exec(body)
+    const otherwise = new RegExp(`<otherwise\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/otherwise>`, 'i').exec(body)
     return when !== null ? when[1] : otherwise !== null ? otherwise[1] : ''
   })
-  result = result.replace(/<where\b[^>]*>([\s\S]*?)<\/where>/gi, (whole, body) => (
+  result = result.replace(new RegExp(`<where\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/where>`, 'gi'), (whole, body) => (
     ` WHERE ${body.replace(/^\s*(and|or)\b/i, '')} `
   ))
-  result = result.replace(/<set\b[^>]*>([\s\S]*?)<\/set>/gi, (whole, body) => (
+  result = result.replace(new RegExp(`<set\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/set>`, 'gi'), (whole, body) => (
     ` SET ${body.replace(/,\s*$/, '')} `
   ))
-  result = result.replace(/<trim\b([^>]*)>([\s\S]*?)<\/trim>/gi, (whole, attrText, body) => {
+  result = result.replace(new RegExp(`<trim\\b(${IDE_DATA_WINDOW_TAG_ATTRS})>([\\s\\S]*?)<\\/trim>`, 'gi'), (whole, attrText, body) => {
     const attrs = ideDataWindowXmlAttrs(attrText)
     let inner = body
     for (const prefix of String(attrs.prefixOverrides ?? '').split('|')) {
@@ -14121,14 +14156,14 @@ function ideDataWindowStripTags(sql) {
     return `${String(attrs.prefix ?? '').trim()} ${inner} ${String(attrs.suffix ?? '').trim()}`
   })
   for (const tag of ['if', 'when', 'otherwise']) {
-    const pattern = new RegExp(`<\\s*${tag}\\b[^>]*>([\\s\\S]*?)<\\s*/\\s*${tag}\\s*>`, 'gi')
+    const pattern = new RegExp(`<\\s*${tag}\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\s*/\\s*${tag}\\s*>`, 'gi')
     result = result.replace(pattern, '$1')
   }
-  result = result.replace(/<bind\b[^>]*\/?\s*>/gi, '')
+  result = result.replace(new RegExp(`<bind\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\/?\\s*>`, 'gi'), '')
   // Anything left (foreach and include are already expanded) is an unsupported tag: drop it.
   // 只认「XML 形状」的标签（字母或 `!` 开头）：`a &lt; 5` 解出来是比较运算符，
   // 按 `<[^>]+>` 删会把 `<` 到后面某个 `>` 之间的真实 SQL 一起吞掉。
-  result = result.replace(/<\/?[A-Za-z!][^>]*>/g, '')
+  result = result.replace(new RegExp(`<\\/?[A-Za-z!]${IDE_DATA_WINDOW_TAG_ATTRS}>`, 'g'), '')
   // `<where>` may have wrapped its leading AND/OR inside a stripped `<if>`.
   result = result.replace(/\bWHERE\s+(AND|OR)\b/gi, 'WHERE')
   // 条件被动态标签或解析失败的 include 吃光后只剩一个 WHERE，留着就是语法错误。
@@ -14393,6 +14428,23 @@ function ideFloatTargetSession(state) {
   if (state?.floatFollow !== false) return panel
   const pinned = typeof state?.floatSessionId === 'string' ? state.floatSessionId : ''
   return pinned !== '' ? pinned : panel
+}
+
+/** 会话的模式：`agentPreset` 投影的值（字符串或 `{currentValue}`，没配置就是空）。 */
+function ideFloatPresetId(value) {
+  if (typeof value === 'string') return value
+  if (value !== null && typeof value === 'object' && typeof value.currentValue === 'string') return value.currentValue
+  return ''
+}
+
+/** 模式的名字：自定义预设用自己的名字，内置预设交给调用方翻译，最后兜底 id。 */
+function ideFloatPresetName(presets, id, translate) {
+  if (typeof id !== 'string' || id === '') return ''
+  const entry = Array.isArray(presets) ? presets.find((item) => item?.id === id) : undefined
+  const named = typeof entry?.name === 'string' ? entry.name.trim() : ''
+  if (named !== '') return named
+  const text = typeof translate === 'function' ? translate(id) : ''
+  return typeof text === 'string' && text !== '' ? text : id
 }
 
 /** 表头标题最多 `limit` 个字，超出用省略号——再长就分不清是哪个会话了。 */
@@ -16070,7 +16122,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, composeText, commandList, workspaceList, skillList }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, composeText, commandList, workspaceList, skillList, modeList, modeLabel }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -16082,6 +16134,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   // 「＋ 新建会话」之后，不跟随时把卡片收养到新会话上（只认卡片自己发起的创建）。
   const pinnedAdoptRef = useRef(false)
   const [olderBusy, setOlderBusy] = useState(false)
+  // 会话的模式（Agent 预设）：DSH 表头显示的就是它，卡片只展示不改。
+  const [presetId, setPresetId] = useState('')
+  const [presets, setPresets] = useState([])
   // 卡片默认只画最后 200 行；用户主动往回翻时按步长放宽，别让补进来的行被裁掉。
   const [rowLimit, setRowLimit] = useState(IDE_FLOAT_MESSAGES)
   // 滚到顶 = 用户想看历史：整段对话铺开，直到发消息或切会话才回到「本轮状态板」。
@@ -16183,6 +16238,44 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     if (state.floatOpen !== true) return
     stickRef.current = true
   }, [state.floatOpen])
+
+  // 会话的模式：投影一变就跟着变（在 DSH 里换模式，卡片立刻同步）。
+  useEffect(() => {
+    if (binding === null) {
+      setPresetId('')
+      return undefined
+    }
+    const projections = binding.session?.projections
+    if (projections === undefined || projections === null) return undefined
+    const face = typeof projections.faceOf === 'function' ? projections.faceOf('agentPreset') : undefined
+    const read = () => {
+      const direct = typeof projections.get === 'function' ? projections.get('agentPreset') : undefined
+      const fromFace = typeof face?.getSnapshot === 'function' ? face.getSnapshot() : undefined
+      const fromSession = typeof binding.session?.getSnapshot === 'function'
+        ? binding.session.getSnapshot()?.projectionValues?.agentPreset
+        : undefined
+      setPresetId(ideFloatPresetId(direct) || ideFloatPresetId(fromFace) || ideFloatPresetId(fromSession))
+    }
+    read()
+    const off = typeof face?.subscribe === 'function' ? face.subscribe(read) : projections.subscribeAny?.(read)
+    return () => {
+      if (typeof off === 'function') off()
+    }
+  }, [binding])
+
+  // 预设列表只为「自定义模式」的名字；拿不到就只显示内置模式的名字。
+  useEffect(() => {
+    if (typeof modeList !== 'function') return undefined
+    let cancelled = false
+    Promise.resolve(modeList())
+      .then((result) => {
+        if (cancelled) return
+        if (Array.isArray(result?.value)) setPresets(result.value)
+        else if (result?.error !== undefined) ideLogRecord('warn', 'float', 'presets failed', String(result.error))
+      })
+      .catch((error) => { if (cancelled !== true) ideLogRecord('warn', 'float', 'presets failed', error?.message ?? String(error)) })
+    return () => { cancelled = true }
+  }, [modeList])
 
   // 不跟随时，第一次进入就把面板当前会话钉住；之后 DSH 里怎么切都不动。
   useEffect(() => {
@@ -17655,6 +17748,11 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           h('span', { key: 't', className: 'iw-float-perm-text' }, ideFloatPermissionLabel(permission, tr)),
           h(IdeChevronDownIcon, { key: 'c', size: 12 }),
         ]),
+        presetId === '' ? null : h('span', {
+          key: 'mode',
+          className: 'iw-float-mode',
+          title: `${tr('floatMode')}: ${ideFloatPresetName(presets, presetId, modeLabel)}`,
+        }, ideFloatPresetName(presets, presetId, modeLabel)),
         h('span', { key: 'gap', className: 'iw-float-gap' }),
         efforts.length === 0 ? null : h('button', {
           key: 'effort',
@@ -17811,6 +17909,16 @@ function apply(ctx) {
     void error
   }
   const translate = ideMakeTranslator(ctx, bound)
+  // 会话模式的标签：内置预设（standard/ptc/minimal/cordis）没有 name，文案在 DSH
+  // 自己的 `settings.agentPreset` 命名空间里。借它的文案，和表头显示的一致。
+  let presetText
+  try {
+    presetText = ctx.locale !== undefined && typeof ctx.locale.bind === 'function'
+      ? ctx.locale.bind('settings.agentPreset')
+      : undefined
+  } catch (error) {
+    void error
+  }
 
   /**
    * The palette's command list.
@@ -18949,6 +19057,30 @@ function apply(ctx) {
         } catch (error) {
           return { error: String(error?.message ?? error) }
         }
+      },
+      // 会话的模式 = Agent 预设；卡片只展示，切换仍在 DSH 里做。
+      modeList: async () => {
+        try {
+          const result = await ctx.remote.agentPresets.list()
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          const presets = result?.value?.presets
+          return { value: Array.isArray(presets) ? presets : [] }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
+      /** 内置预设的中文/英文名；返回空串表示「不是内置预设」，交给调用方兜底。 */
+      modeLabel: (id) => {
+        const builtin = { standard: 'Standard', ptc: 'Ptc', minimal: 'Minimal', cordis: 'Cordis' }[id]
+        if (builtin === undefined) return ''
+        const key = `preset${builtin}Name`
+        try {
+          const text = typeof presetText === 'function' ? presetText(key) : undefined
+          if (typeof text === 'string' && text.trim() !== '' && text !== key) return text
+        } catch (error) {
+          void error
+        }
+        return translate(`floatMode${builtin}`)
       },
       workspaceList: async (sessionId, path) => {
         try {

@@ -181,6 +181,58 @@ check(fragments.one === 'a' && fragments.two.includes('< 2'), '同一文件的�
 const dangling = includeApi.api.ideDataWindowExecutableSql('SELECT * FROM t WHERE ORDER BY id', {})
 check(!/\bWHERE\b/.test(dangling), '本来就没有条件的 WHERE 也去掉', dangling)
 
+console.log('\ndata bridge: 属性值里带 > 的标签')
+
+// `<if test="list.size() > 0">` 是 MyBatis 里最常见的写法。早先用 `[^>]*>` 匹配开标签，
+// 会在属性质里的 `>` 处截断，把剩下的 ` 0">` 当 SQL 留在语句中间（真实报障截图）。
+const ATTR_MAPPER = `<?xml version="1.0" encoding="UTF-8"?>
+<mapper namespace="com.x.AttrMapper">
+  <sql id="conds">
+    <where>
+      is_deleted = 0
+      <if test="billStatusList != null and billStatusList.size() > 0">
+        and bill_status in
+        <foreach collection="billStatusList" item="s" open="(" separator="," close=")">
+          #{s}
+        </foreach>
+      </if>
+      <if test="amount != null and amount > 100 and amount &lt; 1000">
+        and amount = #{amount}
+      </if>
+      <choose>
+        <when test="direction > 0">
+          and direction = #{direction}
+        </when>
+        <otherwise>
+          and direction is null
+        </otherwise>
+      </choose>
+      <if test="flag == 'a > b'">
+        and flag = #{flag}
+      </if>
+    </where>
+  </sql>
+  <select id="count">
+    select count(1) as total
+    from recon_bill
+    <include refid="conds"/>
+    group by bill_type
+  </select>
+</mapper>
+`
+const attrApi = workspace({ 'src/main/resources/mapper/AttrMapper.xml': ATTR_MAPPER })
+const attrStatement = await attrApi.api.ideDataWindowXmlSql(attrApi.root, 'com.x.AttrMapper', 'count')
+const attrSql = attrApi.api.ideDataWindowExecutableSql(attrStatement?.sql ?? '', {
+  billStatusList: 'list', amount: 'number', direction: 'number', flag: 'string',
+})
+check(!attrSql.includes('0">') && !attrSql.includes('">'), 'test 属性里的 > 不会漏成 SQL 片段', attrSql)
+check(!/\btest\s*=/.test(attrSql), '属性文本一条都不留', attrSql)
+check(attrSql.includes('and bill_status IN (1, 2, 3)'), '带 > 的 if 里的 foreach 仍然展开', attrSql)
+check(attrSql.includes('and amount = 1'), '带 > 与 &lt; 的条件保留', attrSql)
+check(attrSql.includes('and direction = 1'), '带 > 的 when 取到了分支', attrSql)
+check(!attrSql.includes('direction is null'), '没取 otherwise', attrSql)
+check(attrSql.includes('WHERE is_deleted = 0'), 'where 仍然收成一行', attrSql)
+
 console.log('\ndata bridge: 点 pageByQuery 时发出去的 openSql 请求')
 
 /** 假桥：记录请求，立刻回一条 ok 的回执。 */

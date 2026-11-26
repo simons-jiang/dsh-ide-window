@@ -1766,6 +1766,19 @@ html.iw-select-code .iw-code .iw-vision {
     var(--dsw-alias-label-primary, currentColor)
   );
 }
+.iw-float-mode {
+  flex: 0 0 auto;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border-radius: var(--dsw-radius-sm, 6px);
+  background: var(--dsw-alias-bg-layer-3, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-secondary, inherit);
+  font-size: 12.5px;
+  line-height: 18px;
+}
 .iw-float-older {
   flex: 0 0 auto;
   padding: 2px 0 6px;

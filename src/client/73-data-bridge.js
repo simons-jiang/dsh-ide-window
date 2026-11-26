@@ -16,6 +16,14 @@
 const IDE_DATA_WINDOW_KEY = '__DSH_DATA_WINDOW_BRIDGE__'
 const IDE_DATA_WINDOW_REQUEST = 'dsh-data-window:request'
 const IDE_DATA_WINDOW_RESPONSE = 'dsh-data-window:response'
+/**
+ * 一个标签的属性区，引号里的 `>` 不算标签结束。
+ *
+ * `<if test="billStatusList != null and billStatusList.size() > 0">` 这种写法到处都是；
+ * 用 `[^>]*>` 会在第一个 `>` 处截断，把剩下的 ` 0">` 当成 SQL 留在语句里。
+ */
+const IDE_DATA_WINDOW_TAG_ATTRS = String.raw`(?:"[^"]*"|'[^']*'|[^>"'])*`
+
 const IDE_DATA_WINDOW_ACK_MS = 2000
 
 /** Whether the data window plugin is installed and active in this page. */
@@ -204,7 +212,10 @@ const IDE_DATA_WINDOW_INCLUDE_DEPTH = 8
  */
 function ideDataWindowSqlFragments(text) {
   const fragments = {}
-  const pattern = /<sql\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/\s*sql\s*>/gi
+  const pattern = new RegExp(
+    `<sql\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\bid\\s*=\\s*["']([^"']+)["']${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/\\s*sql\\s*>`,
+    'gi',
+  )
   let match
   while ((match = pattern.exec(String(text ?? ''))) !== null) {
     fragments[match[1]] = match[2]
@@ -270,7 +281,7 @@ function ideDataWindowIncludes(body) {
 /** `<include>` 里 `<property name=... value=.../>` 提供的占位符值。 */
 function ideDataWindowIncludeProps(body) {
   const props = {}
-  for (const match of String(body ?? '').matchAll(/<property\b[^>]*\/?\s*>/gi)) {
+  for (const match of String(body ?? '').matchAll(new RegExp(`<property\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\/?\\s*>`, 'gi'))) {
     const attrs = ideDataWindowXmlAttrs(match[0])
     if (attrs.name !== undefined && attrs.value !== undefined) props[attrs.name] = attrs.value
   }
@@ -347,7 +358,7 @@ async function ideDataWindowXmlSql(root, fqcn, symbol) {
   const text = await ideDataWindowReadFile(root, path)
   if (text === '') return null
   const pattern = new RegExp(
-    `<\\s*(select|insert|update|delete)\\b[^>]*\\bid\\s*=\\s*["']${ideDataWindowEscape(symbol)}["'][^>]*>([\\s\\S]*?)<\\s*/\\s*\\1\\s*>`,
+    `<\\s*(select|insert|update|delete)\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\bid\\s*=\\s*["']${ideDataWindowEscape(symbol)}["']${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\s*/\\s*\\1\\s*>`,
     'i',
   )
   const match = pattern.exec(text)
@@ -429,7 +440,7 @@ function ideDataWindowValueFor(expr, params, index, item) {
 /** Expand `<foreach>` into three default rows so the SQL can run as-is. */
 function ideDataWindowExpandForeach(sql, params) {
   let result = String(sql ?? '')
-  const pattern = /<foreach\b([^>]*)>([\s\S]*?)<\/foreach>/i
+  const pattern = new RegExp(`<foreach\\b(${IDE_DATA_WINDOW_TAG_ATTRS})>([\\s\\S]*?)<\\/foreach>`, 'i')
   let match
   while ((match = pattern.exec(result)) !== null) {
     const attrs = ideDataWindowXmlAttrs(match[1])
@@ -455,19 +466,20 @@ function ideDataWindowStripTags(sql) {
   let result = String(sql ?? '')
   // CDATA 里是原样 SQL，先去壳，否则会被下面「未知标签」那条清理连内容一起吞掉。
   result = result.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-  result = result.replace(/<\s*script\b[^>]*>/gi, '').replace(/<\s*\/\s*script\s*>/gi, '')
-  result = result.replace(/<choose\b[^>]*>([\s\S]*?)<\/choose>/gi, (whole, body) => {
-    const when = /<when\b[^>]*>([\s\S]*?)<\/when>/i.exec(body)
-    const otherwise = /<otherwise\b[^>]*>([\s\S]*?)<\/otherwise>/i.exec(body)
+  const open = (tag) => new RegExp(`<\\s*${tag}\\b${IDE_DATA_WINDOW_TAG_ATTRS}>`, 'gi')
+  result = result.replace(open('script'), '').replace(/<\s*\/\s*script\s*>/gi, '')
+  result = result.replace(new RegExp(`<choose\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/choose>`, 'gi'), (whole, body) => {
+    const when = new RegExp(`<when\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/when>`, 'i').exec(body)
+    const otherwise = new RegExp(`<otherwise\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/otherwise>`, 'i').exec(body)
     return when !== null ? when[1] : otherwise !== null ? otherwise[1] : ''
   })
-  result = result.replace(/<where\b[^>]*>([\s\S]*?)<\/where>/gi, (whole, body) => (
+  result = result.replace(new RegExp(`<where\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/where>`, 'gi'), (whole, body) => (
     ` WHERE ${body.replace(/^\s*(and|or)\b/i, '')} `
   ))
-  result = result.replace(/<set\b[^>]*>([\s\S]*?)<\/set>/gi, (whole, body) => (
+  result = result.replace(new RegExp(`<set\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\/set>`, 'gi'), (whole, body) => (
     ` SET ${body.replace(/,\s*$/, '')} `
   ))
-  result = result.replace(/<trim\b([^>]*)>([\s\S]*?)<\/trim>/gi, (whole, attrText, body) => {
+  result = result.replace(new RegExp(`<trim\\b(${IDE_DATA_WINDOW_TAG_ATTRS})>([\\s\\S]*?)<\\/trim>`, 'gi'), (whole, attrText, body) => {
     const attrs = ideDataWindowXmlAttrs(attrText)
     let inner = body
     for (const prefix of String(attrs.prefixOverrides ?? '').split('|')) {
@@ -481,14 +493,14 @@ function ideDataWindowStripTags(sql) {
     return `${String(attrs.prefix ?? '').trim()} ${inner} ${String(attrs.suffix ?? '').trim()}`
   })
   for (const tag of ['if', 'when', 'otherwise']) {
-    const pattern = new RegExp(`<\\s*${tag}\\b[^>]*>([\\s\\S]*?)<\\s*/\\s*${tag}\\s*>`, 'gi')
+    const pattern = new RegExp(`<\\s*${tag}\\b${IDE_DATA_WINDOW_TAG_ATTRS}>([\\s\\S]*?)<\\s*/\\s*${tag}\\s*>`, 'gi')
     result = result.replace(pattern, '$1')
   }
-  result = result.replace(/<bind\b[^>]*\/?\s*>/gi, '')
+  result = result.replace(new RegExp(`<bind\\b${IDE_DATA_WINDOW_TAG_ATTRS}\\/?\\s*>`, 'gi'), '')
   // Anything left (foreach and include are already expanded) is an unsupported tag: drop it.
   // 只认「XML 形状」的标签（字母或 `!` 开头）：`a &lt; 5` 解出来是比较运算符，
   // 按 `<[^>]+>` 删会把 `<` 到后面某个 `>` 之间的真实 SQL 一起吞掉。
-  result = result.replace(/<\/?[A-Za-z!][^>]*>/g, '')
+  result = result.replace(new RegExp(`<\\/?[A-Za-z!]${IDE_DATA_WINDOW_TAG_ATTRS}>`, 'g'), '')
   // `<where>` may have wrapped its leading AND/OR inside a stripped `<if>`.
   result = result.replace(/\bWHERE\s+(AND|OR)\b/gi, 'WHERE')
   // 条件被动态标签或解析失败的 include 吃光后只剩一个 WHERE，留着就是语法错误。

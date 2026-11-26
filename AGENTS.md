@@ -274,6 +274,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
 - 文件树右键 Java/Kotlin 文件 → 解析 `@TableName` 发 `openTable`；编辑器符号右键 → Mapper 方法发 `openSql`（`@Select` 等注解优先，其次按 namespace 在 XML 里找 statement，动态 SQL 会带注释提示原文粘贴）；
 - MyBatis 动态 SQL 会先转成可执行 SQL：`<foreach>` 展开 3 条默认值、`#{}`/`${}` 按方法签名里的参数类型填默认值（数字 `1`、字符串 `'demo'`、日期时间），SQL 头部注释列出默认参数；XML 的 `<if>/<where>/<set>/<trim>/<choose>` 会展开成静态 SQL。仍不自动执行，用户在数据窗口里改值后自己跑。
 - **`<include refid="..."/>` 会展开再拼**（`test/data-bridge.mjs` 有用例）：同文件 `<sql id>`、跨命名空间的片段、嵌套 include、include 自带的 `<property>` 都解析；解析不到的 refid 在 SQL 里留 `/* include not found: x */` 并在头部注释列出，条件被吃光后剩下的空 `WHERE` 直接去掉——绝不给数据窗口一段 `WHERE` 后面直接 `ORDER BY` 的语法错误 SQL。
+- **标签属性里的 `>` 不算标签结束**（踩过，用户截图：SQL 中间多出一行 `0">`）：`<if test="billStatusList != null and billStatusList.size() > 0">` 这种写法遍地都是，用 `[^>]*>` 匹配开标签会在属性质里的 `>` 处截断，剩下的 ` 0">` 被当成 SQL。所以所有开标签（if/when/otherwise/where/set/trim/foreach/include 的 property/bind/sql/select/兜底清理）一律用引号感知的 `IDE_DATA_WINDOW_TAG_ATTRS`（`(?:"[^"]*"|'[^']*'|[^>"'])*`）拼正则，别再手写 `[^>]*>`
 - 本插件只解析、不执行 SQL；定位库、只读校验都在数据窗口与它的 Host 里。
 
 ### 4.4 与对话联动
@@ -333,6 +334,7 @@ tail -f /tmp/dsh-ide-test/logs/dsh-ide-window.log # 自测实例
   - `@` 两节：**文件与文件夹**（`workspaceFiles.list(sessionId, dir)`，`'.'` 是根、其余相对路径、条目只有 `{name,type}`）+ **对话**（按标题过滤其他会话，选中即切换悬浮卡的会话）
   - ↑/↓ 选、Enter/Tab 选中、Esc 关，目录**下钻**成 `@dir/`、文件变引用 chip、技能插入 `/<名字> `。菜单绝对定位在输入框上方（`.iw-float-input` 必须是 `position: relative`）
 - **浮层挂在触发器上**：会话列表从标题 ▾ 向下、权限与模型从各自 chip 向上。菜单曾是卡片的 flex 子节点，于是点模型菜单会跑到卡片顶部——现在 `useLayoutEffect` 按触发器与卡片的 rect 算出 `left/top` 或 `right/bottom`，再用内联样式粘上去（卡片可缩放，写死偏移会漂）。`useLayoutEffect` 要记得在 `build.mjs` 的解构里导出
+- **会话模式（Agent 预设）也显示在输入区底行**：`mode` chip 放在权限 pill 与思考/模型 chip 之间，只展示不切换（切换仍在 DSH 里做）。值读 `session.projections` 的 `agentPreset` 投影（字符串；`projections.get` / `faceOf().getSnapshot()` / 会话快照三条兜底），订阅 `faceOf('agentPreset').subscribe` 跟着变；名字优先用预设自己的 `name`（自定义模式），内置预设（`standard/ptc/minimal/cordis`）借 DSH 自己的 `settings.agentPreset` 命名空间文案（`ctx.locale.bind('settings.agentPreset')` 的 `preset*Name`），拿不到再用本插件 `floatMode*` 兜底，最后才显示 id。预设列表来自 `ctx.remote.agentPresets.list()` 的 `value.presets`
 - **输入区 = DSH 的 composer**：一个 16px 圆角容器（内边距 `10px 10px 8px 14px`），里面是无边框 textarea（占位文案同 DSH）与底行 `＋（圆形）/ 权限 pill（锁+文字+⌄）/ 空隙 / 思考等级 / 模型 chip / 圆形发送键（↑，运行中变 ■）`；引用是蓝色 chip，粘贴图片走剪贴板 `image/*`（≤4 张、单张 8 MB），发送 `prompt([image…, {text: refs + 正文}])`
 - **跟随当前会话（`floatFollow`，默认开，持久化）**：`ideFloatTargetSession(state)` 决定卡片展示哪个会话——跟随用 `state.sessionId`；关掉后用卡片自己的 `state.floatSessionId`（只本次进程有效），DSH 里怎么切都不动。卡片标题菜单里点会话：跟随时照旧 `openSession()`，不跟随时只 `store.setFloatSessionId()`（不动面板）；不跟随时菜单顶部有「不跟随当前会话 · 在下面手动切换」提示。卡片里点「＋ 新建会话」用 `pinnedAdoptRef` 收养新会话，避免不跟随时新建完还停在旧会话。重新打开跟随会清掉钉子
 - **表头**：`▾` 标题 **居中、16px、最多 20 个字**（超出加省略号，悬停给完整标题 + 工作区路径），标题颜色按**工作区**取色相（`ideFloatWorkspaceHue(path)` → `--iw-float-hue`，再和正文主色 `color-mix` 混，浅色/深色都压得住对比度）；右侧 `＋` 与 `–`/`×` 放在绝对定位的 `.iw-float-head-right` 里，标题才会在整条表头里真正居中

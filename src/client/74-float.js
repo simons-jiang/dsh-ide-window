@@ -176,6 +176,23 @@ function ideFloatTargetSession(state) {
   return pinned !== '' ? pinned : panel
 }
 
+/** 会话的模式：`agentPreset` 投影的值（字符串或 `{currentValue}`，没配置就是空）。 */
+function ideFloatPresetId(value) {
+  if (typeof value === 'string') return value
+  if (value !== null && typeof value === 'object' && typeof value.currentValue === 'string') return value.currentValue
+  return ''
+}
+
+/** 模式的名字：自定义预设用自己的名字，内置预设交给调用方翻译，最后兜底 id。 */
+function ideFloatPresetName(presets, id, translate) {
+  if (typeof id !== 'string' || id === '') return ''
+  const entry = Array.isArray(presets) ? presets.find((item) => item?.id === id) : undefined
+  const named = typeof entry?.name === 'string' ? entry.name.trim() : ''
+  if (named !== '') return named
+  const text = typeof translate === 'function' ? translate(id) : ''
+  return typeof text === 'string' && text !== '' ? text : id
+}
+
 /** 表头标题最多 `limit` 个字，超出用省略号——再长就分不清是哪个会话了。 */
 function ideFloatTitleText(text, limit = IDE_FLOAT_TITLE_CHARS) {
   const value = String(text ?? '').trim()
@@ -1851,7 +1868,7 @@ function IdeFloatMarkdown({ text, tr }) {
  * @param props.sessions - the Client `sessions` service (retention + prompt).
  * @param props.modelDirectories - the model directory service the composer uses.
  */
-function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, composeText, commandList, workspaceList, skillList }) {
+function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSession, startSession, useWorkspaces, openInWorkspace, goToChat, composeText, commandList, workspaceList, skillList, modeList, modeLabel }) {
   const tr = typeof translate === 'function' ? translate : (key) => key
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const [binding, setBinding] = useState(null)
@@ -1863,6 +1880,9 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
   // 「＋ 新建会话」之后，不跟随时把卡片收养到新会话上（只认卡片自己发起的创建）。
   const pinnedAdoptRef = useRef(false)
   const [olderBusy, setOlderBusy] = useState(false)
+  // 会话的模式（Agent 预设）：DSH 表头显示的就是它，卡片只展示不改。
+  const [presetId, setPresetId] = useState('')
+  const [presets, setPresets] = useState([])
   // 卡片默认只画最后 200 行；用户主动往回翻时按步长放宽，别让补进来的行被裁掉。
   const [rowLimit, setRowLimit] = useState(IDE_FLOAT_MESSAGES)
   // 滚到顶 = 用户想看历史：整段对话铺开，直到发消息或切会话才回到「本轮状态板」。
@@ -1964,6 +1984,44 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
     if (state.floatOpen !== true) return
     stickRef.current = true
   }, [state.floatOpen])
+
+  // 会话的模式：投影一变就跟着变（在 DSH 里换模式，卡片立刻同步）。
+  useEffect(() => {
+    if (binding === null) {
+      setPresetId('')
+      return undefined
+    }
+    const projections = binding.session?.projections
+    if (projections === undefined || projections === null) return undefined
+    const face = typeof projections.faceOf === 'function' ? projections.faceOf('agentPreset') : undefined
+    const read = () => {
+      const direct = typeof projections.get === 'function' ? projections.get('agentPreset') : undefined
+      const fromFace = typeof face?.getSnapshot === 'function' ? face.getSnapshot() : undefined
+      const fromSession = typeof binding.session?.getSnapshot === 'function'
+        ? binding.session.getSnapshot()?.projectionValues?.agentPreset
+        : undefined
+      setPresetId(ideFloatPresetId(direct) || ideFloatPresetId(fromFace) || ideFloatPresetId(fromSession))
+    }
+    read()
+    const off = typeof face?.subscribe === 'function' ? face.subscribe(read) : projections.subscribeAny?.(read)
+    return () => {
+      if (typeof off === 'function') off()
+    }
+  }, [binding])
+
+  // 预设列表只为「自定义模式」的名字；拿不到就只显示内置模式的名字。
+  useEffect(() => {
+    if (typeof modeList !== 'function') return undefined
+    let cancelled = false
+    Promise.resolve(modeList())
+      .then((result) => {
+        if (cancelled) return
+        if (Array.isArray(result?.value)) setPresets(result.value)
+        else if (result?.error !== undefined) ideLogRecord('warn', 'float', 'presets failed', String(result.error))
+      })
+      .catch((error) => { if (cancelled !== true) ideLogRecord('warn', 'float', 'presets failed', error?.message ?? String(error)) })
+    return () => { cancelled = true }
+  }, [modeList])
 
   // 不跟随时，第一次进入就把面板当前会话钉住；之后 DSH 里怎么切都不动。
   useEffect(() => {
@@ -3436,6 +3494,11 @@ function IdeFloatingAsk({ store, sessions, modelDirectories, translate, openSess
           h('span', { key: 't', className: 'iw-float-perm-text' }, ideFloatPermissionLabel(permission, tr)),
           h(IdeChevronDownIcon, { key: 'c', size: 12 }),
         ]),
+        presetId === '' ? null : h('span', {
+          key: 'mode',
+          className: 'iw-float-mode',
+          title: `${tr('floatMode')}: ${ideFloatPresetName(presets, presetId, modeLabel)}`,
+        }, ideFloatPresetName(presets, presetId, modeLabel)),
         h('span', { key: 'gap', className: 'iw-float-gap' }),
         efforts.length === 0 ? null : h('button', {
           key: 'effort',

@@ -99,6 +99,16 @@ function apply(ctx) {
     void error
   }
   const translate = ideMakeTranslator(ctx, bound)
+  // 会话模式的标签：内置预设（standard/ptc/minimal/cordis）没有 name，文案在 DSH
+  // 自己的 `settings.agentPreset` 命名空间里。借它的文案，和表头显示的一致。
+  let presetText
+  try {
+    presetText = ctx.locale !== undefined && typeof ctx.locale.bind === 'function'
+      ? ctx.locale.bind('settings.agentPreset')
+      : undefined
+  } catch (error) {
+    void error
+  }
 
   /**
    * The palette's command list.
@@ -1237,6 +1247,30 @@ function apply(ctx) {
         } catch (error) {
           return { error: String(error?.message ?? error) }
         }
+      },
+      // 会话的模式 = Agent 预设；卡片只展示，切换仍在 DSH 里做。
+      modeList: async () => {
+        try {
+          const result = await ctx.remote.agentPresets.list()
+          if (result?.ok === false) return { error: result.error?.message ?? result.error?.code ?? 'failed' }
+          const presets = result?.value?.presets
+          return { value: Array.isArray(presets) ? presets : [] }
+        } catch (error) {
+          return { error: String(error?.message ?? error) }
+        }
+      },
+      /** 内置预设的中文/英文名；返回空串表示「不是内置预设」，交给调用方兜底。 */
+      modeLabel: (id) => {
+        const builtin = { standard: 'Standard', ptc: 'Ptc', minimal: 'Minimal', cordis: 'Cordis' }[id]
+        if (builtin === undefined) return ''
+        const key = `preset${builtin}Name`
+        try {
+          const text = typeof presetText === 'function' ? presetText(key) : undefined
+          if (typeof text === 'string' && text.trim() !== '' && text !== key) return text
+        } catch (error) {
+          void error
+        }
+        return translate(`floatMode${builtin}`)
       },
       workspaceList: async (sessionId, path) => {
         try {

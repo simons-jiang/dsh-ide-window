@@ -2417,6 +2417,19 @@ function floatTranscriptSource() {
     check(hueOf('') === 214, 'no workspace falls back to a neutral hue', String(hueOf('')))
     check(bundle.includes('session.loadOlder()') && bundle.includes('floatLoadingOlder'),
       'the card asks the session for one older page and says so while loading')
+    // 会话模式：读 agentPreset 投影，内置模式用 DSH 自己的文案，自定义用预设名字。
+    const presetOf = new Function(`${grabSource('ideFloatPresetId', '74-float.js')}\nreturn ideFloatPresetId`)()
+    check(presetOf('standard') === 'standard', 'a string projection is the mode')
+    check(presetOf({ currentValue: 'ptc' }) === 'ptc', 'a view projection carries the mode too', String(presetOf({ currentValue: 'ptc' })))
+    check(presetOf(null) === '' && presetOf(undefined) === '', 'no mode stays blank')
+    const nameOf = new Function(`${grabSource('ideFloatPresetName', '74-float.js')}\nreturn ideFloatPresetName`)()
+    const builtin = (id) => (id === 'standard' ? '标准模式' : '')
+    check(nameOf([], 'standard', builtin) === '标准模式', 'a built-in mode uses the translated name')
+    check(nameOf([{ id: 'review', name: '代码评审' }], 'review', builtin) === '代码评审', 'a custom mode shows its own name')
+    check(nameOf([], 'weird', builtin) === 'weird', 'an unknown mode falls back to its id')
+    check(nameOf([], '', builtin) === '', 'no mode renders nothing')
+    check(bundle.includes("faceOf('agentPreset')") && bundle.includes('agentPresets.list'),
+      'the card follows the session mode projection and reads the preset list')
     check(bundle.includes('setHistoryMode(true)') && bundle.includes('ideFloatVisibleRows(entries, running, state.floatEvents === true, historyMode)'),
       'reaching the top reveals the loaded history and asks for one more page')
     check(bundle.includes('iw-float-head-right') && bundle.includes('iw-float-older'),
